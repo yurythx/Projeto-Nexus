@@ -1,14 +1,16 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Hash, Pencil, Send, Trash2, Users, User as UserIcon } from "lucide-react";
+import { Hash, Pencil, Send, Settings2, Trash2, Users, User as UserIcon } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
+import { RoomsAdmin } from "@/components/mercurio/RoomsAdmin";
 import { useFrames, useRealtimeSend, useRealtimeState, useTopic } from "@/components/realtime/RealtimeProvider";
 import { DataState } from "@/components/nexus/DataState";
 import { useAction } from "@/components/nexus/useAction";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { apiClient } from "@/lib/api/client";
 import { useApiQuery, withQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
@@ -223,6 +225,8 @@ function RoomView({ room, onRead }: { room: ChatRoom; onRead: () => void }) {
 
 function Mercurio() {
   const router = useRouter();
+  const { can } = useNexus();
+  const [admin, setAdmin] = useState(false);
   const params = useSearchParams();
   const rooms = useApiQuery<ChatRoom[]>("v1/mercurio/rooms");
   const selectedId = params.get("sala") ?? rooms.data?.[0]?.id;
@@ -244,7 +248,14 @@ function Mercurio() {
   return (
     <div className="-mx-4 -mb-10 -mt-6 grid h-[calc(100dvh-var(--topbar-h))] grid-cols-1 sm:-mx-8 md:grid-cols-[16rem_1fr]">
       <nav aria-label="Salas do Mercúrio" className="hidden min-h-0 overflow-y-auto border-r border-surface-border p-3 md:block">
-        <h1 className="mb-3 px-2 text-lg font-semibold">Mercúrio</h1>
+        <div className="mb-3 flex items-center justify-between px-2">
+          <h1 className="text-lg font-semibold">Mercúrio</h1>
+          {can("mercurio:manage") && (
+            <Button variant="ghost" size="sm" aria-label="Gerenciar salas" onClick={() => setAdmin(true)}>
+              <Settings2 size={16} aria-hidden="true" />
+            </Button>
+          )}
+        </div>
         <DataState loading={rooms.isLoading} error={rooms.error} empty={(rooms.data ?? []).length === 0} emptyTitle="Nenhuma sala">
           {groups.map(([label, list]) =>
             list.length === 0 ? null : (
@@ -301,6 +312,9 @@ function Mercurio() {
         </div>
         {selected ? <RoomView key={selected.id} room={selected} onRead={refresh} /> : <p className="p-6 text-sm text-muted">Selecione uma sala.</p>}
       </div>
+      <Dialog open={admin} onClose={() => setAdmin(false)} title="Salas do Mercúrio" size="xl">
+        {admin && <RoomsAdmin rooms={rooms.data ?? []} onChanged={refresh} />}
+      </Dialog>
     </div>
   );
 }

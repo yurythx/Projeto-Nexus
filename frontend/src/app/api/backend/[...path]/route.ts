@@ -47,13 +47,20 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
 
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
 
+  const upstreamHeaders: Record<string, string> = {
+    Authorization: `Bearer ${token.accessToken}`,
+    "Content-Type": req.headers.get("content-type") ?? "application/json",
+    "X-Request-ID": requestId,
+  };
+  // Chave de idempotência das mutações (skill §1 / OWASP A08): gerada no
+  // navegador por apiClient e repassada intacta — o backend deduplica
+  // por usuário + chave e devolve a resposta original num reenvio.
+  const idempotencyKey = req.headers.get("x-idempotency-key");
+  if (idempotencyKey && /^[A-Za-z0-9_-]{8,128}$/.test(idempotencyKey)) upstreamHeaders["X-Idempotency-Key"] = idempotencyKey;
+
   const init: RequestInit = {
     method: req.method,
-    headers: {
-      Authorization: `Bearer ${token.accessToken}`,
-      "Content-Type": req.headers.get("content-type") ?? "application/json",
-      "X-Request-ID": requestId,
-    },
+    headers: upstreamHeaders,
     // GET/HEAD não podem carregar um corpo. arrayBuffer(), não text():
     // um corpo multipart/form-data com upload de arquivo (Fase 10 —
     // projeto criado por .zip) carrega bytes binários — .text() decodifica
