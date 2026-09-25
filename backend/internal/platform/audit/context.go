@@ -1,42 +1,61 @@
 package audit
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
 )
 
-// FromRequest devolve uma Entry já preenchida com o IP de origem e o
-// correlation_id extraídos da requisição HTTP — o chamador só completa
-// UserID/Action/ResourceType/ResourceID/Metadata.
+// FromRequest devolve uma Entry já preenchida com a proveniência da
+// requisição HTTP: ator (id interno, subject, roles), IP de origem, user
+// agent, contexto organizacional (lotações efetivas) e correlation id. O
+// chamador só completa Action/Resource/Before/After/Metadata.
 //
-// Motivação (achado de auditoria de conformidade, gap G-07): as entradas
-// de auditoria das mutações administrativas (feature flags via PATCH,
-// configuração do Keycloak via PUT) eram construídas à mão preenchendo só
-// Action/ResourceType/ResourceID/Metadata — sem ip_address nem
-// correlation_id. §49 exige "identificador do agente, ação, dados
-// alterados, timestamp UTC e IP de origem" em toda operação de escrita, e
-// eram justamente as operações mais sensíveis (desligar um módulo em
-// produção, trocar o issuer OIDC de toda a plataforma) que ficavam sem o
-// IP. Este helper centraliza o preenchimento para que nenhuma chamada
-// futura repita o esquecimento.
-//
-//   - IPAddress recebe r.RemoteAddr cru; Writer.Record chama sanitizeIP,
-//     que já sabe tirar a porta de um "host:porta" e devolver "" (grava
-//     NULL) para um valor que não seja um IP válido — um valor inválido
-//     nunca deve derrubar o INSERT de auditoria.
-//   - CorrelationID vem de logging.CorrelationID (populado pelo middleware
-//     RequestID a partir do X-Request-ID). Se não for um UUID parseável
-//     (um cliente pode mandar um X-Request-ID em qualquer formato), o
-//     campo fica nil em vez de abortar — degradação graciosa.
+// O IP vem de r.RemoteAddr, que o middleware httpserver.TrustedRealIP já
+// reescreveu com o IP real do cliente quando a conexão chega por um proxy
+// confiável.
 func FromRequest(r *http.Request) Entry {
-	e := Entry{IPAddress: r.RemoteAddr}
-	if cid := logging.CorrelationID(r.Context()); cid != "" {
+	e := FromContext(r.Context())
+	e.IPAddress = r.RemoteAddr
+	e.UserAgent = r.UserAgent()
+	return e
+}
+
+// FromContext preenche ator, contexto organizacional e correlation id a
+// partir do context (sem IP/user agent) — para casos de uso da camada de
+// aplicação que recebem só o ctx.
+func FromContext(ctx context.Context) Entry {
+	var e Entry
+	if cid := logging.CorrelationID(ctx); cid != "" {
 		if id, err := uuid.Parse(cid); err == nil {
 			e.CorrelationID = &id
 		}
 	}
+	if identity, ok := auth.IdentityFromContext(ctx); ok {
+		e.ActorSubject = identity.Subject
+		e.ActorRoles = identity.Roles
+		if actor, _, ok := auth.ActorUUID(ctx); ok {
+			e.ActorID = actor
+		}
+		if len(identity.Scopes) > 0 {
+			e.EntityContext = map[string]any{"scopes": identity.Scopes}
+		}
+	}
+	return e
+}
+
+// Meta é açúcar para montar uma Entry a partir do contexto com ação,
+// recurso e diff numa só chamada.
+func Meta(ctx context.Context, action, resourceType, resourceID string, before, after any) Entry {
+	e := FromContext(ctx)
+	e.Action = action
+	e.ResourceType = resourceType
+	e.ResourceID = resourceID
+	e.Before = before
+	e.After = after
 	return e
 }

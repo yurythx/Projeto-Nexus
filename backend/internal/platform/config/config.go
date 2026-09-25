@@ -1,4 +1,4 @@
-// Package config carrega e valida a configuração do Projeto-Nova a partir
+// Package config carrega e valida a configuração do Projeto Nexus a partir
 // de variáveis de ambiente. Configuração obrigatória ausente faz Load
 // retornar um erro imediatamente (fail fast) em vez de deixar a aplicação
 // subir num estado parcialmente configurado — é preferível o processo nem
@@ -24,10 +24,18 @@ type AppConfig struct {
 	LogFormat string // json | text
 }
 
-// HTTPConfig guarda as configurações de bind do servidor HTTP.
+// HTTPConfig guarda as configurações de bind e os timeouts do servidor
+// HTTP. Os defaults seguem a skill (M01/A05 — prevenção de DoS/Slowloris):
+// ReadHeaderTimeout 2s, ReadTimeout 5s, WriteTimeout 10s, IdleTimeout 120s.
+// Uploads nunca atravessam a API (vão direto ao MinIO por URL
+// pré-assinada), então 5s de leitura de corpo bastam para qualquer JSON.
 type HTTPConfig struct {
-	Host string
-	Port int
+	Host              string
+	Port              int
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
 }
 
 func (c HTTPConfig) Addr() string {
@@ -130,6 +138,37 @@ type LocalAuthConfig struct {
 	TokenTTL      time.Duration
 }
 
+// RedisConfig aponta para o Redis usado como backplane do WebSocket
+// (fan-out entre réplicas da API), rate limiting adaptativo distribuído,
+// lockout progressivo e invalidação do cache de permissões (A07).
+type RedisConfig struct {
+	// URL no formato redis://[:senha@]host:porta/db ou rediss:// (TLS).
+	URL string
+}
+
+// EgressConfig parametriza o plugin Egress (webhooks de saída).
+type EgressConfig struct {
+	Timeout      time.Duration
+	MaxAttempts  int
+	BatchSize    int
+	PollInterval time.Duration
+	// AllowPrivateNetworks desliga o bloqueio anti-SSRF de faixas privadas
+	// (RFC 1918), loopback e link-local. SÓ para desenvolvimento local
+	// (ex.: um n8n no mesmo docker-compose) — Load recusa true em produção.
+	AllowPrivateNetworks bool
+}
+
+// SignumConfig parametriza a cerimônia de assinatura eletrônica.
+type SignumConfig struct {
+	ChallengeTTL time.Duration
+}
+
+// UploadConfig limita os uploads diretos ao MinIO (URL pré-assinada).
+type UploadConfig struct {
+	MaxFileBytes int64
+	URLExpiry    time.Duration
+}
+
 // RateLimitConfig parametriza um limitador de janela fixa (ver
 // internal/platform/ratelimit.PostgresLimiter): até MaxRequests
 // requisições por chave a cada WindowSeconds segundos.
@@ -142,7 +181,7 @@ type RateLimitConfig struct {
 // trilha de auditoria (F2.6). Bucket DEDICADO (não o de blobs da app):
 // object-lock só pode ser habilitado na criação do bucket.
 type AuditWORMConfig struct {
-	Bucket        string // AUDIT_WORM_BUCKET (default "aurora-audit-worm")
+	Bucket        string // AUDIT_WORM_BUCKET (default "nexus-audit-worm")
 	RetentionDays int    // AUDIT_WORM_RETENTION_DAYS (default 1825 = 5 anos)
 }
 
@@ -196,17 +235,30 @@ type Config struct {
 	HTTP      HTTPConfig
 	Database  DatabaseConfig
 	RabbitMQ  RabbitMQConfig
+	Redis     RedisConfig
 	Keycloak  KeycloakConfig
 	Security  SecurityConfig
 	LocalAuth LocalAuthConfig
 	Jobs      JobsConfig
 	Worker    WorkerConfig
+	Egress    EgressConfig
+	Signum    SignumConfig
+	Upload    UploadConfig
 
 	AuditWORM AuditWORMConfig
 
 	// APIRateLimit é o teto por identidade autenticada (fallback: IP)
 	// aplicado a todo o grupo /api/v1 (gap G-01).
 	APIRateLimit RateLimitConfig
+	// LoginRateLimit limita tentativas de login local por IP; o lockout
+	// progressivo por conta/IP fica em internal/platform/ratelimit.
+	LoginRateLimit RateLimitConfig
+	// ContactRateLimit é o limite dedicado do formulário público de
+	// contato, por IP.
+	ContactRateLimit RateLimitConfig
+	// PublicRateLimit limita as demais rotas públicas (catálogo,
+	// transparência, consentimento anônimo), por IP.
+	PublicRateLimit RateLimitConfig
 
 	MinIO MinIOConfig
 
@@ -342,13 +394,17 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		App: AppConfig{
 			Env:       l.str("APP_ENV", true, ""),
-			Name:      l.str("APP_NAME", false, "projeto-aurora"),
+			Name:      l.str("APP_NAME", false, "projeto-nexus"),
 			LogLevel:  l.str("APP_LOG_LEVEL", false, "info"),
 			LogFormat: l.str("LOG_FORMAT", false, "json"),
 		},
 		HTTP: HTTPConfig{
-			Host: l.str("HTTP_HOST", false, "0.0.0.0"),
-			Port: l.intVal("HTTP_PORT", false, 8000),
+			Host:              l.str("HTTP_HOST", false, "0.0.0.0"),
+			Port:              l.intVal("HTTP_PORT", false, 8000),
+			ReadHeaderTimeout: l.durationVal("HTTP_READ_HEADER_TIMEOUT", false, 2*time.Second),
+			ReadTimeout:       l.durationVal("HTTP_READ_TIMEOUT", false, 5*time.Second),
+			WriteTimeout:      l.durationVal("HTTP_WRITE_TIMEOUT", false, 10*time.Second),
+			IdleTimeout:       l.durationVal("HTTP_IDLE_TIMEOUT", false, 120*time.Second),
 		},
 		Database: DatabaseConfig{
 			Host:            l.str("DB_HOST", true, ""),
@@ -367,6 +423,9 @@ func Load() (*Config, error) {
 			URL:           l.secret("RABBITMQ_URL", true, ""),
 			MaxRetries:    l.intVal("RABBITMQ_MAX_RETRIES", false, 3),
 			PrefetchCount: l.intVal("RABBITMQ_PREFETCH_COUNT", false, 10),
+		},
+		Redis: RedisConfig{
+			URL: l.secret("REDIS_URL", true, ""),
 		},
 		Keycloak: KeycloakConfig{
 			IssuerURL:    l.str("KEYCLOAK_ISSUER_URL", false, ""),
@@ -392,8 +451,34 @@ func Load() (*Config, error) {
 			WindowSeconds: l.intVal("API_RATE_LIMIT_WINDOW_SECONDS", false, 60),
 			MaxRequests:   l.intVal("API_RATE_LIMIT_MAX", false, 600),
 		},
+		LoginRateLimit: RateLimitConfig{
+			WindowSeconds: l.intVal("LOGIN_RATE_LIMIT_WINDOW_SECONDS", false, 60),
+			MaxRequests:   l.intVal("LOGIN_RATE_LIMIT_MAX", false, 10),
+		},
+		ContactRateLimit: RateLimitConfig{
+			WindowSeconds: l.intVal("CONTACT_RATE_LIMIT_WINDOW_SECONDS", false, 3600),
+			MaxRequests:   l.intVal("CONTACT_RATE_LIMIT_MAX", false, 5),
+		},
+		PublicRateLimit: RateLimitConfig{
+			WindowSeconds: l.intVal("PUBLIC_RATE_LIMIT_WINDOW_SECONDS", false, 60),
+			MaxRequests:   l.intVal("PUBLIC_RATE_LIMIT_MAX", false, 120),
+		},
+		Egress: EgressConfig{
+			Timeout:              l.durationVal("EGRESS_TIMEOUT", false, 10*time.Second),
+			MaxAttempts:          l.intVal("EGRESS_MAX_ATTEMPTS", false, 8),
+			BatchSize:            l.intVal("EGRESS_BATCH_SIZE", false, 20),
+			PollInterval:         l.durationVal("EGRESS_POLL_INTERVAL", false, 5*time.Second),
+			AllowPrivateNetworks: l.boolVal("EGRESS_ALLOW_PRIVATE_NETWORKS", false),
+		},
+		Signum: SignumConfig{
+			ChallengeTTL: l.durationVal("SIGNUM_CHALLENGE_TTL", false, 5*time.Minute),
+		},
+		Upload: UploadConfig{
+			MaxFileBytes: int64(l.intVal("UPLOAD_MAX_FILE_MB", false, 100)) * 1024 * 1024,
+			URLExpiry:    l.durationVal("UPLOAD_URL_EXPIRY", false, 15*time.Minute),
+		},
 		AuditWORM: AuditWORMConfig{
-			Bucket:        l.str("AUDIT_WORM_BUCKET", false, "aurora-audit-worm"),
+			Bucket:        l.str("AUDIT_WORM_BUCKET", false, "nexus-audit-worm"),
 			RetentionDays: l.intVal("AUDIT_WORM_RETENTION_DAYS", false, 1825),
 		},
 		Worker: WorkerConfig{
@@ -435,7 +520,7 @@ func Load() (*Config, error) {
 	// como está, cujo default `:-` não força nada).
 	//
 	// A mesma checagem cobre também os valores literais de .env.example
-	// (achado de auditoria de segurança): DB_PASSWORD=aurora_pass e
+	// (achado de auditoria de segurança): DB_PASSWORD=nexus_pass e
 	// RABBITMQ_DEFAULT_PASS=rabbit_pass não são "defaults" no sentido de
 	// código (são required=true, sem fallback em loader.secret) — mas o
 	// arquivo em si é público (committed no git), então um operador que
@@ -459,6 +544,9 @@ func Load() (*Config, error) {
 		}
 		if cfg.Security.ConfigEncryptionKey == insecureConfigEncryptionKey {
 			weak = append(weak, "CONFIG_ENCRYPTION_KEY")
+		}
+		if cfg.Egress.AllowPrivateNetworks {
+			weak = append(weak, "EGRESS_ALLOW_PRIVATE_NETWORKS (proteção anti-SSRF desligada)")
 		}
 		if len(weak) > 0 {
 			return nil, fmt.Errorf(
@@ -516,7 +604,7 @@ func minioConfig(l *loader) MinIOConfig {
 		Endpoint:  l.str("MINIO_ENDPOINT", false, "minio:9000"),
 		AccessKey: l.str("MINIO_ACCESS_KEY", false, insecureMinioAccessKey),
 		SecretKey: l.secret("MINIO_SECRET_KEY", false, insecureMinioSecretKey),
-		Bucket:    l.str("MINIO_BUCKET", false, "demands"),
+		Bucket:    l.str("MINIO_BUCKET", false, "nexus"),
 		UseSSL:    l.boolVal("MINIO_USE_SSL", false),
 	}
 	c.PublicEndpoint = c.Endpoint

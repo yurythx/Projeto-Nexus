@@ -43,7 +43,7 @@ test.describe("Acessibilidade e-MAG / WCAG 2.1 AA", () => {
 
   test("Modal de Consentimento LGPD possui suporte ARIA (dialog, modal)", async ({ page }) => {
     // Garante que o consentimento LGPD seja verificado
-    await page.evaluate(() => localStorage.removeItem("aurora_lgpd_consent"));
+    await page.evaluate(() => localStorage.removeItem("nexus_lgpd_consent"));
     await page.reload();
 
     const dialog = page.getByRole("dialog");

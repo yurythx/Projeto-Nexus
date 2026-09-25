@@ -1,6 +1,6 @@
-name: projeto-aurora
+name: projeto-nexus
 networks:
-  aurora_internal:
+  nexus_internal:
     driver: bridge
 volumes:
   postgres_data: null
@@ -11,17 +11,17 @@ services:
     image: postgres:16-bookworm
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-aurora}
-      POSTGRES_USER: ${DB_USER:-aurora}
+      POSTGRES_DB: ${DB_NAME:-nexus}
+      POSTGRES_USER: ${DB_USER:-nexus}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     volumes:
     - postgres_data:/var/lib/postgresql/data
     networks:
-    - aurora_internal
+    - nexus_internal
     healthcheck:
       test:
       - CMD-SHELL
-      - pg_isready -U ${DB_USER:-aurora} -d ${DB_NAME:-aurora}
+      - pg_isready -U ${DB_USER:-nexus} -d ${DB_NAME:-nexus}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,15 +30,15 @@ services:
     image: rabbitmq:3.13-management-alpine
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-aurora}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-nexus}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS must be
         set}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-aurora}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-nexus}
     volumes:
     - rabbitmq_data:/var/lib/rabbitmq
     - ./deploy/rabbitmq.conf:/etc/rabbitmq/conf.d/consumer_timeout.conf:ro
     networks:
-    - aurora_internal
+    - nexus_internal
     healthcheck:
       test:
       - CMD
@@ -62,7 +62,7 @@ services:
       - "${HOST_MINIO_PORT:-9002}:9000"
       - "${HOST_MINIO_CONSOLE_PORT:-9003}:9001"
     networks:
-      - aurora_internal
+      - nexus_internal
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -81,17 +81,17 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3002}
       DB_PORT: 5432
       DB_HOST: postgres
-      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-aurora}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-aurora}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nexus}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nexus}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
-      MINIO_BUCKET: ${MINIO_BUCKET:-aurora}
+      MINIO_BUCKET: ${MINIO_BUCKET:-nexus}
       MINIO_USE_SSL: "false"
     volumes:
     - ./secrets:/run/secrets:ro
     networks:
-    - aurora_internal
+    - nexus_internal
     ports:
     - ${HTTP_PORT:-8002}:${HTTP_PORT:-8002}
     depends_on:
@@ -123,17 +123,17 @@ services:
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9102}
       DB_PORT: 5432
       DB_HOST: postgres
-      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-aurora}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-aurora}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nexus}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nexus}
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
-      MINIO_BUCKET: ${MINIO_BUCKET:-aurora}
+      MINIO_BUCKET: ${MINIO_BUCKET:-nexus}
       MINIO_USE_SSL: "false"
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9002}
     volumes:
     - ./secrets:/run/secrets:ro
     networks:
-    - aurora_internal
+    - nexus_internal
     depends_on:
       postgres:
         condition: service_healthy
@@ -180,7 +180,7 @@ services:
       # frontend").
       NEXTAUTH_URL: ${FRONTEND_URL:-http://localhost:3002}
     networks:
-    - aurora_internal
+    - nexus_internal
     ports:
     - ${FRONTEND_PORT:-3002}:3000
     depends_on:

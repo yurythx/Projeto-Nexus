@@ -29,8 +29,8 @@ func TestWriter_Record(t *testing.T) {
 	corrID := uuid.New()
 
 	err := writer.Record(context.Background(), Entry{
-		Action:        ActionIntegrationTest,
-		ResourceType:  "integration",
+		Action:        "test.chain",
+		ResourceType:  "test_resource",
 		ResourceID:    "example",
 		Metadata:      map[string]any{"result": "online"},
 		CorrelationID: &corrID,
@@ -48,10 +48,10 @@ func TestWriter_Record(t *testing.T) {
 		t.Fatalf("query row: %v", err)
 	}
 
-	if action != ActionIntegrationTest {
+	if action != "test.chain" {
 		t.Errorf("action = %q", action)
 	}
-	if resourceType != "integration" {
+	if resourceType != "test_resource" {
 		t.Errorf("resource_type = %q", resourceType)
 	}
 	if resourceID != "example" {
@@ -117,5 +117,46 @@ func TestWriter_Record_NilUserAndEmptyIP(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Record with nil user/empty IP: %v", err)
+	}
+}
+
+// TestAuditChain_VerifiesAndDetectsTampering prova, sobre o banco real,
+// que cada linha nova estende a cadeia SHA-256 e que audit_verify_chain
+// acusa uma adulteração feita por quem contorna o gatilho de imutabilidade
+// (ex.: um superusuário que desabilita o trigger).
+func TestAuditChain_VerifiesAndDetectsTampering(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	w := NewWriter(pool)
+	for i := 0; i < 3; i++ {
+		if err := w.Record(ctx, Entry{Action: "test.chain.link", Before: map[string]int{"n": i}, After: map[string]int{"n": i + 1}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := NewReader(pool).Verify(ctx, 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Valid || res.Checked < 3 {
+		t.Fatalf("cadeia íntegra deveria validar: %+v", res)
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `ALTER TABLE audit_logs DISABLE TRIGGER trg_audit_logs_immutable`); err != nil {
+		t.Skipf("sem privilégio para simular adulteração: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE audit_logs SET action = 'adulterado' WHERE chain_pos = (SELECT max(chain_pos) FROM audit_logs)`); err != nil {
+		t.Fatal(err)
+	}
+	var valid bool
+	if err := tx.QueryRow(ctx, `SELECT valid FROM audit_verify_chain(1, NULL)`).Scan(&valid); err != nil {
+		t.Fatal(err)
+	}
+	if valid {
+		t.Fatal("adulteração não foi detectada pela verificação da cadeia")
 	}
 }

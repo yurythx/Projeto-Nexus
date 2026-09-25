@@ -1,4 +1,4 @@
-// Formatos compartilhados que espelham os DTOs do backend do Projeto Aurora.
+// Formatos compartilhados que espelham os DTOs do backend do Projeto Nexus.
 // Mantidos manualmente em sincronia com docs/openapi.yaml — qualquer novo
 // campo exposto pela API precisa ser refletido aqui para o frontend
 // enxergá-lo com tipagem.
@@ -538,7 +538,7 @@ export interface BlogPostRevision {
   created_at: string;
 }
 
-// --- Catalog (central de serviços do site público, pivô Aurora v3) -----
+// --- Catalog (central de serviços do site público, pivô Nexus v3) -----
 // Espelha application.View do backend (internal/modules/catalog). A
 // leitura pública (Server Component, sem sessão) usa lib/catalog/types.ts
 // à parte — este arquivo é só o que a UI administrativa (catalog:manage,
@@ -639,7 +639,7 @@ export interface CatalogImageUploadTicket {
   expires_in_seconds: number;
 }
 
-// --- Contact (formulário de contato público, pivô Aurora v3) -----------
+// --- Contact (formulário de contato público, pivô Nexus v3) -----------
 // GET /api/v1/contact/admin/messages (contact:read).
 export interface ContactMessage {
   id: string;
@@ -666,7 +666,7 @@ export interface AuditLogEntry {
   created_at: string;
 }
 
-// GET /api/v1/admin/feature-flags (restrito a aurora-admin) — ver docs/openapi.yaml.
+// GET /api/v1/admin/feature-flags (restrito a nexus-admin) — ver docs/openapi.yaml.
 // title/locked/depends_on espelham modules.FeatureState (registry.go) —
 // antes ausentes daqui, o backend já mandava os três desde sempre, mas
 // FeatureFlagsPanel.tsx não tinha como enxergá-los pelo tipo (achado de
@@ -680,7 +680,7 @@ export interface FeatureFlag {
   depends_on?: string[];
 }
 
-// GET/PUT /api/v1/admin/keycloak (restrito a aurora-admin) — ver docs/openapi.yaml.
+// GET/PUT /api/v1/admin/keycloak (restrito a nexus-admin) — ver docs/openapi.yaml.
 // "source" indica de onde vieram os valores: "database" (já salvo pelo
 // menu Configurações > Keycloak — o que está em uso agora), "environment"
 // (nunca foi salvo por esta tela; vem de variável de ambiente do

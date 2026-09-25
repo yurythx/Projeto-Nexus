@@ -19,8 +19,8 @@
 //
 //	make seed-admin
 //	# ou, direto:
-//	DB_HOST=localhost DB_PORT=5432 DB_NAME=aurora DB_USER=aurora DB_PASSWORD=... \
-//	  go run ./cmd/seedadmin --username admin --roles aurora-admin,aurora-user
+//	DB_HOST=localhost DB_PORT=5432 DB_NAME=nexus DB_USER=nexus DB_PASSWORD=... \
+//	  go run ./cmd/seedadmin --username admin --roles nexus-admin,nexus-user
 package main
 
 import (
@@ -37,10 +37,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
-	"github.com/yurythx/projeto-aurora/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
 )
 
 // passwordBytes: 18 bytes aleatórios (144 bits de entropia) codificados em
@@ -54,9 +55,9 @@ const passwordBytes = 18
 
 func main() {
 	username := flag.String("username", "admin", "username da conta local a criar/resetar")
-	email := flag.String("email", "admin@projeto-aurora.local", "email da conta")
+	email := flag.String("email", "admin@projeto-nexus.local", "email da conta")
 	displayName := flag.String("display-name", "Administrador (local)", "nome de exibição")
-	rolesCSV := flag.String("roles", "aurora-admin,aurora-user", "roles, separadas por vírgula")
+	rolesCSV := flag.String("roles", "nexus-admin,nexus-user", "roles, separadas por vírgula")
 	// password: SÓ para automação (CI de E2E, ver .github/workflows/ci.yml)
 	// que precisa saber a senha de antemão pra digitar num formulário —
 	// deixado vazio (o padrão), uma senha aleatória de verdade é gerada.
@@ -125,7 +126,8 @@ func seedAdmin(ctx context.Context, pool *pgxpool.Pool, username, email, display
 			return "", fmt.Errorf("generate password: %w", err)
 		}
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	// Argon2id (skill §4 A02) — nunca bcrypt para contas novas.
+	hash, err := passwords.Hash(password)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
@@ -149,7 +151,7 @@ func seedAdmin(ctx context.Context, pool *pgxpool.Pool, username, email, display
 			locked_until = NULL,
 			updated_at = now()
 	`
-	if _, err := pool.Exec(ctx, q, uuid.New(), username, email, displayName, string(hash), roles); err != nil {
+	if _, err := pool.Exec(ctx, q, uuid.New(), username, email, displayName, hash, roles); err != nil {
 		return "", fmt.Errorf("upsert local admin user: %w", err)
 	}
 

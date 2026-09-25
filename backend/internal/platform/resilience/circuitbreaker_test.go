@@ -6,7 +6,7 @@ import (
 
 	"github.com/sony/gobreaker/v2"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 )
 
 func newTestBreaker(t *testing.T, consecutiveFailures uint32) *Breaker[string] {

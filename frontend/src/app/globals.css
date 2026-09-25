@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
-/* Paleta Institucional Governamental (Projeto Aurora — White-Label)
-   Cores inspiradas em portais municipais oficiais: Azul Escuro Institucional,
-   elementos neutros Slate de alto contraste, suporte a e-MAG (Alto Contraste).
+/* Design tokens do Projeto Nexus — paleta DSGov (Padrão Digital de
+   Governo) como base, 100% substituível por white-label: cada órgão
+   sobrescreve os tokens pela tela Configurações > Identidade visual
+   (GET /api/v1/branding -> CSS custom properties no layout raiz).
+   O modo e-MAG Alto Contraste sempre prevalece sobre o white-label.
 
    Vocabulário de cor: use os tokens `surface` / `surface-border` / `muted`
    como base. Os aliases `border` / `card` / `muted-foreground` existem só
@@ -27,6 +29,8 @@
   --warning: #d97706;
 
   --brand-panel: #0f1e36;
+  --footer-bg: #071d41;
+  --footer-foreground: #ffffff;
 
   /* Assinatura visual: tinta de carimbo oficial. Usada com MUITA parcimônia
      — só no selo da marca, em elementos de autenticidade e no destaque do
@@ -49,7 +53,7 @@
   /* Métricas do shell do dashboard — FONTE ÚNICA. Topbar.tsx, Sidebar.tsx
      e DashboardShell.tsx derivam altura/largura/offset daqui, então
      alinhar o conteúdo à Sidebar (e ao rodapé) é mudar um valor só.
-     --topbar-h = faixa e-MAG (EMagAccessibilityBar, h-10 = 2.5rem) +
+     --topbar-h = faixa e-MAG (AccessibilityBar, h-10 = 2.5rem) +
      barra principal de navegação (h-14 = 3.5rem). */
   --topbar-h: 6rem;
   --sidebar-w: 15rem;
@@ -80,6 +84,8 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-brand-panel: var(--brand-panel);
+  --color-footer-bg: var(--footer-bg);
+  --color-footer-foreground: var(--footer-foreground);
   --color-seal: var(--seal);
 
   --color-border: var(--border);
@@ -175,6 +181,8 @@
   --success: #00ff00;
   --warning: #ffff00;
   --brand-panel: #000000;
+  --footer-bg: #000000;
+  --footer-foreground: #ffff00;
   /* No modo e-MAG a assinatura de marca cede à paleta rígida de alto
      contraste: a tinta de carimbo vira o mesmo amarelo dos outros
      acentos (19:1 sobre preto), em vez de um coral que ficaria abaixo
@@ -182,8 +190,7 @@
   --seal: #ffff00;
 }
 
-/* Escala de Tamanho de Fonte (Acessibilidade e-MAG Rondonópolis) — A+/A-/A
-   na EMagAccessibilityBar grava fontSizeScale no branding; o BrandingContext
+/* Escala de Tamanho de Fonte (e-MAG) — A-/A/A+ na AccessibilityBar grava fontSizeScale no branding; o BrandingContext
    reflete em html[data-font-scale=...] e o % abaixo redimensiona TODO o
    documento (todas as medidas em rem/em acompanham). */
 html[data-font-scale="90"] {

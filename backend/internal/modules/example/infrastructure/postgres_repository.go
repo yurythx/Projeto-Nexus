@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/yurythx/projeto-aurora/internal/modules/example/domain"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/domain"
 )
 
 type PostgresRepository struct {

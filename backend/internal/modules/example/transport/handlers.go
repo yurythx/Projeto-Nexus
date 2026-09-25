@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/modules/example/application"
-	"github.com/yurythx/projeto-aurora/internal/modules/example/domain"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/application"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/domain"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 type Handlers struct {

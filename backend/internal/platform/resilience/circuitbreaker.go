@@ -5,7 +5,7 @@
 // amigável, em vez de continuar tentando (e esperando o timeout HTTP
 // configurado) contra um provedor que já se mostrou indisponível —
 // protege tanto o provedor externo (menos carga contra um serviço já
-// sobrecarregado) quanto o próprio Projeto Aurora (workers não ficam
+// sobrecarregado) quanto o próprio Projeto Nexus (workers não ficam
 // presos em timeouts longos e repetidos, consumindo goroutines/conexões).
 package resilience
 
@@ -17,8 +17,8 @@ import (
 
 	"github.com/sony/gobreaker/v2"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/metrics"
 )
 
 // Valores padrão de configuração, usados por New quando Options não os
@@ -65,7 +65,7 @@ type Options struct {
 // no half-open) para o erro de domínio padrão da plataforma
 // (apperrors.DependencyUnavailable com o código CIRCUIT_OPEN), e
 // conectando toda transição de estado às métricas Prometheus
-// nix_circuit_breaker_* (§53).
+// nexus_circuit_breaker_* (§53).
 type Breaker[T any] struct {
 	cb   *gobreaker.CircuitBreaker[T]
 	name string

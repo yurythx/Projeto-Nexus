@@ -1,88 +1,68 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
-import { useNotifications } from "@/hooks/useNotifications";
 import { useNotificationHistory } from "@/components/notifications/NotificationHistoryProvider";
 import { useToast } from "@/components/notifications/ToastProvider";
-import type { ToastTone } from "@/components/ui/Toast";
-import {
-  integrationStatusPayloadSchema,
-  jobEventPayloadSchema,
-  type EventEnvelope,
-} from "@/lib/validation/schemas";
-import type { ConnectionState } from "@/lib/websocket/client";
+import { useFrames } from "@/components/realtime/RealtimeProvider";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import { eventEnvelopeSchema } from "@/lib/validation/schemas";
+import type { Frame } from "@/lib/websocket/client";
 
-const eventCopy: Partial<Record<string, { title: string; tone: "success" | "danger" | "info" }>> = {
-  "integration.test.completed": { title: "Teste de integração concluído", tone: "success" },
-  "job.completed": { title: "Job de sistema concluído com sucesso", tone: "success" },
-  "job.failed": { title: "Job de sistema falhou", tone: "danger" },
-  "notification.created": { title: "Nova notificação do sistema", tone: "info" },
-};
+type Tone = "success" | "danger" | "info";
 
-/** Aviso só em dev quando o payload de um evento não bate com o schema —
- * mismatch de contrato entre backend e frontend. Em produção fica silencioso
- * (o evento é ignorado sem quebrar a UI). Fora do componente: não depende de
- * nada dele. */
-function logParseFailure(eventType: string, error: unknown) {
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(`[NotificationCenter] Payload inválido para o evento '${eventType}':`, error);
+/** Texto do toast para cada evento de difusão geral (a fila
+ * nexus.notification.websocket só recebe eventos seguros para todos). */
+export function describeEvent(type: string, payload: unknown): { title: string; description?: string; tone: Tone } | null {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : undefined);
+  switch (type) {
+    case "blog.post.published":
+      return { title: s("kind") === "comunicado" ? "Novo comunicado" : "Nova publicação", description: s("title"), tone: "info" };
+    case "catalog.service.published":
+      return { title: "Serviço publicado no catálogo", description: s("title"), tone: "success" };
+    case "calendar.event.created":
+      return { title: "Novo evento na agenda", description: s("title"), tone: "info" };
+    case "notification.created":
+      return { title: s("title") ?? "Nova notificação", description: s("message"), tone: "info" };
+    default:
+      return null;
   }
 }
 
-/** Montado uma única vez no layout do dashboard — não renderiza nada além
- * da pilha de toasts (via ToastProvider); traduz os eventos de WebSocket
- * já validados em toasts (§43). */
-export function NotificationCenter({
-  onConnectionStateChange,
-}: {
-  onConnectionStateChange?: (state: ConnectionState) => void;
-}) {
+/** Montado uma vez na área autenticada: traduz frames do WebSocket em
+ * toasts e histórico; reage à desativação de módulos em tempo real. */
+export function NotificationCenter() {
   const { showToast } = useToast();
-  const { push: pushHistory } = useNotificationHistory();
+  const { push } = useNotificationHistory();
+  const { refreshModules } = useNexus();
 
-  const handleEvent = useCallback(
-    (event: EventEnvelope) => {
-      switch (event.type) {
-        case "integration.status.changed": {
-          const result = integrationStatusPayloadSchema.safeParse(event.payload);
-          if (!result.success) {
-            logParseFailure(event.type, result.error);
-            return;
-          }
-          const tone: ToastTone = result.data.status === "online" ? "success" : "danger";
-          const notification = {
-            title: `Integração ${result.data.key} agora está ${result.data.status}`,
-            tone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-          return;
-        }
-
-        default: {
-          const copy = eventCopy[event.type];
-          if (!copy) return; // tipo de evento não reconhecido — ignora
-
-          const job = jobEventPayloadSchema.safeParse(event.payload);
-          const notification = {
-            title: copy.title,
-            description: job.success ? `Job ${job.data.job_id.slice(0, 8)}` : undefined,
-            tone: copy.tone,
-          };
-          showToast(notification);
-          pushHistory(notification);
-        }
+  const handle = useCallback(
+    (frame: Frame) => {
+      if (frame.type === "module.disabled") {
+        refreshModules();
+        const n = { title: "Um módulo foi desativado pelo administrador", tone: "danger" as const };
+        showToast(n);
+        push(n);
+        return;
       }
+      if (frame.type === "mercurio.unread") {
+        const n = { title: "Nova mensagem direta no Mercúrio", tone: "info" as const };
+        showToast(n);
+        push(n);
+        return;
+      }
+      if (frame.type !== "event") return;
+      const parsed = eventEnvelopeSchema.safeParse(frame.data);
+      if (!parsed.success) return;
+      const n = describeEvent(parsed.data.type, parsed.data.payload);
+      if (!n) return;
+      showToast(n);
+      push(n);
     },
-    [showToast, pushHistory],
+    [showToast, push, refreshModules],
   );
 
-  const state = useNotifications(handleEvent);
-
-  useEffect(() => {
-    onConnectionStateChange?.(state);
-  }, [state, onConnectionStateChange]);
-
+  useFrames(handle);
   return null;
 }

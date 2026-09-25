@@ -1,206 +1,99 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
+import { defaultBackoff, parseFrame, RealtimeClient, type ConnectionState } from "@/lib/websocket/client";
 
-import { NotificationClient } from "./client";
-
-class FakeWebSocket {
-  static instances: FakeWebSocket[] = [];
-  url: string;
+class FakeSocket {
+  readyState = 0;
+  sent: string[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  closeCalls = 0;
-
-  constructor(url: string) {
-    this.url = url;
-    FakeWebSocket.instances.push(this);
+  constructor(public url: string) {}
+  send(data: string) {
+    this.sent.push(data);
   }
-
   close() {
-    this.closeCalls += 1;
+    this.readyState = 3;
     this.onclose?.();
   }
+  open() {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+  receive(frame: unknown) {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
 }
 
-beforeEach(() => {
-  FakeWebSocket.instances = [];
-  vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
-});
-
-// firstSocket: todo teste abaixo só chama isto depois de um
-// vi.waitFor(() => instances tem length 1/2) — a instância sempre
-// existe na prática, mas o tipo de array indexado (noUncheckedIndexedAccess)
-// não carrega essa garantia. Lança um erro claro em vez de um "possibly
-// undefined" silenciado, caso essa invariante um dia deixe de valer.
-function firstSocket(): FakeWebSocket {
-  const socket = FakeWebSocket.instances[0];
-  if (!socket) throw new Error("no FakeWebSocket instance connected yet");
-  return socket;
+function setup(getTicket: () => Promise<string> = () => Promise.resolve("t1")) {
+  const sockets: FakeSocket[] = [];
+  const states: ConnectionState[] = [];
+  const client = new RealtimeClient({
+    getTicket,
+    wsBaseUrl: "ws://api/ws",
+    onStateChange: (s) => states.push(s),
+    backoffMs: () => 10,
+    socketFactory: (url) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s as unknown as WebSocket;
+    },
+  });
+  return { client, sockets, states };
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.useRealTimers();
+describe("RealtimeClient", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("conecta com ticket de uso único e distribui frames", async () => {
+    const { client, sockets } = setup();
+    const got: unknown[] = [];
+    client.onFrame((f) => got.push(f));
+    client.connect();
+    await vi.runAllTicks();
+    await Promise.resolve();
+    expect(sockets[0]?.url).toBe("ws://api/ws?ticket=t1");
+    sockets[0]!.open();
+    sockets[0]!.receive({ type: "event", topic: "broadcast", data: { a: 1 } });
+    expect(got).toEqual([{ type: "event", topic: "broadcast", data: { a: 1 } }]);
+  });
+
+  it("reassina os tópicos ao reconectar e conta referências", async () => {
+    const { client, sockets } = setup();
+    const off1 = client.subscribe("mercurio:room:1");
+    const off2 = client.subscribe("mercurio:room:1");
+    client.connect();
+    await Promise.resolve();
+    await Promise.resolve();
+    sockets[0]!.open();
+    expect(sockets[0]!.sent).toContain(JSON.stringify({ type: "subscribe", topic: "mercurio:room:1" }));
+    off1();
+    expect(sockets[0]!.sent.filter((s) => s.includes("unsubscribe"))).toHaveLength(0);
+    off2();
+    expect(sockets[0]!.sent).toContain(JSON.stringify({ type: "unsubscribe", topic: "mercurio:room:1" }));
+  });
+
+  it("para de tentar quando o ticket é negado com 401", async () => {
+    const { client, states } = setup(() => Promise.reject(new ApiError(401, "UNAUTHORIZED", "x")));
+    client.connect();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(states.at(-1)).toBe("unauthorized");
+  });
 });
 
-const validEnvelope = JSON.stringify({
-  id: "1",
-  type: "notification.created",
-  version: 1,
-  source: "nix.test",
-  occurred_at: "2026-08-22T00:00:00Z",
-  correlation_id: "corr-1",
-  payload: {},
-});
-
-describe("NotificationClient", () => {
-  it("fetches a ticket and opens a connection with it in the URL", async () => {
-    const getTicket = vi.fn().mockResolvedValue("ticket-abc");
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket,
-      onMessage: vi.fn(),
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-
-    expect(getTicket).toHaveBeenCalledOnce();
-    expect(firstSocket().url).toBe("ws://localhost:8000/ws?ticket=ticket-abc");
+describe("helpers", () => {
+  it("parseFrame ignora lixo", () => {
+    expect(parseFrame("nao-json")).toBeNull();
+    expect(parseFrame(JSON.stringify({ sem: "type" }))).toBeNull();
+    expect(parseFrame(JSON.stringify({ type: "pong" }))).toEqual({ type: "pong" });
   });
-
-  it("forwards a well-formed message and drops a malformed one", async () => {
-    const onMessage = vi.fn();
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket: vi.fn().mockResolvedValue("t"),
-      onMessage,
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    const socket = firstSocket();
-
-    socket.onmessage?.({ data: "not valid json" });
-    socket.onmessage?.({ data: validEnvelope });
-
-    expect(onMessage).toHaveBeenCalledOnce();
-    expect(onMessage.mock.calls[0]?.[0].type).toBe("notification.created");
-  });
-
-  it("reports connection state transitions", async () => {
-    const onStateChange = vi.fn();
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket: vi.fn().mockResolvedValue("t"),
-      onMessage: vi.fn(),
-      onStateChange,
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    expect(onStateChange).toHaveBeenCalledWith("connecting");
-
-    firstSocket().onopen?.();
-    expect(onStateChange).toHaveBeenCalledWith("open");
-  });
-
-  it("reconnects with backoff after the socket closes, fetching a fresh ticket", async () => {
-    vi.useFakeTimers();
-    const getTicket = vi.fn().mockResolvedValue("t");
-    const backoffMs = vi.fn().mockReturnValue(1000);
-
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket,
-      onMessage: vi.fn(),
-      backoffMs,
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    expect(getTicket).toHaveBeenCalledTimes(1);
-
-    firstSocket().onclose?.();
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-
-    expect(getTicket).toHaveBeenCalledTimes(2);
-    expect(backoffMs).toHaveBeenCalledWith(0);
-  });
-
-  // Achado real (usuário reportou nunca ver progresso de scan em tempo
-  // real; o log do backend mostrava POST /api/v1/ws/ticket devolvendo
-  // 401 pra sempre, a cada ~30s, na mesma sessão): getTicket falhando
-  // com um erro qualquer (rede, servidor fora do ar) continua
-  // reconectando com backoff — só um 401 (sessão de verdade expirada,
-  // nunca vai se resolver sozinho) precisa parar de tentar.
-  it("reports 'unauthorized' and stops retrying when getTicket fails with a 401", async () => {
-    vi.useFakeTimers();
-    const onStateChange = vi.fn();
-    const getTicket = vi.fn().mockRejectedValue(new ApiError(401, "UNAUTHORIZED", "invalid or expired access token"));
-
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket,
-      onMessage: vi.fn(),
-      onStateChange,
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(getTicket).toHaveBeenCalledOnce());
-
-    expect(onStateChange).toHaveBeenCalledWith("unauthorized");
-    expect(FakeWebSocket.instances).toHaveLength(0);
-
-    // Nunca agenda outra tentativa — diferente de um erro de rede comum.
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(getTicket).toHaveBeenCalledOnce();
-  });
-
-  it("still reconnects with backoff when getTicket fails with a non-401 error", async () => {
-    vi.useFakeTimers();
-    const onStateChange = vi.fn();
-    const backoffMs = vi.fn().mockReturnValue(1000);
-    const getTicket = vi.fn().mockRejectedValueOnce(new Error("network error")).mockResolvedValue("t");
-
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket,
-      onMessage: vi.fn(),
-      onStateChange,
-      backoffMs,
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(getTicket).toHaveBeenCalledOnce());
-    expect(onStateChange).not.toHaveBeenCalledWith("unauthorized");
-
-    await vi.advanceTimersByTimeAsync(1000);
-    await vi.waitFor(() => expect(getTicket).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-  });
-
-  it("does not reconnect after disconnect() is called", async () => {
-    vi.useFakeTimers();
-    const getTicket = vi.fn().mockResolvedValue("t");
-
-    const client = new NotificationClient({
-      wsBaseUrl: "ws://localhost:8000/ws",
-      getTicket,
-      onMessage: vi.fn(),
-    });
-
-    client.connect();
-    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-
-    client.disconnect();
-    expect(firstSocket().closeCalls).toBe(1);
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(FakeWebSocket.instances).toHaveLength(1);
+  it("backoff exponencial com teto", () => {
+    expect(defaultBackoff(0)).toBe(1000);
+    expect(defaultBackoff(3)).toBe(8000);
+    expect(defaultBackoff(20)).toBe(30000);
   });
 });

@@ -19,8 +19,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
 )
 
 // fakeStore é uma implementação de Store inteiramente em memória, para
@@ -65,7 +65,7 @@ func (s *fakeStore) RegisterFailedAttempt(_ context.Context, id uuid.UUID) error
 		}
 		a.FailedLoginAttempts++
 		if a.FailedLoginAttempts >= maxFailedAttempts {
-			until := time.Now().Add(lockoutDuration)
+			until := time.Now().Add(time.Minute)
 			a.LockedUntil = &until
 		}
 		return nil
@@ -79,6 +79,15 @@ func (s *fakeStore) ResetFailedAttempts(_ context.Context, id uuid.UUID) error {
 			a.FailedLoginAttempts = 0
 			a.LockedUntil = nil
 			return nil
+		}
+	}
+	return nil
+}
+
+func (s *fakeStore) UpdatePasswordHash(_ context.Context, id uuid.UUID, hash string) error {
+	for _, a := range s.byUsername {
+		if a.ID == id {
+			a.PasswordHash = hash
 		}
 	}
 	return nil
@@ -133,10 +142,10 @@ func doLogin(h *Handlers, username, password string) *httptest.ResponseRecorder 
 func TestLogin_CorrectCredentialsIssuesToken(t *testing.T) {
 	id := uuid.New()
 	store := newFakeStore(&Account{
-		ID: id, Username: "admin", Email: "admin@aurora.local",
-		PasswordHash: mustHash(t, "Admin123!"), Roles: []string{"aurora-admin"}, Active: true,
+		ID: id, Username: "admin", Email: "admin@nexus.local",
+		PasswordHash: mustHash(t, "Admin123!"), Roles: []string{"nexus-admin"}, Active: true,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "admin", "Admin123!")
 
@@ -164,7 +173,7 @@ func TestLogin_WrongPasswordIsRejected(t *testing.T) {
 	store := newFakeStore(&Account{
 		ID: uuid.New(), Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: true,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "admin", "wrong-password")
 
@@ -175,7 +184,7 @@ func TestLogin_WrongPasswordIsRejected(t *testing.T) {
 
 func TestLogin_UnknownUsernameIsRejectedWithSameStatusAsWrongPassword(t *testing.T) {
 	store := newFakeStore()
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "nobody", "whatever")
 
@@ -191,7 +200,7 @@ func TestLogin_InactiveAccountIsRejected(t *testing.T) {
 	store := newFakeStore(&Account{
 		ID: uuid.New(), Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: false,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "admin", "Admin123!")
 
@@ -204,7 +213,7 @@ func TestLogin_DisabledFeatureReturns404(t *testing.T) {
 	store := newFakeStore(&Account{
 		ID: uuid.New(), Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: true,
 	})
-	h := NewHandlers(store, nil, nil, testLogger()) // signer nil == login local desligado
+	h := NewHandlers(store, nil, nil, nil, nil, testLogger()) // signer nil == login local desligado
 
 	rec := doLogin(h, "admin", "Admin123!")
 
@@ -214,7 +223,7 @@ func TestLogin_DisabledFeatureReturns404(t *testing.T) {
 }
 
 func TestLogin_MissingFieldsIsRejected(t *testing.T) {
-	h := NewHandlers(newFakeStore(), testSigner(t), nil, testLogger())
+	h := NewHandlers(newFakeStore(), testSigner(t), nil, nil, nil, testLogger())
 
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin"}`))
 	r.Header.Set("Content-Type", "application/json")
@@ -231,7 +240,7 @@ func TestLogin_AccountLocksAfterMaxFailedAttempts(t *testing.T) {
 	store := newFakeStore(&Account{
 		ID: id, Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: true,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	for i := 0; i < maxFailedAttempts; i++ {
 		rec := doLogin(h, "admin", "wrong-password")
@@ -250,12 +259,12 @@ func TestLogin_AccountLocksAfterMaxFailedAttempts(t *testing.T) {
 
 func TestLogin_LockedAccountRejectsCorrectPassword(t *testing.T) {
 	id := uuid.New()
-	until := time.Now().Add(lockoutDuration)
+	until := time.Now().Add(15 * time.Minute)
 	store := newFakeStore(&Account{
 		ID: id, Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: true,
 		LockedUntil: &until,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "admin", "Admin123!")
 
@@ -270,7 +279,7 @@ func TestLogin_SuccessResetsFailedAttempts(t *testing.T) {
 		ID: id, Username: "admin", PasswordHash: mustHash(t, "Admin123!"), Active: true,
 		FailedLoginAttempts: maxFailedAttempts - 1,
 	})
-	h := NewHandlers(store, testSigner(t), nil, testLogger())
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
 
 	rec := doLogin(h, "admin", "Admin123!")
 	if rec.Code != http.StatusOK {
@@ -279,5 +288,25 @@ func TestLogin_SuccessResetsFailedAttempts(t *testing.T) {
 
 	if got := store.byUsername["admin"].FailedLoginAttempts; got != 0 {
 		t.Errorf("FailedLoginAttempts after success = %d, want 0", got)
+	}
+}
+
+// TestLogin_RehashesLegacyBcryptToArgon2id: um hash bcrypt legado ainda
+// autentica, e o login regrava a senha em Argon2id (skill §4, A02).
+func TestLogin_RehashesLegacyBcryptToArgon2id(t *testing.T) {
+	id := uuid.New()
+	store := newFakeStore(&Account{
+		ID: id, Username: "legado", Email: "legado@nexus.local",
+		PasswordHash: mustHash(t, "Senha-Legada-123"), Roles: []string{"nexus-user"}, Active: true,
+	})
+	h := NewHandlers(store, testSigner(t), nil, nil, nil, testLogger())
+	if rec := doLogin(h, "legado", "Senha-Legada-123"); rec.Code != http.StatusOK {
+		t.Fatalf("login com bcrypt legado deveria passar, veio %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := store.byUsername["legado"].PasswordHash; !strings.HasPrefix(got, "$argon2id$") {
+		t.Fatalf("hash deveria ter sido regravado em Argon2id, veio %q", got)
+	}
+	if rec := doLogin(h, "legado", "Senha-Legada-123"); rec.Code != http.StatusOK {
+		t.Fatalf("login após rehash deveria continuar funcionando, veio %d", rec.Code)
 	}
 }

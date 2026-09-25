@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 // StatsHandlers expõe a contagem de outbox_events por status ao painel
@@ -39,6 +39,6 @@ func (h *StatsHandlers) Get(w http.ResponseWriter, r *http.Request) {
 // que é montado (mesmo cuidado de configflags/keycloakconfig — ver o
 // achado de rota duplicada corrigido em lgpd/audit).
 func RegisterStatsRoutes(r chi.Router, h *StatsHandlers, logger *slog.Logger) {
-	r.With(auth.RequirePermission(logger, auth.PermAuditRead)).
+	r.With(auth.RequirePermission(logger, auth.PermMonitoringRead)).
 		Get("/monitoring/outbox-stats", h.Get)
 }

@@ -1,138 +1,333 @@
-// Package ws implementa o transporte de notificações via WebSocket da
-// plataforma: um Hub de conexões sem nenhuma regra de negócio (§37),
-// tickets de uso único e curta duração para autenticação em vez de um
-// token na URL (§38), e a metade do lado servidor do suporte a reconexão
-// (heartbeat/ping).
+// Package ws implementa o servidor WebSocket do Nexus.
+//
+// Modelo de tópicos: cada cliente assina tópicos ("mercurio:room:<id>",
+// "user:<id>", "broadcast"). Toda publicação passa pelo backplane Redis
+// (PUBLISH em "nexus:ws"), e cada réplica da API entrega aos SEUS clientes
+// locais assinantes daquele tópico — o chat e as notificações funcionam
+// com N réplicas atrás do balanceador.
+//
+// Tópicos de plugin ("<modulo>:...") só podem ser assinados se o módulo
+// estiver ativo e o autorizador que ele registrou permitir; quando o
+// Kernel desativa o módulo, DropModule derruba todas as assinaturas dele
+// na hora (o cliente recebe {"type":"module.disabled"}).
 package ws
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/metrics"
+	"github.com/yurythx/projeto-nexus/internal/platform/redisx"
 )
 
-// Hub rastreia todo cliente conectado e distribui (fan-out) as mensagens
-// de broadcast para todos eles. Nunca inspeciona o conteúdo da mensagem —
-// isso é responsabilidade do consumer de notificação (internal/app conecta
-// um consumer do RabbitMQ que chama Broadcast com o envelope JSON bruto de
-// cada evento).
+// TopicBroadcast é assinado automaticamente por todo cliente.
+const TopicBroadcast = "broadcast"
+
+// UserTopic é o tópico pessoal de um usuário (assinado automaticamente).
+func UserTopic(userID string) string { return "user:" + userID }
+
+// ErrTopicForbidden é devolvido quando o autorizador recusa a assinatura.
+var ErrTopicForbidden = errors.New("ws: assinatura de tópico não autorizada")
+
+// Authorizer decide se o cliente pode assinar topic. Registrado por
+// plugin (prefixo = chave do módulo).
+type Authorizer func(ctx context.Context, client ClientInfo, topic string) error
+
+// InboundHandler trata um frame de cliente cujo "type" começa com
+// "<modulo>." (ex.: "mercurio.typing").
+type InboundHandler func(ctx context.Context, client ClientInfo, frame Frame) error
+
+// Frame é a mensagem trocada com o navegador.
+type Frame struct {
+	Type  string          `json:"type"`
+	Topic string          `json:"topic,omitempty"`
+	Data  json.RawMessage `json:"data,omitempty"`
+}
+
+type backplaneMsg struct {
+	Topic   string          `json:"topic"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// ModuleGate informa se um módulo está ativo (implementado pelo Kernel).
+type ModuleGate func(key string) bool
+
+// Hub mantém os clientes locais e seus tópicos.
 type Hub struct {
 	logger *slog.Logger
+	redis  *redis.Client
+	gate   ModuleGate
 
 	mu      sync.RWMutex
 	clients map[*Client]struct{}
+	topics  map[string]map[*Client]struct{}
 
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan []byte
-	done       chan struct{}
+	hmu         sync.RWMutex
+	authorizers map[string]Authorizer
+	inbound     map[string]InboundHandler
 }
 
-// NewHub constrói um Hub ocioso. Chame Run para iniciar seu loop de
-// eventos.
-func NewHub(logger *slog.Logger) *Hub {
+// NewHub cria o Hub. rdb nil = entrega só local (uma réplica).
+func NewHub(logger *slog.Logger, rdb *redis.Client) *Hub {
 	return &Hub{
-		logger:     logger,
-		clients:    make(map[*Client]struct{}),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan []byte, 64),
-		done:       make(chan struct{}),
+		logger:      logger,
+		redis:       rdb,
+		gate:        func(string) bool { return true },
+		clients:     make(map[*Client]struct{}),
+		topics:      make(map[string]map[*Client]struct{}),
+		authorizers: make(map[string]Authorizer),
+		inbound:     make(map[string]InboundHandler),
 	}
 }
 
-// Run processa registros e broadcasts até ctx ser cancelado, e então fecha
-// o canal de envio de todo cliente conectado e retorna.
+// SetModuleGate conecta o Hub ao estado de ativação do Kernel.
+func (h *Hub) SetModuleGate(g ModuleGate) {
+	h.hmu.Lock()
+	h.gate = g
+	h.hmu.Unlock()
+}
+
+// RegisterModule registra o autorizador de tópicos e o handler de frames
+// de entrada de um plugin (qualquer um dos dois pode ser nil).
+func (h *Hub) RegisterModule(key string, authz Authorizer, inbound InboundHandler) {
+	h.hmu.Lock()
+	defer h.hmu.Unlock()
+	if authz != nil {
+		h.authorizers[key] = authz
+	}
+	if inbound != nil {
+		h.inbound[key] = inbound
+	}
+}
+
+func topicModule(topic string) string {
+	mod, _, _ := strings.Cut(topic, ":")
+	return mod
+}
+
+// Run consome o backplane Redis até ctx ser cancelado e então desconecta
+// todos os clientes locais.
 func (h *Hub) Run(ctx context.Context) error {
-	defer close(h.done)
+	defer h.closeAll()
+	if h.redis == nil {
+		<-ctx.Done()
+		return nil
+	}
+	sub := h.redis.Subscribe(ctx, redisx.Key("ws"))
+	defer sub.Close()
+	ch := sub.Channel()
 	for {
 		select {
 		case <-ctx.Done():
-			h.mu.Lock()
-			for c := range h.clients {
-				close(c.send)
-			}
-			h.clients = make(map[*Client]struct{})
-			h.mu.Unlock()
 			return nil
-
-		case c := <-h.register:
-			h.mu.Lock()
-			h.clients[c] = struct{}{}
-			count := len(h.clients)
-			h.mu.Unlock()
-			metrics.WebSocketConnections.Set(float64(count))
-			h.logger.Info("websocket client connected", slog.String("user_id", c.userID), slog.Int("total_clients", count))
-
-		case c := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[c]; ok {
-				delete(h.clients, c)
-				close(c.send)
+		case msg, ok := <-ch:
+			if !ok {
+				return fmt.Errorf("ws: backplane encerrado")
 			}
-			count := len(h.clients)
-			h.mu.Unlock()
-			metrics.WebSocketConnections.Set(float64(count))
-			h.logger.Info("websocket client disconnected", slog.String("user_id", c.userID), slog.Int("total_clients", count))
-
-		case msg := <-h.broadcast:
-			h.mu.RLock()
-			for c := range h.clients {
-				select {
-				case c.send <- msg:
-				default:
-					// Cliente lento/travado: descarta em vez de deixar um
-					// retardatário bloquear a entrega para todos os
-					// outros — o canal c.send tem buffer limitado, e um
-					// send que bloquearia trava o loop inteiro do Hub.
-					h.logger.Warn("dropping slow websocket client", slog.String("user_id", c.userID))
-					metrics.WebSocketErrorsTotal.Inc()
-					go h.Unregister(c)
-				}
+			var bm backplaneMsg
+			if err := json.Unmarshal([]byte(msg.Payload), &bm); err != nil {
+				h.logger.Warn("ws: mensagem inválida no backplane", slog.Any("error", err))
+				continue
 			}
-			h.mu.RUnlock()
+			h.deliverLocal(bm.Topic, bm.Payload)
 		}
 	}
 }
 
-// Register adiciona um cliente ao hub. Seguro de chamar concorrentemente.
-// Vira no-op se o hub já foi encerrado.
-func (h *Hub) Register(c *Client) {
-	select {
-	case h.register <- c:
-	case <-h.done:
+// Publish entrega frame a todos os assinantes de topic, em todas as
+// réplicas. Sem Redis (ou com falha nele), entrega só aos clientes locais.
+func (h *Hub) Publish(ctx context.Context, topic, frameType string, data any) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("ws: marshal data: %w", err)
+	}
+	frame, err := json.Marshal(Frame{Type: frameType, Topic: topic, Data: raw})
+	if err != nil {
+		return fmt.Errorf("ws: marshal frame: %w", err)
+	}
+	return h.PublishRaw(ctx, topic, frame)
+}
+
+// PublishRaw publica um frame já serializado.
+func (h *Hub) PublishRaw(ctx context.Context, topic string, frame []byte) error {
+	if h.redis != nil {
+		msg, _ := json.Marshal(backplaneMsg{Topic: topic, Payload: frame})
+		if err := h.redis.Publish(ctx, redisx.Key("ws"), msg).Err(); err == nil {
+			return nil
+		} else {
+			h.logger.Warn("ws: backplane indisponível, entregando só localmente", slog.Any("error", err))
+		}
+	}
+	h.deliverLocal(topic, frame)
+	return nil
+}
+
+func (h *Hub) deliverLocal(topic string, frame []byte) {
+	h.mu.RLock()
+	subs := make([]*Client, 0, len(h.topics[topic]))
+	for c := range h.topics[topic] {
+		subs = append(subs, c)
+	}
+	h.mu.RUnlock()
+	for _, c := range subs {
+		c.enqueue(frame)
 	}
 }
 
-// Unregister remove um cliente do hub. Seguro de chamar concorrentemente,
-// mais de uma vez para o mesmo cliente, e depois que o hub já foi
-// encerrado.
-func (h *Hub) Unregister(c *Client) {
-	select {
-	case h.unregister <- c:
-	case <-h.done:
+func (h *Hub) register(c *Client) {
+	h.mu.Lock()
+	h.clients[c] = struct{}{}
+	count := len(h.clients)
+	h.mu.Unlock()
+	metrics.WebSocketConnections.Set(float64(count))
+	h.subscribeUnchecked(c, TopicBroadcast)
+	if c.info.UserID != "" {
+		h.subscribeUnchecked(c, UserTopic(c.info.UserID))
 	}
 }
 
-// Broadcast entrega msg (um envelope de evento em JSON bruto) para todo
-// cliente conectado. O schema de evento (posse do job/integração) hoje não
-// restringe notificações a um único usuário, então todo cliente
-// autenticado vê toda notificação da plataforma — segmentar por usuário
-// exigiria primeiro um schema de evento que carregasse o dono, não existe
-// ainda.
-func (h *Hub) Broadcast(msg []byte) {
-	h.broadcast <- msg
+func (h *Hub) unregister(c *Client) {
+	h.mu.Lock()
+	if _, ok := h.clients[c]; !ok {
+		h.mu.Unlock()
+		return
+	}
+	delete(h.clients, c)
+	for t := range c.topics {
+		if subs := h.topics[t]; subs != nil {
+			delete(subs, c)
+			if len(subs) == 0 {
+				delete(h.topics, t)
+			}
+		}
+	}
+	count := len(h.clients)
+	h.mu.Unlock()
+	c.close()
+	metrics.WebSocketConnections.Set(float64(count))
 }
 
-// ClientCount reporta quantos clientes estão conectados no momento —
-// sem consumidor de produção hoje (nenhum endpoint de status expõe
-// isto), mas usado de verdade por testes deste pacote pra esperar uma
-// conexão assíncrona terminar de se registrar no Hub antes de seguir com
-// as asserções, em vez de um sleep arbitrário.
+func (h *Hub) subscribeUnchecked(c *Client, topic string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.topics[topic] == nil {
+		h.topics[topic] = make(map[*Client]struct{})
+	}
+	h.topics[topic][c] = struct{}{}
+	c.topics[topic] = struct{}{}
+}
+
+// Subscribe assina topic para c depois de conferir módulo e autorizador.
+func (h *Hub) Subscribe(ctx context.Context, c *Client, topic string) error {
+	if topic == "" || len(topic) > 200 {
+		return ErrTopicForbidden
+	}
+	mod := topicModule(topic)
+	if mod == "user" || mod == TopicBroadcast {
+		return ErrTopicForbidden // pessoais/globais são automáticos
+	}
+	h.hmu.RLock()
+	authz, ok := h.authorizers[mod]
+	gate := h.gate
+	h.hmu.RUnlock()
+	if !ok || !gate(mod) {
+		return ErrTopicForbidden
+	}
+	if err := authz(ctx, c.info, topic); err != nil {
+		return ErrTopicForbidden
+	}
+	h.subscribeUnchecked(c, topic)
+	return nil
+}
+
+// Unsubscribe remove a assinatura de topic.
+func (h *Hub) Unsubscribe(c *Client, topic string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if subs := h.topics[topic]; subs != nil {
+		delete(subs, c)
+		if len(subs) == 0 {
+			delete(h.topics, topic)
+		}
+	}
+	delete(c.topics, topic)
+}
+
+// DropModule remove de todos os clientes locais as assinaturas dos
+// tópicos do módulo e os avisa. Chamado pelo Kernel ao desativar o plugin
+// (em cada réplica, via notificação de mudança de estado).
+func (h *Hub) DropModule(key string) {
+	prefix := key + ":"
+	notice, _ := json.Marshal(Frame{Type: "module.disabled", Data: json.RawMessage(fmt.Sprintf("%q", key))})
+	affected := map[*Client]struct{}{}
+	h.mu.Lock()
+	for topic, subs := range h.topics {
+		if !strings.HasPrefix(topic, prefix) {
+			continue
+		}
+		for c := range subs {
+			delete(c.topics, topic)
+			affected[c] = struct{}{}
+		}
+		delete(h.topics, topic)
+	}
+	h.mu.Unlock()
+	for c := range affected {
+		c.enqueue(notice)
+	}
+}
+
+func (h *Hub) dispatchInbound(ctx context.Context, c *Client, f Frame) error {
+	mod, _, found := strings.Cut(f.Type, ".")
+	if !found {
+		return fmt.Errorf("ws: tipo de frame desconhecido %q", f.Type)
+	}
+	h.hmu.RLock()
+	handler, ok := h.inbound[mod]
+	gate := h.gate
+	h.hmu.RUnlock()
+	if !ok || !gate(mod) {
+		return fmt.Errorf("ws: módulo %q indisponível", mod)
+	}
+	return handler(ctx, c.info, f)
+}
+
+// ClientCount devolve o número de conexões locais.
 func (h *Hub) ClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients)
+}
+
+func (h *Hub) closeAll() {
+	h.mu.Lock()
+	clients := make([]*Client, 0, len(h.clients))
+	for c := range h.clients {
+		clients = append(clients, c)
+	}
+	h.clients = make(map[*Client]struct{})
+	h.topics = make(map[string]map[*Client]struct{})
+	h.mu.Unlock()
+	for _, c := range clients {
+		c.close()
+	}
+}
+
+// DropTopic remove todos os assinantes locais de um tópico (ex.: sala
+// arquivada). Outras réplicas convergem na próxima tentativa de assinatura,
+// que o autorizador passa a recusar.
+func (h *Hub) DropTopic(topic string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.topics[topic] {
+		delete(c.topics, topic)
+	}
+	delete(h.topics, topic)
 }

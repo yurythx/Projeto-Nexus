@@ -9,10 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/modules/example/domain"
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
-	"github.com/yurythx/projeto-aurora/internal/platform/database"
-	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/domain"
+	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
 
 // Service gerencia as regras de negócio para o módulo de exemplo.
@@ -35,7 +35,7 @@ func NewService(pool *pgxpool.Pool, repo domain.Repository, outbox *outbox.Write
 // CreateItem é o blueprint de referência do Transactional Outbox (§16): o
 // INSERT do item de negócio e o outbox.Write do evento
 // "example.item.created" (já roteado em messaging/topology.go pras filas
-// aurora.notification.websocket e aurora.example.worker — só faltava
+// nexus.notification.websocket e nexus.example.worker — só faltava
 // alguém de fato publicar) commitam na MESMA transação via
 // database.WithTx — uma falha parcial (item gravado mas evento perdido,
 // ou vice-versa) nunca acontece. Achado de auditoria: todo módulo
@@ -61,18 +61,11 @@ func (s *Service) CreateItem(ctx context.Context, title, description string) (*d
 		if err := s.outbox.Write(ctx, tx, "example.item.created", "example_item", item.ID.String(), uuid.Nil, payload); err != nil {
 			return err
 		}
-		// Trilha de auditoria na MESMA transação do INSERT + outbox (gap
-		// G-06): audit.NewWriter(tx) — não o Writer preso ao pool — para
-		// que item, evento e linha de auditoria commitem ou revertam
-		// juntos. Um módulo real também passaria aqui o ator/IP que o
-		// handler extrai da requisição (ver audit.FromRequest); o
-		// blueprint registra ao menos a ação e o recurso.
-		return audit.NewWriter(tx).Record(ctx, audit.Entry{
-			Action:       "example.item.created",
-			ResourceType: "example_item",
-			ResourceID:   item.ID.String(),
-			Metadata:     map[string]any{"title": item.Title},
-		})
+		// Trilha de auditoria na MESMA transação do INSERT + outbox:
+		// audit.NewWriter(tx) — não o Writer preso ao pool — para que
+		// item, evento e auditoria commitem ou revertam juntos. audit.Meta
+		// extrai do context o ator, suas roles e o escopo organizacional.
+		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "example.item.created", "example_item", item.ID.String(), nil, item))
 	})
 	if err != nil {
 		return nil, fmt.Errorf("example.CreateItem: %w", err)

@@ -1,258 +1,125 @@
 "use client";
 
-import {
-  LayoutDashboard,
-  Plug,
-  Settings,
-  Activity,
-  Box,
-  ClipboardList,
-  HeartHandshake,
-  Home,
-  Shield,
-  ShieldAlert,
-  Scale,
-  FileSpreadsheet,
-  Gift,
-  Building,
-} from "lucide-react";
+import { Activity, LayoutDashboard, Settings, ShieldCheck, type LucideProps } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
+import { useEffect, type ComponentType } from "react";
 
-import useSWR from "swr";
-import { apiClient } from "@/lib/api/client";
 import { useBranding } from "@/components/branding/BrandingContext";
-import { getUserAssignedServices, type UserServiceInfo } from "@/lib/auth/adMapping";
-import type { FeatureFlag } from "@/types/api";
-import packageJson from "../../../package.json";
+import { ModuleIcon } from "@/components/layout/ModuleIcon";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import type { ModuleStatus } from "@/lib/nexus/types";
 
-const FRONTEND_VERSION = packageJson.version;
+interface NavItem {
+  href: string;
+  label: string;
+  icon: ComponentType<LucideProps> | string;
+}
 
-const systemLinks: { href: string; label: string; icon: typeof LayoutDashboard; flag?: string; match?: string[] }[] = [
-  { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
-  { href: "/exemplos", label: "Módulo Modelo", icon: Box, flag: "module_exemplos_enabled" },
-  { href: "/monitoramento", label: "Monitoramento", icon: Activity },
-  { href: "/integracoes", label: "Integrações", icon: Plug },
-  { href: "/configuracao", label: "Configurações", icon: Settings },
+// Módulos que não entram no menu de "Módulos": o núcleo tem entradas
+// próprias em Administração; Egress é configuração; a Busca vive no
+// cabeçalho (#global-search).
+const HIDDEN_FROM_MENU = new Set(["iam", "audit", "egress", "search"]);
+
+const ADMIN_PERMISSIONS = [
+  "modules:manage", "iam:manage", "users:read", "branding:manage", "keycloak:manage",
+  "egress:manage", "catalog:manage", "contact:read", "mercurio:manage", "calendar:manage",
 ];
 
-function getServiceIcon(slug: string) {
-  switch (slug) {
-    case "cras":
-      return Home;
-    case "centro-pop":
-    case "centro_pop":
-      return HeartHandshake;
-    case "creas":
-      return ShieldAlert;
-    case "casa-mulher":
-    case "casa-da-mulher":
-      return Shield;
-    case "conselho-tutelar":
-      return Scale;
-    case "cadunico-bolsa-familia":
-      return FileSpreadsheet;
-    case "beneficios-eventuais":
-      return Gift;
-    default:
-      return Building;
-  }
+/** Monta o menu a partir do estado dos módulos no Kernel e das permissões
+ * efetivas — um plugin desativado some do menu sem recarregar a página. */
+export function buildNav(modules: ModuleStatus[], can: (p: string) => boolean): { modules: NavItem[]; admin: NavItem[] } {
+  const mods = modules
+    .filter((m) => m.enabled && !m.core && !HIDDEN_FROM_MENU.has(m.key) && m.route)
+    .map((m) => ({ href: m.route, label: m.name, icon: m.icon }));
+  const admin: NavItem[] = [];
+  if (can("audit:read")) admin.push({ href: "/auditoria", label: "Auditoria", icon: ShieldCheck });
+  if (can("monitoring:read")) admin.push({ href: "/monitoramento", label: "Monitoramento", icon: Activity });
+  if (ADMIN_PERMISSIONS.some(can)) admin.push({ href: "/configuracao", label: "Configurações", icon: Settings });
+  return { modules: mods, admin };
 }
 
-function matchesPath(pathname: string, prefix: string): boolean {
-  return pathname === prefix || pathname.startsWith(prefix + "/");
+function isActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(href + "/");
 }
 
-interface SidebarProps {
+export function Sidebar({
+  collapsed,
+  mobileOpen,
+  onCloseMobile,
+}: {
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-}
-
-export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
+}) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const currentServico = searchParams.get("servico");
   const { branding } = useBranding();
-  const { data: session } = useSession();
-
-  const { data: featureFlags } = useSWR<FeatureFlag[]>(
-    "v1/admin/feature-flags",
-    () => apiClient.get<FeatureFlag[]>("v1/admin/feature-flags").then((res) => res.data),
-    { revalidateOnFocus: false, shouldRetryOnError: false }
-  );
-
-  const disabledFlags = new Set(
-    (featureFlags ?? []).filter((f) => f.enabled === false).map((f) => f.key)
-  );
-
-  const userRoles = session?.user?.roles ?? [];
-  const userGroups = session?.user?.groups ?? [];
-
-  const { services: assignedServices, activeUnit, isAdmin, isTechnician, isReceptionist } = getUserAssignedServices(
-    userGroups,
-    userRoles,
-    disabledFlags
-  );
-
-  const visibleSystemLinks = systemLinks.filter((l) => !l.flag || !disabledFlags.has(l.flag));
-
-  let activeHref: string | null = null;
-  let bestLen = -1;
-  for (const l of visibleSystemLinks) {
-    for (const prefix of l.match ?? [l.href]) {
-      if (matchesPath(pathname, prefix) && prefix.length > bestLen) {
-        bestLen = prefix.length;
-        activeHref = l.href;
-      }
-    }
-  }
+  const { modules, can } = useNexus();
+  const nav = buildNav(modules, can);
 
   useEffect(() => {
     if (!mobileOpen) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onCloseMobile();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseMobile();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [mobileOpen, onCloseMobile]);
+
+  const renderItem = (item: NavItem) => {
+    const active = isActive(pathname, item.href);
+    return (
+      <li key={item.href}>
+        <Link
+          href={item.href}
+          onClick={onCloseMobile}
+          aria-current={active ? "page" : undefined}
+          title={collapsed ? item.label : undefined}
+          className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+            active ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface-hover"
+          } ${collapsed ? "md:justify-center" : ""}`}
+        >
+          {typeof item.icon === "string" ? (
+            <ModuleIcon name={item.icon} size={18} aria-hidden="true" className="shrink-0" />
+          ) : (
+            <item.icon size={18} aria-hidden="true" className="shrink-0" />
+          )}
+          <span className={collapsed ? "md:sr-only" : ""}>{item.label}</span>
+        </Link>
+      </li>
+    );
+  };
 
   return (
     <>
       {mobileOpen && (
-        <div
-          className="fixed inset-x-0 bottom-0 top-[var(--topbar-h)] z-40 bg-black/40 md:hidden"
-          onClick={onCloseMobile}
-          aria-hidden="true"
-        />
+        <div className="fixed inset-x-0 bottom-0 top-[var(--topbar-h)] z-40 bg-black/40 md:hidden" onClick={onCloseMobile} aria-hidden="true" />
       )}
-
       <nav
-        aria-label="Principal"
-        className={`fixed left-0 bottom-0 top-[var(--topbar-h)] z-40 flex flex-col overflow-y-auto overflow-x-hidden border-r border-surface-border bg-surface
-          transition-[transform,width] duration-[var(--shell-motion)] ease-[var(--shell-ease)] md:translate-x-0
-          ${collapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]"}
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full"} w-72`}
+        id="main-menu"
+        tabIndex={-1}
+        aria-label="Menu principal"
+        className={`fixed bottom-0 left-0 top-[var(--topbar-h)] z-40 flex w-72 flex-col overflow-y-auto border-r border-surface-border bg-surface outline-none transition-[transform,width] duration-[var(--shell-motion)] md:translate-x-0 ${
+          collapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]"
+        } ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        {/* Painel de Lotação do Usuário no AD */}
-        {!collapsed && activeUnit && (
-          <div className="mx-3 mt-3 mb-1 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="block font-semibold uppercase tracking-wider text-[10px] text-primary">Lotação / AD</span>
-              {isAdmin ? (
-                <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded">Gestão</span>
-              ) : isReceptionist ? (
-                <span className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded">Recepção</span>
-              ) : (
-                <span className="text-[9px] bg-primary/10 text-primary font-bold px-1.5 py-0.5 rounded">Técnico Social</span>
-              )}
-            </div>
-            <span className="font-medium text-foreground truncate block mt-0.5">{activeUnit}</span>
+        <ul className="flex flex-col gap-0.5 px-2 pt-3">{renderItem({ href: "/dashboard", label: "Visão geral", icon: LayoutDashboard })}</ul>
+
+        {nav.modules.length > 0 && (
+          <div className="mt-3">
+            <p className={`px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted ${collapsed ? "md:sr-only" : ""}`}>Módulos</p>
+            <ul className="flex flex-col gap-0.5 px-2">{nav.modules.map(renderItem)}</ul>
           </div>
         )}
 
-        {/* MÓDULOS DE ATENDIMENTO SOCIOASSISTENCIAL */}
-        {assignedServices.length > 0 && (
-          <div className="mt-2">
-            {!collapsed && (
-              <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted flex items-center justify-between">
-                <span>Atendimento Socioassistencial</span>
-                {isAdmin && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-normal">Todas Unidades</span>}
-              </div>
-            )}
-            <ul className="flex flex-col gap-0.5 px-2">
-              {isAdmin && (
-                <li>
-                  <Link
-                    href="/atendimento"
-                    onClick={onCloseMobile}
-                    title={collapsed ? "Todos os Atendimentos" : undefined}
-                    aria-label={collapsed ? "Todos os Atendimentos" : undefined}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
-                      ${pathname === "/atendimento" && !currentServico ? "bg-primary/10 text-primary" : "text-foreground hover:bg-black/5 dark:hover:bg-white/5"}
-                      ${collapsed ? "md:justify-center" : ""}`}
-                  >
-                    <ClipboardList size={18} aria-hidden="true" className="shrink-0" />
-                    <span className={collapsed ? "md:hidden" : ""}>Fila & Atendimentos</span>
-                  </Link>
-                </li>
-              )}
-
-              {assignedServices.map((srv: UserServiceInfo) => {
-                const Icon = getServiceIcon(srv.slug);
-                const srvHref = `/atendimento?servico=${srv.slug}`;
-                const isSelected = pathname === "/atendimento" && currentServico === srv.slug;
-                return (
-                  <li key={srv.slug}>
-                    <Link
-                      href={srvHref}
-                      onClick={onCloseMobile}
-                      title={collapsed ? srv.name : undefined}
-                      aria-label={collapsed ? srv.name : undefined}
-                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
-                        ${isSelected ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-black/5 dark:hover:bg-white/5"}
-                        ${collapsed ? "md:justify-center" : ""}`}
-                    >
-                      <Icon size={18} aria-hidden="true" className="shrink-0 text-primary/80" />
-                      <span className={collapsed ? "md:hidden" : ""}>{srv.name}</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+        {nav.admin.length > 0 && (
+          <div className="mt-3">
+            <p className={`px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted ${collapsed ? "md:sr-only" : ""}`}>Administração</p>
+            <ul className="flex flex-col gap-0.5 px-2 pb-3">{nav.admin.map(renderItem)}</ul>
           </div>
         )}
 
-        {/* MENU PRINCIPAL & SISTEMA */}
-        <div className="mt-2">
-          {!collapsed && (
-            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
-              Sistema & Gestão
-            </div>
-          )}
-          <ul className={`flex flex-col gap-0.5 px-2 pb-3 ${collapsed ? "pt-2" : "pt-1"}`}>
-            {visibleSystemLinks.map((link) => {
-              const Icon = link.icon;
-              const active = link.href === activeHref;
-              return (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    onClick={onCloseMobile}
-                    title={collapsed ? link.label : undefined}
-                    aria-label={collapsed ? link.label : undefined}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
-                      ${active ? "bg-primary/10 text-primary" : "text-foreground hover:bg-black/5 dark:hover:bg-white/5"}
-                      ${collapsed ? "md:justify-center" : ""}`}
-                  >
-                    <Icon size={18} aria-hidden="true" className="shrink-0" />
-                    <span className={collapsed ? "md:hidden" : ""}>{link.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
-        {/* Rodapé informativo */}
-        <div
-          className={`mt-auto shrink-0 border-t border-surface-border px-3 py-3 text-[11px] leading-tight text-muted
-            ${collapsed ? "md:px-0 md:text-center" : ""}`}
-          title={`${branding.appName} · v${FRONTEND_VERSION}`}
-        >
-          <p className={`truncate font-medium text-foreground/70 ${collapsed ? "md:hidden" : ""}`}>
-            {branding.appName}
-          </p>
-          <p className={collapsed ? "md:hidden" : ""}>v{FRONTEND_VERSION}</p>
-        </div>
+        <p className={`mt-auto border-t border-surface-border px-4 py-3 text-[11px] text-muted ${collapsed ? "md:sr-only" : ""}`}>
+          {branding.appName}
+        </p>
       </nav>
     </>
   );

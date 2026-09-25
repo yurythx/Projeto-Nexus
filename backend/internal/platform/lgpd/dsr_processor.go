@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
-	"github.com/yurythx/projeto-aurora/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // erasureDetail explica, na própria linha da solicitação e para o
@@ -128,7 +128,7 @@ func processOneErasure(ctx context.Context, pool *pgxpool.Pool, reqID, userID uu
 		// Trilha da conclusão, na mesma transação.
 		uid := userID
 		return audit.NewWriter(tx).Record(ctx, audit.Entry{
-			UserID:       &uid,
+			ActorID:      &uid,
 			Action:       "lgpd.erasure.completed",
 			ResourceType: "user",
 			ResourceID:   userID.String(),

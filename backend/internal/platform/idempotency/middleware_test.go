@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 )
 
 // fakeStore é uma implementação de Store inteiramente em memória, para

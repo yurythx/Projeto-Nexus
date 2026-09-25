@@ -13,7 +13,7 @@
 -- colunas de PII + marca do evento.
 --
 -- Só o próprio titular abre uma solicitação para si (o handler confere
--- identity.Subject == user_id); um aurora-admin pode consultar o
+-- identity.Subject == user_id); um nexus-admin pode consultar o
 -- andamento para cumprir o prazo do art. 19.
 CREATE TABLE data_subject_requests (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/secretcrypto"
+	"github.com/yurythx/projeto-nexus/internal/platform/secretcrypto"
 )
 
 // Estes testes rodam contra o PostgreSQL real usado no restante da suíte
@@ -78,12 +78,12 @@ func TestPostgresStore_SetThenGet_RoundTripsAllFields(t *testing.T) {
 	ctx := context.Background()
 
 	in := Settings{
-		IssuerURL:            "https://sso.orgao.gov.br/realms/aurora",
-		Realm:                "aurora",
-		ClientID:             "aurora-backend",
+		IssuerURL:            "https://sso.orgao.gov.br/realms/nexus",
+		Realm:                "nexus",
+		ClientID:             "nexus-backend",
 		ClientSecret:         "s3gr3d0-do-backend",
-		Audience:             "aurora-backend",
-		FrontendClientID:     "aurora-frontend",
+		Audience:             "nexus-backend",
+		FrontendClientID:     "nexus-frontend",
 		FrontendClientSecret: "s3gr3d0-do-frontend",
 	}
 	saved, err := store.Set(ctx, in, "admin-1")
@@ -123,11 +123,11 @@ func TestPostgresStore_Set_EmptySecretKeepsExistingSecret(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := store.Set(ctx, Settings{
-		IssuerURL:    "https://sso.orgao.gov.br/realms/aurora",
-		Realm:        "aurora",
-		ClientID:     "aurora-backend",
+		IssuerURL:    "https://sso.orgao.gov.br/realms/nexus",
+		Realm:        "nexus",
+		ClientID:     "nexus-backend",
 		ClientSecret: "segredo-original",
-		Audience:     "aurora-backend",
+		Audience:     "nexus-backend",
 	}, "admin-1")
 	if err != nil {
 		t.Fatalf("Set inicial: %v", err)
@@ -136,17 +136,17 @@ func TestPostgresStore_Set_EmptySecretKeepsExistingSecret(t *testing.T) {
 	// Segunda chamada só muda o Realm, client_secret vazio — deve MANTER
 	// "segredo-original", nunca apagar.
 	updated, err := store.Set(ctx, Settings{
-		IssuerURL:    "https://sso.orgao.gov.br/realms/aurora",
-		Realm:        "aurora-v2",
-		ClientID:     "aurora-backend",
+		IssuerURL:    "https://sso.orgao.gov.br/realms/nexus",
+		Realm:        "nexus-v2",
+		ClientID:     "nexus-backend",
 		ClientSecret: "",
-		Audience:     "aurora-backend",
+		Audience:     "nexus-backend",
 	}, "admin-1")
 	if err != nil {
 		t.Fatalf("Set de atualização: %v", err)
 	}
 
-	if updated.Realm != "aurora-v2" {
+	if updated.Realm != "nexus-v2" {
 		t.Errorf("Realm deveria ter sido atualizado, got %q", updated.Realm)
 	}
 	if updated.ClientSecret != "segredo-original" {
@@ -161,11 +161,11 @@ func TestPostgresStore_Get_WrongCipherKeyFailsLoudly(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := store.Set(ctx, Settings{
-		IssuerURL:    "https://sso.orgao.gov.br/realms/aurora",
-		Realm:        "aurora",
-		ClientID:     "aurora-backend",
+		IssuerURL:    "https://sso.orgao.gov.br/realms/nexus",
+		Realm:        "nexus",
+		ClientID:     "nexus-backend",
 		ClientSecret: "segredo",
-		Audience:     "aurora-backend",
+		Audience:     "nexus-backend",
 	}, "admin-1"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}

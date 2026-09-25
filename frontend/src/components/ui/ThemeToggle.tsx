@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { usePrefersDark } from "@/lib/theme/usePrefersDark";
 
-const COOKIE_NAME = "nova-theme";
+const COOKIE_NAME = "nexus-theme";
 
 // Alterna entre claro/escuro persistindo a escolha num cookie (lido
 // server-side em app/layout.tsx/app/dashboard/layout.tsx) em vez de usar

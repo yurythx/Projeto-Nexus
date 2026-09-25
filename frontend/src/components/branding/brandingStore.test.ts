@@ -14,74 +14,53 @@ function clearCookies() {
   }
 }
 
+function cookieValue(): Record<string, unknown> {
+  const raw = decodeURIComponent(document.cookie.split(`${BRANDING_COOKIE}=`)[1]?.split(";")[0] ?? "{}");
+  return JSON.parse(raw);
+}
+
 describe("brandingStore", () => {
-  beforeEach(() => {
-    clearCookies();
-    window.localStorage.clear();
-  });
+  beforeEach(() => clearCookies());
 
-  it("getServerSnapshot é o DEFAULT", async () => {
-    const store = await freshStore();
-    expect(store.getBrandingServerSnapshot()).toEqual(DEFAULT_BRANDING);
-  });
-
-  it("sem cookie nem localStorage, o snapshot é o DEFAULT", async () => {
+  it("sem cookie, o snapshot é o DEFAULT (Projeto Nexus)", async () => {
     const store = await freshStore();
     expect(store.getBrandingSnapshot()).toEqual(DEFAULT_BRANDING);
+    expect(store.getBrandingSnapshot().appName).toBe("Projeto Nexus");
   });
 
-  it("update mescla sobre o default e grava o cookie; snapshot reflete", async () => {
+  it("prime aplica a identidade do servidor mantendo as preferências do cookie", async () => {
+    document.cookie = `${BRANDING_COOKIE}=${encodeURIComponent(JSON.stringify({ highContrast: true }))}; path=/`;
     const store = await freshStore();
-    store.updateBrandingStore({ appName: "Prefeitura X", highContrast: true });
+    store.primeBrandingStore({ ...DEFAULT_BRANDING, appName: "Órgão X", tokens: { primary: "#003366" } });
     const snap = store.getBrandingSnapshot();
-    expect(snap.appName).toBe("Prefeitura X");
+    expect(snap.appName).toBe("Órgão X");
+    expect(snap.tokens.primary).toBe("#003366");
     expect(snap.highContrast).toBe(true);
-    expect(snap.orgName).toBe(DEFAULT_BRANDING.orgName);
-
-    expect(document.cookie).toContain(`${BRANDING_COOKIE}=`);
-    const raw = decodeURIComponent(
-      document.cookie.split(`${BRANDING_COOKIE}=`)[1]?.split(";")[0] ?? "",
-    );
-    expect(JSON.parse(raw).appName).toBe("Prefeitura X");
   });
 
-  it("reset volta ao default e apaga o cookie", async () => {
+  it("update grava SÓ as preferências de acessibilidade no cookie", async () => {
     const store = await freshStore();
-    store.updateBrandingStore({ appName: "Temp" });
+    store.updateBrandingStore({ highContrast: true, fontSizeScale: 120 });
+    expect(cookieValue()).toEqual({ highContrast: true, fontSizeScale: 120 });
+    expect(store.getBrandingSnapshot().fontSizeScale).toBe(120);
+  });
+
+  it("reset volta às preferências padrão e apaga o cookie", async () => {
+    const store = await freshStore();
+    store.updateBrandingStore({ highContrast: true });
     store.resetBrandingStore();
-    expect(store.getBrandingSnapshot()).toEqual(DEFAULT_BRANDING);
+    expect(store.getBrandingSnapshot().highContrast).toBe(false);
     expect(document.cookie).not.toContain(`${BRANDING_COOKIE}=`);
-  });
-
-  it("lê um cookie pré-existente no primeiro snapshot", async () => {
-    document.cookie = `${BRANDING_COOKIE}=${encodeURIComponent(
-      JSON.stringify({ appName: "Do Cookie" }),
-    )}; path=/`;
-    const store = await freshStore();
-    expect(store.getBrandingSnapshot().appName).toBe("Do Cookie");
-  });
-
-  it("migra o branding legado do localStorage para cookie na 1ª leitura", async () => {
-    window.localStorage.setItem(
-      "nova_system_branding_v1",
-      JSON.stringify({ appName: "Legado" }),
-    );
-    const store = await freshStore();
-    expect(store.getBrandingSnapshot().appName).toBe("Legado");
-    expect(document.cookie).toContain(`${BRANDING_COOKIE}=`);
-    expect(window.localStorage.getItem("nova_system_branding_v1")).toBeNull();
   });
 
   it("notifica os listeners e para depois do unsubscribe", async () => {
     const store = await freshStore();
     const listener = vi.fn();
     const unsub = store.subscribeBranding(listener);
-
-    store.updateBrandingStore({ appName: "A" });
+    store.updateBrandingStore({ fontSizeScale: 110 });
     expect(listener).toHaveBeenCalledTimes(1);
-
     unsub();
-    store.updateBrandingStore({ appName: "B" });
+    store.updateBrandingStore({ fontSizeScale: 120 });
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });

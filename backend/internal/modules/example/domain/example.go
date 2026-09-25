@@ -12,7 +12,7 @@ var (
 	ErrInvalidInput    = errors.New("invalid example input")
 )
 
-// Item representa uma entidade de exemplo genérica no Projeto Aurora.
+// Item representa uma entidade de exemplo genérica no Projeto Nexus.
 // Serve como modelo para novos módulos a serem criados no sistema.
 type Item struct {
 	ID          uuid.UUID `json:"id"`

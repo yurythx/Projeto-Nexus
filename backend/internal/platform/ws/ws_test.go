@@ -2,187 +2,165 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log/slog"
-	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 )
 
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+type harness struct {
+	hub     *Hub
+	tickets *TicketStore
+	srv     *httptest.Server
+	cancel  context.CancelFunc
+	enabled atomic.Bool
 }
 
-func TestTicketStore_IssueThenRedeemOnce(t *testing.T) {
-	store := NewTicketStore(time.Minute)
-	defer store.Close()
-
-	ticket, err := store.Issue("user-1")
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-	if ticket.Value == "" {
-		t.Fatal("expected a non-empty ticket value")
-	}
-
-	redeemed, err := store.Redeem(ticket.Value)
-	if err != nil {
-		t.Fatalf("Redeem: %v", err)
-	}
-	if redeemed.UserID != "user-1" {
-		t.Errorf("UserID = %q, want user-1", redeemed.UserID)
-	}
-
-	if _, err := store.Redeem(ticket.Value); err == nil {
-		t.Fatal("expected redeeming the same ticket twice to fail")
-	}
-}
-
-func TestTicketStore_ExpiredTicketRejected(t *testing.T) {
-	store := NewTicketStore(10 * time.Millisecond)
-	defer store.Close()
-
-	ticket, err := store.Issue("user-1")
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	time.Sleep(30 * time.Millisecond)
-
-	if _, err := store.Redeem(ticket.Value); err == nil {
-		t.Fatal("expected redeeming an expired ticket to fail")
-	}
-}
-
-func TestTicketStore_UnknownTicketRejected(t *testing.T) {
-	store := NewTicketStore(time.Minute)
-	defer store.Close()
-
-	if _, err := store.Redeem("does-not-exist"); err == nil {
-		t.Fatal("expected redeeming an unknown ticket to fail")
-	}
-}
-
-// testServer conecta um Hub + TicketStore reais atrás de httptest, para
-// que os testes discem uma conexão WebSocket de verdade em vez de mockar
-// qualquer coisa.
-type testServer struct {
-	server *httptest.Server
-	hub    *Hub
-	store  *TicketStore
-	wsURL  string
-}
-
-func newTestServer(t *testing.T) *testServer {
+func newHarness(t *testing.T) *harness {
 	t.Helper()
-	hub := NewHub(testLogger())
-	store := NewTicketStore(5 * time.Second)
-
-	hubCtx, cancelHub := context.WithCancel(context.Background())
-	go func() { _ = hub.Run(hubCtx) }()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ws", UpgradeHandler(hub, store, "", testLogger()))
-
-	httpServer := httptest.NewServer(mux)
-	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/ws"
-
-	t.Cleanup(func() {
-		cancelHub()
-		store.Close()
-		httpServer.Close()
-	})
-
-	return &testServer{server: httpServer, hub: hub, store: store, wsURL: wsURL}
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	h := &harness{hub: NewHub(testLogger(), rdb), tickets: NewTicketStore(rdb, TicketTTL)}
+	h.enabled.Store(true)
+	h.hub.SetModuleGate(func(key string) bool { return key != "chat" || h.enabled.Load() })
+	h.hub.RegisterModule("chat", func(_ context.Context, c ClientInfo, topic string) error {
+		if strings.HasSuffix(topic, ":secreta") {
+			return ErrTopicForbidden
+		}
+		return nil
+	}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+	go func() { _ = h.hub.Run(ctx) }()
+	h.srv = httptest.NewServer(UpgradeHandler(h.hub, h.tickets, "http://nexus.test", testLogger()))
+	t.Cleanup(func() { h.srv.Close(); cancel() })
+	time.Sleep(50 * time.Millisecond) // backplane assinado
+	return h
 }
 
-func TestUpgradeHandler_RejectsMissingTicket(t *testing.T) {
-	ts := newTestServer(t)
-
-	resp, err := http.Get(strings.Replace(ts.wsURL, "ws", "http", 1)) //nolint:noctx
+func (h *harness) dial(t *testing.T, userID string) *websocket.Conn {
+	t.Helper()
+	tk, err := h.tickets.Issue(context.Background(), ClientInfo{UserID: userID})
 	if err != nil {
-		t.Fatalf("GET /ws: %v", err)
+		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", resp.StatusCode)
+	url := "ws" + strings.TrimPrefix(h.srv.URL, "http") + "/ws?ticket=" + tk.Value
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
 	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
 }
 
-func TestUpgradeHandler_RejectsInvalidTicket(t *testing.T) {
-	ts := newTestServer(t)
-
-	u := ts.wsURL + "?ticket=bogus"
-	_, resp, err := websocket.DefaultDialer.Dial(u, nil)
-	if err == nil {
-		t.Fatal("expected dial with an invalid ticket to fail")
-	}
-	if resp != nil && resp.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", resp.StatusCode)
-	}
-}
-
-func TestUpgradeHandler_ValidTicketConnectsAndReceivesBroadcast(t *testing.T) {
-	ts := newTestServer(t)
-
-	ticket, err := ts.store.Issue("user-42")
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	u := ts.wsURL + "?ticket=" + url.QueryEscape(ticket.Value)
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer conn.Close()
-
-	// Dá ao servidor um instante para terminar de registrar o cliente
-	// antes de fazermos o broadcast — Start() registra de forma síncrona
-	// antes das pumps rodarem, mas a entrega pelo canal register até o
-	// Run() ainda é assíncrona.
-	deadline := time.Now().Add(2 * time.Second)
-	for ts.hub.ClientCount() == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if ts.hub.ClientCount() != 1 {
-		t.Fatalf("hub.ClientCount() = %d, want 1", ts.hub.ClientCount())
-	}
-
-	ts.hub.Broadcast([]byte(`{"type":"notification.created"}`))
-
+func readFrame(t *testing.T, conn *websocket.Conn) Frame {
+	t.Helper()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, msg, err := conn.ReadMessage()
+	_, raw, err := conn.ReadMessage()
 	if err != nil {
-		t.Fatalf("ReadMessage: %v", err)
+		t.Fatalf("read: %v", err)
 	}
-	if string(msg) != `{"type":"notification.created"}` {
-		t.Errorf("received %q", msg)
+	var f Frame
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func send(t *testing.T, conn *websocket.Conn, f Frame) {
+	t.Helper()
+	b, _ := json.Marshal(f)
+	if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestUpgradeHandler_TicketIsSingleUse(t *testing.T) {
-	ts := newTestServer(t)
-
-	ticket, err := ts.store.Issue("user-1")
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
+func TestTicketIsSingleUse(t *testing.T) {
+	h := newHarness(t)
+	tk, _ := h.tickets.Issue(context.Background(), ClientInfo{UserID: "u1"})
+	if _, err := h.tickets.Redeem(context.Background(), tk.Value); err != nil {
+		t.Fatal(err)
 	}
-	u := ts.wsURL + "?ticket=" + url.QueryEscape(ticket.Value)
-
-	conn1, _, err := websocket.DefaultDialer.Dial(u, nil)
-	if err != nil {
-		t.Fatalf("first Dial: %v", err)
+	if _, err := h.tickets.Redeem(context.Background(), tk.Value); err != ErrInvalidTicket {
+		t.Fatalf("segundo resgate deveria falhar, veio %v", err)
 	}
-	defer conn1.Close()
+}
 
-	if _, _, err := websocket.DefaultDialer.Dial(u, nil); err == nil {
-		t.Fatal("expected reusing the same ticket for a second connection to fail")
+func TestSubscribePublishViaBackplane(t *testing.T) {
+	h := newHarness(t)
+	conn := h.dial(t, "u1")
+
+	send(t, conn, Frame{Type: "subscribe", Topic: "chat:room:1"})
+	if f := readFrame(t, conn); f.Type != "subscribed" {
+		t.Fatalf("esperado subscribed, veio %+v", f)
+	}
+	if err := h.hub.Publish(context.Background(), "chat:room:1", "chat.message", map[string]string{"body": "olá"}); err != nil {
+		t.Fatal(err)
+	}
+	f := readFrame(t, conn)
+	if f.Type != "chat.message" || !strings.Contains(string(f.Data), "olá") {
+		t.Fatalf("mensagem não entregue: %+v", f)
+	}
+
+	// Tópico pessoal é automático.
+	_ = h.hub.Publish(context.Background(), UserTopic("u1"), "notification", map[string]string{"x": "y"})
+	if f := readFrame(t, conn); f.Type != "notification" {
+		t.Fatalf("tópico pessoal não entregue: %+v", f)
+	}
+}
+
+func TestSubscribeDeniedByAuthorizerOrDisabledModule(t *testing.T) {
+	h := newHarness(t)
+	conn := h.dial(t, "u1")
+
+	send(t, conn, Frame{Type: "subscribe", Topic: "chat:room:secreta"})
+	if f := readFrame(t, conn); f.Type != "error" {
+		t.Fatalf("autorizador deveria negar, veio %+v", f)
+	}
+	send(t, conn, Frame{Type: "subscribe", Topic: "desconhecido:x"})
+	if f := readFrame(t, conn); f.Type != "error" {
+		t.Fatalf("módulo sem autorizador deveria negar, veio %+v", f)
+	}
+	h.enabled.Store(false)
+	send(t, conn, Frame{Type: "subscribe", Topic: "chat:room:1"})
+	if f := readFrame(t, conn); f.Type != "error" {
+		t.Fatalf("módulo desativado deveria negar, veio %+v", f)
+	}
+}
+
+func TestDropModuleRemovesSubscriptions(t *testing.T) {
+	h := newHarness(t)
+	conn := h.dial(t, "u1")
+	send(t, conn, Frame{Type: "subscribe", Topic: "chat:room:1"})
+	_ = readFrame(t, conn)
+
+	h.hub.DropModule("chat")
+	if f := readFrame(t, conn); f.Type != "module.disabled" {
+		t.Fatalf("esperado aviso module.disabled, veio %+v", f)
+	}
+	_ = h.hub.Publish(context.Background(), "chat:room:1", "chat.message", "depois")
+	_ = h.hub.Publish(context.Background(), TopicBroadcast, "ping", nil)
+	if f := readFrame(t, conn); f.Type != "ping" {
+		t.Fatalf("mensagem do módulo desativado não deveria chegar; veio %+v", f)
+	}
+}
+
+func TestOriginCheck(t *testing.T) {
+	h := newHarness(t)
+	tk, _ := h.tickets.Issue(context.Background(), ClientInfo{UserID: "u1"})
+	url := "ws" + strings.TrimPrefix(h.srv.URL, "http") + "/ws?ticket=" + tk.Value
+	hdr := map[string][]string{"Origin": {"https://evil.example"}}
+	if _, _, err := websocket.DefaultDialer.Dial(url, hdr); err == nil {
+		t.Fatal("origem não permitida deveria ser recusada")
 	}
 }

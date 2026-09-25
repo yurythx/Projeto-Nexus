@@ -25,7 +25,7 @@ export default async function LoginPage() {
   await connection();
 
   const cookieStore = await cookies();
-  const themeCookie = cookieStore.get("nova-theme")?.value;
+  const themeCookie = cookieStore.get("nexus-theme")?.value;
   const initialTheme = themeCookie === "dark" || themeCookie === "light" ? themeCookie : undefined;
 
   return (

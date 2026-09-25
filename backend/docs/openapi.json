@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Projeto Aurora API",
-    "description": "API REST do Projeto Aurora — Core System (Kernel) em Go sobre\nArquitetura Microkernel: infraestrutura de autenticação, auditoria,\noutbox transacional e mensageria compartilhada por todo módulo de\nnegócio (plug-in) registrado em `internal/modules/`. Todo endpoint\nautenticado espera um access token OIDC emitido pelo Keycloak (ou pelo\nlogin local, um caminho adicional — ver tag `auth`) como Bearer JWT; o\nbackend o valida localmente contra um JWKS em cache (nunca com uma\nchamada por requisição ao Keycloak — ver §29 do documento de\narquitetura).\n\nToda resposta usa o mesmo envelope:\n`{\"data\": <payload|null>, \"error\": {\"code\",\"message\"}|null, \"meta\": {...}|omitido}`.\nErros nunca incluem stack trace ou outro detalhe interno.\n\n**RFC 7807 (Problem Details)**: um cliente que envia\n`Accept: application/problem+json` recebe as respostas de ERRO no\nformato RFC 7807 (`type` = `urn:aurora:error:<code>`, `title`,\n`status`, `detail`, `instance`, mais as extensões `code` e\n`request_id`). Qualquer outro `Accept` mantém o envelope acima.\nRespostas de sucesso não mudam. Ver ADR\n006-rfc7807-problem-details.md.\n\n**Idempotência**: qualquer endpoint de escrita (POST/PUT/PATCH) aceita\nopcionalmente o header `Idempotency-Key` (ver\n`#/components/parameters/IdempotencyKey`). Reenviar a mesma requisição\n(mesmo método, caminho e corpo) com a mesma chave nunca executa o\nhandler duas vezes — a segunda chamada em diante recebe de volta a\nresposta já produzida pela primeira (`Idempotent-Replay: true` no\nheader da resposta), em vez de criar um segundo job/efeito colateral.\nReusar a mesma chave com um corpo diferente é rejeitado com 409\n(`IDEMPOTENCY_KEY_REUSED`); uma segunda chamada enquanto a primeira\nainda está em andamento recebe 409 (`IDEMPOTENCY_KEY_IN_PROGRESS`). Ver\nADR [002](adr/002-enterprise-resilience-and-governance.md).\n\n**Resiliência e disponibilidade condicional**: chamadas que dependem\nde um provedor externo podem retornar 503\npor dois motivos distintos, diferenciados pelo `error.code`:\n`CIRCUIT_OPEN` (o circuit breaker interno detectou falhas consecutivas\ne está poupando o provedor — tentativas vão voltar a funcionar\nsozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um\nadministrador desligou a integração via feature flag — ver\n`/api/v1/admin/feature-flags`, não se resolve sozinho).\n",
+    "title": "Projeto Nexus API",
+    "description": "API REST do Projeto Nexus — Core System (Kernel) em Go sobre\nArquitetura Microkernel: infraestrutura de autenticação, auditoria,\noutbox transacional e mensageria compartilhada por todo módulo de\nnegócio (plug-in) registrado em `internal/modules/`. Todo endpoint\nautenticado espera um access token OIDC emitido pelo Keycloak (ou pelo\nlogin local, um caminho adicional — ver tag `auth`) como Bearer JWT; o\nbackend o valida localmente contra um JWKS em cache (nunca com uma\nchamada por requisição ao Keycloak — ver §29 do documento de\narquitetura).\n\nToda resposta usa o mesmo envelope:\n`{\"data\": <payload|null>, \"error\": {\"code\",\"message\"}|null, \"meta\": {...}|omitido}`.\nErros nunca incluem stack trace ou outro detalhe interno.\n\n**RFC 7807 (Problem Details)**: um cliente que envia\n`Accept: application/problem+json` recebe as respostas de ERRO no\nformato RFC 7807 (`type` = `urn:nexus:error:<code>`, `title`,\n`status`, `detail`, `instance`, mais as extensões `code` e\n`request_id`). Qualquer outro `Accept` mantém o envelope acima.\nRespostas de sucesso não mudam. Ver ADR\n006-rfc7807-problem-details.md.\n\n**Idempotência**: qualquer endpoint de escrita (POST/PUT/PATCH) aceita\nopcionalmente o header `Idempotency-Key` (ver\n`#/components/parameters/IdempotencyKey`). Reenviar a mesma requisição\n(mesmo método, caminho e corpo) com a mesma chave nunca executa o\nhandler duas vezes — a segunda chamada em diante recebe de volta a\nresposta já produzida pela primeira (`Idempotent-Replay: true` no\nheader da resposta), em vez de criar um segundo job/efeito colateral.\nReusar a mesma chave com um corpo diferente é rejeitado com 409\n(`IDEMPOTENCY_KEY_REUSED`); uma segunda chamada enquanto a primeira\nainda está em andamento recebe 409 (`IDEMPOTENCY_KEY_IN_PROGRESS`). Ver\nADR [002](adr/002-enterprise-resilience-and-governance.md).\n\n**Resiliência e disponibilidade condicional**: chamadas que dependem\nde um provedor externo podem retornar 503\npor dois motivos distintos, diferenciados pelo `error.code`:\n`CIRCUIT_OPEN` (o circuit breaker interno detectou falhas consecutivas\ne está poupando o provedor — tentativas vão voltar a funcionar\nsozinhas depois de um curto intervalo) ou `FEATURE_DISABLED` (um\nadministrador desligou a integração via feature flag — ver\n`/api/v1/admin/feature-flags`, não se resolve sozinho).\n",
     "version": "1.2.0",
     "license": {
       "name": "MIT",
@@ -42,7 +42,7 @@
     },
     {
       "name": "admin",
-      "description": "Operações administrativas restritas ao papel aurora-admin, ex.: feature flags."
+      "description": "Operações administrativas restritas ao papel nexus-admin, ex.: feature flags."
     },
     {
       "name": "lgpd",
@@ -616,7 +616,7 @@
         ],
         "summary": "Lista toda feature flag registrada",
         "operationId": "listFeatureFlags",
-        "description": "Restrito ao papel aurora-admin. Inclui as flags semeadas por migration (`module_exemplos_enabled`) e qualquer outra já criada via PATCH.\n",
+        "description": "Restrito ao papel nexus-admin. Inclui as flags semeadas por migration (`module_exemplos_enabled`) e qualquer outra já criada via PATCH.\n",
         "security": [
           {
             "bearerAuth": [
@@ -666,7 +666,7 @@
         ],
         "summary": "Habilita ou desabilita uma feature flag",
         "operationId": "setFeatureFlag",
-        "description": "Restrito ao papel aurora-admin. Efeito imediato em toda réplica da API/worker — não há cache em memória, cada checagem de flag consulta o Postgres diretamente (§ Feature Flags & Configuração Dinâmica). Se `key` ainda não existir, é criada nesta chamada (upsert).\n",
+        "description": "Restrito ao papel nexus-admin. Efeito imediato em toda réplica da API/worker — não há cache em memória, cada checagem de flag consulta o Postgres diretamente (§ Feature Flags & Configuração Dinâmica). Se `key` ainda não existir, é criada nesta chamada (upsert).\n",
         "security": [
           {
             "bearerAuth": [
@@ -748,7 +748,7 @@
         ],
         "summary": "Estado atual da configuração do Keycloak",
         "operationId": "getKeycloakSettings",
-        "description": "Restrito ao papel aurora-admin (§ Configuração Dinâmica do Keycloak). Nunca devolve um client secret em texto plano — só se um está definido (`client_secret_set`/`frontend_client_secret_set`).\n",
+        "description": "Restrito ao papel nexus-admin (§ Configuração Dinâmica do Keycloak). Nunca devolve um client secret em texto plano — só se um está definido (`client_secret_set`/`frontend_client_secret_set`).\n",
         "security": [
           {
             "bearerAuth": [
@@ -793,7 +793,7 @@
         ],
         "summary": "Salva a configuração do Keycloak",
         "operationId": "saveKeycloakSettings",
-        "description": "Restrito ao papel aurora-admin. SEMPRE testa o discovery OIDC contra `issuer_url` antes de persistir — se o discovery falhar, nada é salvo e a resposta é 422. Depois de salvar com sucesso, o backend recarrega o verificador de tokens (`auth.Verifier.Reload`) na hora, sem reiniciar o processo — a nova configuração já vale para o próximo token verificado. Um `client_secret`/`frontend_client_secret` vazio ou ausente no corpo significa \"manter o segredo já salvo\", nunca \"apagar\".\n",
+        "description": "Restrito ao papel nexus-admin. SEMPRE testa o discovery OIDC contra `issuer_url` antes de persistir — se o discovery falhar, nada é salvo e a resposta é 422. Depois de salvar com sucesso, o backend recarrega o verificador de tokens (`auth.Verifier.Reload`) na hora, sem reiniciar o processo — a nova configuração já vale para o próximo token verificado. Um `client_secret`/`frontend_client_secret` vazio ou ausente no corpo significa \"manter o segredo já salvo\", nunca \"apagar\".\n",
         "security": [
           {
             "bearerAuth": [
@@ -840,12 +840,12 @@
                 }
               },
               "example": {
-                "issuer_url": "https://sso.orgao.gov.br/realms/aurora",
-                "realm": "aurora",
-                "client_id": "aurora-backend",
+                "issuer_url": "https://sso.orgao.gov.br/realms/nexus",
+                "realm": "nexus",
+                "client_id": "nexus-backend",
                 "client_secret": "s3gr3d0-do-backend",
-                "audience": "aurora-backend",
-                "frontend_client_id": "aurora-frontend",
+                "audience": "nexus-backend",
+                "frontend_client_id": "nexus-frontend",
                 "frontend_client_secret": "s3gr3d0-do-frontend"
               }
             }
@@ -901,7 +901,7 @@
         ],
         "summary": "Testa uma configuração do Keycloak sem salvar",
         "operationId": "testKeycloakSettings",
-        "description": "Restrito ao papel aurora-admin. Nunca persiste nada — só tenta o discovery OIDC contra `issuer_url` e, se `client_id`/`client_secret` forem informados, uma troca `client_credentials` contra o token_endpoint descoberto (best-effort: falhar aqui não significa credenciais erradas, só que o client pode não ter \"Service Accounts\" habilitado no Keycloak — ver `KeycloakTestResult`). Um `client_secret` vazio/ausente reutiliza o segredo já salvo, se houver, para não obrigar o admin a redigitá-lo só para testar.\n",
+        "description": "Restrito ao papel nexus-admin. Nunca persiste nada — só tenta o discovery OIDC contra `issuer_url` e, se `client_id`/`client_secret` forem informados, uma troca `client_credentials` contra o token_endpoint descoberto (best-effort: falhar aqui não significa credenciais erradas, só que o client pode não ter \"Service Accounts\" habilitado no Keycloak — ver `KeycloakTestResult`). Um `client_secret` vazio/ausente reutiliza o segredo já salvo, se houver, para não obrigar o admin a redigitá-lo só para testar.\n",
         "security": [
           {
             "bearerAuth": [
@@ -1199,7 +1199,7 @@
         ],
         "responses": {
           "200": {
-            "description": "`meus-dados-aurora-<timestamp>.json` (`Content-Disposition: attachment`).\n",
+            "description": "`meus-dados-nexus-<timestamp>.json` (`Content-Disposition: attachment`).\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -1783,7 +1783,7 @@
         }
       },
       "IntegrationUnavailable": {
-        "description": "A integração externa está temporariamente indisponível. `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED` (um aurora-admin desligou a integração via feature flag — só volta quando religada) usam o mesmo status 503, diferenciados pelo `error.code`.\n",
+        "description": "A integração externa está temporariamente indisponível. `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED` (um nexus-admin desligou a integração via feature flag — só volta quando religada) usam o mesmo status 503, diferenciados pelo `error.code`.\n",
         "content": {
           "application/json": {
             "schema": {
@@ -2057,7 +2057,7 @@
           },
           "issuer_url": {
             "type": "string",
-            "description": "URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/aurora) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido."
+            "description": "URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/nexus) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido."
           },
           "realm": {
             "type": "string",
@@ -2160,7 +2160,7 @@
           },
           "source": {
             "type": "string",
-            "example": "aurora.example"
+            "example": "nexus.example"
           },
           "occurred_at": {
             "type": "string",

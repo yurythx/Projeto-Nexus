@@ -8,6 +8,7 @@ package httpserver
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -24,6 +25,9 @@ type Options struct {
 	// MetricsToken, quando não vazio, exige "Authorization: Bearer
 	// <token>" no /metrics (gap G-02). Vazio = endpoint aberto.
 	MetricsToken string
+	// TrustedProxies: CIDRs de proxies reversos confiáveis (ver
+	// TrustedRealIP).
+	TrustedProxies []*net.IPNet
 }
 
 // New constrói um chi.Router com a pilha padrão de middlewares da
@@ -46,13 +50,14 @@ func New(opts Options) chi.Router {
 		}
 	}
 
+	r.Use(TrustedRealIP(opts.TrustedProxies))
 	r.Use(RequestID)
 	r.Use(AccessLog(opts.Logger))
 	r.Use(Recoverer(opts.Logger))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   opts.AllowedOrigins,
 		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key", "Idempotency-Key", "traceparent", "tracestate"},
 		ExposedHeaders:   []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,

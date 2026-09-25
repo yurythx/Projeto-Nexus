@@ -6,13 +6,15 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
 )
 
 // pgxTx é um alias local para que quem chama WithTx não precise importar o
@@ -98,3 +100,42 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(ctx context.Context
 // deriva um prazo mais específico a partir do contexto da requisição de
 // entrada.
 const DefaultTimeout = 5 * time.Second
+
+// DBTX é satisfeita tanto por *pgxpool.Pool quanto por pgx.Tx — permite
+// que um repositório rode a mesma query isoladamente ou dentro da
+// transação de negócio de quem chama (Transactional Outbox + auditoria).
+type DBTX interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// IsUniqueViolation reporta se err é uma violação de UNIQUE (23505).
+func IsUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// IsForeignKeyViolation reporta se err é uma violação de FK (23503).
+func IsForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
+// IsExclusionViolation reporta se err é uma violação de EXCLUDE (23P01) —
+// ex.: reserva de sala sobreposta.
+func IsExclusionViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23P01"
+}
+
+// IsCheckViolation reporta se err é uma violação de CHECK (23514).
+func IsCheckViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514"
+}
+
+// IsNoRows reporta se err é pgx.ErrNoRows.
+func IsNoRows(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
+}

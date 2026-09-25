@@ -283,7 +283,7 @@ export function PlatformMonitoringDashboard() {
         </Card>
       </section>
 
-      {/* Grid de Serviços do Aurora */}
+      {/* Grid de Serviços do Nexus */}
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>

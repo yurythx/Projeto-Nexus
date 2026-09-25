@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/storage"
+	"github.com/yurythx/projeto-nexus/internal/platform/storage"
 )
 
 // wormInterval é de quanto em quanto tempo o worker verifica se há dias
@@ -130,12 +130,13 @@ func (e *wormExporter) exportOneDay(ctx context.Context, day time.Time) error {
 		`SELECT sha256 FROM audit_worm_exports WHERE day < $1 ORDER BY day DESC LIMIT 1`, day).Scan(&prevSHA)
 
 	rows, err := e.pool.Query(ctx, `
-		SELECT id, COALESCE(user_id::text,''), action, COALESCE(resource_type,''),
+		SELECT id, COALESCE(actor_id::text,''), action, COALESCE(resource_type,''),
 		       COALESCE(resource_id,''), COALESCE(metadata::text,'{}'),
-		       COALESCE(correlation_id::text,''), COALESCE(ip_address::text,''), created_at
+		       COALESCE(correlation_id::text,''), COALESCE(ip_address::text,''), created_at,
+		       chain_pos, prev_hash, hash
 		FROM audit_logs
 		WHERE created_at >= $1 AND created_at < $2
-		ORDER BY created_at ASC, id ASC`, day, next)
+		ORDER BY chain_pos ASC`, day, next)
 	if err != nil {
 		return fmt.Errorf("query day: %w", err)
 	}
@@ -153,15 +154,19 @@ func (e *wormExporter) exportOneDay(ctx context.Context, day time.Time) error {
 
 	count := 0
 	for rows.Next() {
-		var id, userID, action, rType, rID, meta, corr, ip string
+		var id, actorID, action, rType, rID, meta, corr, ip, prevHash, hash string
 		var createdAt time.Time
-		if err := rows.Scan(&id, &userID, &action, &rType, &rID, &meta, &corr, &ip, &createdAt); err != nil {
+		var chainPos int64
+		if err := rows.Scan(&id, &actorID, &action, &rType, &rID, &meta, &corr, &ip, &createdAt, &chainPos, &prevHash, &hash); err != nil {
 			return fmt.Errorf("scan: %w", err)
 		}
+		// O hash da cadeia vai junto em cada linha: a cópia WORM permite
+		// provar, fora do banco, que a sequência não foi alterada.
 		line, _ := json.Marshal(map[string]any{
-			"id": id, "user_id": userID, "action": action, "resource_type": rType,
+			"id": id, "actor_id": actorID, "action": action, "resource_type": rType,
 			"resource_id": rID, "metadata": json.RawMessage(meta), "correlation_id": corr,
 			"ip_address": ip, "created_at": createdAt.UTC().Format(time.RFC3339Nano),
+			"chain_pos": chainPos, "prev_hash": prevHash, "hash": hash,
 		})
 		buf.Write(line)
 		buf.WriteByte('\n')

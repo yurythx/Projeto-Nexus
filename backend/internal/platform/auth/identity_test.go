@@ -15,23 +15,50 @@ func TestActorUUID(t *testing.T) {
 		}
 	})
 
-	t.Run("subject UUID válido", func(t *testing.T) {
-		want := uuid.New()
-		ctx := WithIdentity(context.Background(), Identity{Subject: want.String()})
+	t.Run("id interno resolvido pelo IAM tem precedência", func(t *testing.T) {
+		internal := uuid.New()
+		ctx := WithIdentity(context.Background(), Identity{Subject: "kc-sub", Source: SourceKeycloak, UserID: internal})
 		id, subject, ok := ActorUUID(ctx)
-		if !ok || id == nil || *id != want || subject != want.String() {
-			t.Errorf("esperava (%v, ok), got (%v, %q, %v)", want, id, subject, ok)
+		if !ok || id == nil || *id != internal || subject != "kc-sub" {
+			t.Errorf("esperava (%v, kc-sub, true), got (%v, %q, %v)", internal, id, subject, ok)
 		}
 	})
 
-	t.Run("subject não-UUID devolve o bruto e ok=false (autoria a logar)", func(t *testing.T) {
-		ctx := WithIdentity(context.Background(), Identity{Subject: "keycloak:abc-123"})
-		id, subject, ok := ActorUUID(ctx)
-		if ok || id != nil {
-			t.Errorf("subject não-UUID não deveria converter: id=%v ok=%v", id, ok)
-		}
-		if subject != "keycloak:abc-123" {
-			t.Errorf("subject bruto deveria ser propagado para o log, got %q", subject)
+	t.Run("conta local: subject já é o id interno", func(t *testing.T) {
+		want := uuid.New()
+		ctx := WithIdentity(context.Background(), Identity{Subject: want.String(), Source: SourceLocal})
+		id, _, ok := ActorUUID(ctx)
+		if !ok || id == nil || *id != want {
+			t.Errorf("esperava %v, got (%v, %v)", want, id, ok)
 		}
 	})
+
+	t.Run("sub UUID do Keycloak NÃO é o id interno", func(t *testing.T) {
+		ctx := WithIdentity(context.Background(), Identity{Subject: uuid.NewString(), Source: SourceKeycloak})
+		if id, _, ok := ActorUUID(ctx); ok || id != nil {
+			t.Errorf("sub do Keycloak sem resolução do IAM não pode virar actor_id: id=%v ok=%v", id, ok)
+		}
+	})
+}
+
+func TestHasGroupIsExactNotSubstring(t *testing.T) {
+	id := Identity{Groups: []string{"/Nexus/TI", "Grupo_Admin_Temporario"}}
+	if !id.HasGroup("ti") || !id.HasGroup("/Nexus/TI") {
+		t.Error("grupo em formato de caminho deveria casar pelo nome")
+	}
+	if id.HasGroup("admin") {
+		t.Error("HasGroup não pode casar por substring (\"admin\" em \"Grupo_Admin_Temporario\")")
+	}
+}
+
+func TestIsAdmin(t *testing.T) {
+	if (Identity{Groups: []string{"Administradores"}}).IsAdmin() {
+		t.Error("nome de grupo com 'admin' não pode conceder administração")
+	}
+	if !(Identity{Roles: []string{RoleAdmin}}).IsAdmin() {
+		t.Error("role nexus-admin deveria ser admin")
+	}
+	if !(Identity{Permissions: []string{"*"}}).IsAdmin() {
+		t.Error("permissão curinga deveria ser admin")
+	}
 }

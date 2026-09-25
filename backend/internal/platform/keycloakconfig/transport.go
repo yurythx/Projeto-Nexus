@@ -6,11 +6,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 // ActionKeycloakConfigChanged é a ação registrada em audit_logs (§49)
@@ -23,7 +23,7 @@ const ActionKeycloakConfigChanged = "keycloak_config.changed"
 // nada, PUT para salvar (que só persiste depois de um teste de discovery
 // bem-sucedido, e então recarrega auth.Verifier em tempo real). Registrado
 // atrás de auth.RequirePermission(auth.PermKeycloakManage) — só
-// aurora-admin.
+// nexus-admin.
 type Handlers struct {
 	store       Store
 	verifier    *auth.Verifier
@@ -256,7 +256,7 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 // RegisterRoutes monta as rotas administrativas de configuração do
 // Keycloak. r já deve estar atrás de auth.RequireAuthentication; este
 // método adiciona por cima a exigência de auth.PermKeycloakManage
-// (aurora-admin) para toda rota — mesmo o teste de conexão, já que ele
+// (nexus-admin) para toda rota — mesmo o teste de conexão, já que ele
 // aceita um client_secret no corpo e faz uma chamada de rede de saída
 // com ele.
 func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger) {

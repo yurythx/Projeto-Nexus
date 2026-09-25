@@ -1,4 +1,4 @@
-# Dossiê de Conformidade — Projeto Aurora (SGD/MGI)
+# Dossiê de Conformidade — Projeto Nexus (SGD/MGI)
 
 Índice das evidências de conformidade governamental, para auditoria
 interna (controladoria) e externa (CGU/TCE) e para o processo de

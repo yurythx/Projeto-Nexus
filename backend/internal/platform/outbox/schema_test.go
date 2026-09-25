@@ -7,12 +7,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/yurythx/projeto-aurora/internal/domain/events"
+	"github.com/yurythx/projeto-nexus/internal/domain/events"
 )
 
 func validEnvelopeJSON(t *testing.T) []byte {
 	t.Helper()
-	event, err := events.New("example.job.completed", "aurora.test", uuid.New(), map[string]string{"k": "v"})
+	event, err := events.New("example.job.completed", "nexus.test", uuid.New(), map[string]string{"k": "v"})
 	if err != nil {
 		t.Fatalf("events.New: %v", err)
 	}

@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/modules/example/infrastructure"
-	"github.com/yurythx/projeto-aurora/internal/platform/outbox"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/infrastructure"
+	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
 
 // Testes de integração (Postgres real) — este módulo era o único, entre
@@ -43,7 +43,7 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 	pool := testPool(t)
 	ctx := context.Background()
 	repo := infrastructure.NewPostgresRepository(pool)
-	writer := outbox.NewWriter("aurora.example")
+	writer := outbox.NewWriter("nexus.example")
 	svc := NewService(pool, repo, writer, testLogger())
 
 	item, err := svc.CreateItem(ctx, "Item de teste", "descrição de teste")
@@ -128,7 +128,7 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 func TestCreateItem_RejectsEmptyTitleWithoutTouchingTheDatabase(t *testing.T) {
 	pool := testPool(t)
 	repo := infrastructure.NewPostgresRepository(pool)
-	writer := outbox.NewWriter("aurora.example")
+	writer := outbox.NewWriter("nexus.example")
 	svc := NewService(pool, repo, writer, testLogger())
 
 	if _, err := svc.CreateItem(context.Background(), "", "sem título"); err == nil {

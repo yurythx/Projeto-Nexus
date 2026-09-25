@@ -9,7 +9,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
 )
 
 func testLogger() *slog.Logger {
@@ -115,8 +115,35 @@ func TestSecurityHeaders_SetsBaselineHeaders(t *testing.T) {
 	if got := rec.Header().Get("Content-Security-Policy"); got != "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" {
 		t.Errorf("Content-Security-Policy = %q, want a política restritiva de API", got)
 	}
-	if got := rec.Header().Get("Strict-Transport-Security"); got != "max-age=63072000; includeSubDomains" {
-		t.Errorf("Strict-Transport-Security = %q, want emitido incondicionalmente", got)
+	// Skill §4 (M01/A05): HSTS com preload e Referrer-Policy
+	// strict-origin-when-cross-origin.
+	if got := rec.Header().Get("Strict-Transport-Security"); got != "max-age=63072000; includeSubDomains; preload" {
+		t.Errorf("Strict-Transport-Security = %q, want emitido incondicionalmente com preload", got)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+		t.Errorf("Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
+	}
+}
+
+func TestTrustedRealIP(t *testing.T) {
+	trusted, _ := ParseTrustedProxies([]string{"10.0.0.0/8"})
+	var seen string
+	h := TrustedRealIP(trusted)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { seen = r.RemoteAddr }))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:4444"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 10.9.9.9")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "203.0.113.7:0" {
+		t.Fatalf("via proxy confiável, RemoteAddr deveria virar o IP real; veio %q", seen)
+	}
+
+	spoof := httptest.NewRequest(http.MethodGet, "/", nil)
+	spoof.RemoteAddr = "198.51.100.1:5555"
+	spoof.Header.Set("X-Forwarded-For", "1.2.3.4")
+	h.ServeHTTP(httptest.NewRecorder(), spoof)
+	if seen != "198.51.100.1:5555" {
+		t.Fatalf("XFF de origem não confiável deve ser ignorado; veio %q", seen)
 	}
 }
 

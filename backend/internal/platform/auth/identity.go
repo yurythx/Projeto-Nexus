@@ -1,22 +1,21 @@
-// Package auth valida os access tokens OIDC emitidos pelo Keycloak externo
-// já existente (discovery + JWKS em cache, nunca uma chamada por
-// requisição ao Keycloak — §29) e fornece middlewares chi para
-// autenticação e autorização baseada em roles/permissões (§31).
+// Package auth valida os access tokens emitidos pelo Keycloak dedicado do
+// Nexus (OIDC, JWKS em cache local com rotação automática) e os tokens do
+// fallback local RS256, e fornece os middlewares chi de autenticação e de
+// autorização granular por escopo ("recurso:ação" — A01).
 package auth
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
 )
 
 // Source identifica qual verificador aceitou o token que produziu uma
-// Identity — o §32/GetCurrentUser precisa disso para saber COMO buscar o
-// usuário: um Subject do Keycloak é o "sub" externo (chave de
-// upsert-por-keycloak_subject), enquanto um Subject local já É o id
-// interno da linha em "users" (a conta local não precisa — nem pode —
-// passar por upsert, ela já existe por definição).
+// Identity: um Subject do Keycloak é o "sub" externo (chave de
+// provisionamento por keycloak_subject), enquanto um Subject local já É o
+// id interno da linha em "users".
 type Source string
 
 const (
@@ -24,88 +23,69 @@ const (
 	SourceLocal    Source = "local"
 )
 
-// GovBRLevel representa o Nível de Confiabilidade da conta do cidadão/servidor no Login Único (Gov.br),
-// conforme a Portaria SGD/SEDGG Nº 2.154.
-type GovBRLevel string
-
-const (
-	GovBRLevelBronze  GovBRLevel = "BRONZE"
-	GovBRLevelPrata   GovBRLevel = "PRATA"
-	GovBRLevelOuro    GovBRLevel = "OURO"
-	GovBRLevelUnknown GovBRLevel = "UNKNOWN"
-)
-
-// Identity é o chamador autenticado, extraído de um access token já
-// verificado. Nunca carrega o token bruto em si — só o que os handlers
-// precisam (quem é o usuário e quais roles ele tem).
-type Identity struct {
-	Subject    string     // claim "sub" — id externo do Keycloak OU id interno de users, dependendo de Source
-	Username   string     // "preferred_username"
-	Email      string     // "email"
-	Roles      []string   // roles de realm + de client (Keycloak), ou a coluna users.roles (local)
-	Groups     []string   // grupos do Active Directory / Keycloak (ex.: SEMPRAS, Centro POP, CRAS Ana Carla)
-	GovBRLevel GovBRLevel // Nível de Confiabilidade Gov.br (Bronze, Prata, Ouro)
-	Source     Source     // qual verificador emitiu esta identidade — ver o comentário de Source
+// Scope é uma lotação efetiva do usuário: um perfil aplicado a um escopo
+// organizacional (Entidade > Unidade > Departamento). Campos nulos = o
+// perfil vale para todo o nível acima.
+type Scope struct {
+	Perfil         string     `json:"perfil"`
+	EntidadeID     *uuid.UUID `json:"entidade_id,omitempty"`
+	UnidadeID      *uuid.UUID `json:"unidade_id,omitempty"`
+	DepartamentoID *uuid.UUID `json:"departamento_id,omitempty"`
+	// Origem: "manual" (lotação cadastrada) ou "ad" (mapeamento de grupo).
+	Origem string `json:"origem"`
 }
 
-// HasGovBRLevelAtLeast reporta se a identidade atinge o nível mínimo exigido
-// (ex.: Nível Prata ou Ouro exigido para serviços públicos de alta criticidade).
-func (i Identity) HasGovBRLevelAtLeast(minimum GovBRLevel) bool {
-	switch minimum {
-	case GovBRLevelBronze:
-		return i.GovBRLevel == GovBRLevelBronze || i.GovBRLevel == GovBRLevelPrata || i.GovBRLevel == GovBRLevelOuro
-	case GovBRLevelPrata:
-		return i.GovBRLevel == GovBRLevelPrata || i.GovBRLevel == GovBRLevelOuro
-	case GovBRLevelOuro:
-		return i.GovBRLevel == GovBRLevelOuro
-	default:
-		return false
-	}
+// Identity é o chamador autenticado. Nunca carrega o token bruto — só o
+// que autorização, auditoria e handlers precisam.
+type Identity struct {
+	Subject  string   // claim "sub" — id do Keycloak OU id interno (local)
+	Username string   // "preferred_username"
+	Email    string   // "email"
+	Name     string   // "name" (nome de exibição vindo do AD)
+	Roles    []string // roles de realm + client (Keycloak) ou users.roles (local)
+	Groups   []string // grupos do Active Directory (via mapper de grupo do Keycloak)
+	Source   Source
+
+	// Preenchidos pelo middleware do IAM (internal/platform/iam) depois
+	// da verificação do token.
+	UserID      uuid.UUID // id interno em "users" (uuid.Nil antes da resolução)
+	Permissions []string  // união das permissões de todos os perfis efetivos
+	Scopes      []Scope   // lotações efetivas (manuais + mapeadas do AD)
 }
 
 // HasRole reporta se a identidade recebeu o role informado.
 func (i Identity) HasRole(role string) bool {
-	for _, r := range i.Roles {
-		if r == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(i.Roles, role)
 }
 
-// HasGroup reporta se a identidade pertence a um grupo do AD correspondente à palavra-chave.
-func (i Identity) HasGroup(keyword string) bool {
-	kw := strings.ToLower(keyword)
+// HasGroup reporta se a identidade pertence ao grupo do AD informado
+// (comparação exata, case-insensitive, aceitando o formato de caminho do
+// Keycloak "/Pai/Grupo" — nunca por substring, que concederia acesso a
+// "Grupo_Admin_Temporario" por conter "admin").
+func (i Identity) HasGroup(group string) bool {
+	want := NormalizeGroup(group)
 	for _, g := range i.Groups {
-		if strings.Contains(strings.ToLower(g), kw) {
+		if NormalizeGroup(g) == want {
 			return true
 		}
 	}
 	return false
 }
 
-// HasAnyGroup reporta se a identidade pertence a pelo menos um dos grupos informados.
-func (i Identity) HasAnyGroup(groups ...string) bool {
-	for _, g := range groups {
-		if i.HasGroup(g) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsAdmin reporta se a identidade tem privilégios de administração ou gestão plena da assistência social.
+// IsAdmin reporta se a identidade tem o role de administrador da
+// plataforma ou a permissão curinga "*".
 func (i Identity) IsAdmin() bool {
-	if i.HasRole("aurora-admin") || i.HasRole("admin") || i.HasRole("super_admin") || i.HasRole("gestor") {
-		return true
+	return i.HasRole(RoleAdmin) || slices.Contains(i.Permissions, "*")
+}
+
+// NormalizeGroup reduz um nome de grupo à forma comparável: sem o caminho
+// hierárquico do Keycloak ("/Nexus/TI" -> "ti") e em minúsculas.
+func NormalizeGroup(g string) string {
+	g = strings.TrimSpace(g)
+	if idx := strings.LastIndex(g, "/"); idx >= 0 {
+		g = g[idx+1:]
 	}
-	for _, g := range i.Groups {
-		gl := strings.ToLower(g)
-		if strings.Contains(gl, "admin") || strings.Contains(gl, "gestao") || strings.Contains(gl, "gestor") {
-			return true
-		}
-	}
-	return false
+	return strings.ToLower(g)
 }
 
 type ctxKey string
@@ -118,29 +98,25 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 }
 
 // IdentityFromContext extrai a identidade gravada por RequireAuthentication.
-// ok é false se a requisição nunca foi autenticada.
 func IdentityFromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityCtxKey).(Identity)
 	return id, ok
 }
 
-// ActorUUID resolve o autor de uma ação para gravar em auditoria/colunas
-// `*_by`. Retorna:
-//   - id != nil quando há identidade E o subject é um UUID (Keycloak com sub
-//     UUID, ou conta local — cujo subject já É o id interno);
-//   - subject = o claim "sub" bruto (para logar quando não converte);
-//   - ok = true só quando id != nil.
-//
-// Um único ponto de conversão: os módulos não devem reimplementar
-// uuid.Parse(identity.Subject) — que descartava a autoria em silêncio
-// quando o IdP usava prefixo/URN no sub.
+// ActorUUID resolve o autor de uma ação para auditoria/colunas `*_by`:
+// o id interno (resolvido pelo IAM) quando disponível; senão o subject,
+// se ele for um UUID (conta local). ok = false quando não há id interno.
 func ActorUUID(ctx context.Context) (id *uuid.UUID, subject string, ok bool) {
 	identity, found := IdentityFromContext(ctx)
 	if !found {
 		return nil, "", false
 	}
+	if identity.UserID != uuid.Nil {
+		uid := identity.UserID
+		return &uid, identity.Subject, true
+	}
 	parsed, err := uuid.Parse(identity.Subject)
-	if err != nil {
+	if err != nil || identity.Source != SourceLocal {
 		return nil, identity.Subject, false
 	}
 	return &parsed, identity.Subject, true

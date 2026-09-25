@@ -63,7 +63,7 @@ func TestConnection(ctx context.Context, issuerURL, clientID, clientSecret, audi
 	}
 	parsed, err := url.Parse(issuerURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return TestResult{Status: StatusFailed, DiscoveryMessage: "Issuer URL inválida — precisa ser uma URL absoluta (ex.: https://sso.orgao.gov.br/realms/aurora)"}
+		return TestResult{Status: StatusFailed, DiscoveryMessage: "Issuer URL inválida — precisa ser uma URL absoluta (ex.: https://sso.orgao.gov.br/realms/nexus)"}
 	}
 
 	discoveryCtx, cancel := context.WithTimeout(ctx, testTimeout)

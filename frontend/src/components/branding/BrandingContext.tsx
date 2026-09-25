@@ -5,6 +5,7 @@ import React, { createContext, useContext, useEffect, useSyncExternalStore } fro
 import { DEFAULT_BRANDING, type SystemBrandingConfig } from "./brandingConfig";
 import {
   getBrandingSnapshot,
+  primeBrandingStore,
   resetBrandingStore,
   subscribeBranding,
   updateBrandingStore,
@@ -32,7 +33,7 @@ export function BrandingProvider({
   initialBranding,
 }: {
   children: React.ReactNode;
-  /** Branding lido do cookie `nova-branding` no layout do servidor. Vira o
+  /** Branding lido do cookie `nexus-branding` no layout do servidor. Vira o
    * server snapshot do useSyncExternalStore: como o cliente lê o MESMO
    * cookie, o snapshot de SSR e o do cliente coincidem e o nome não pisca
    * do valor antigo para o novo depois da hidratação. Ausente (fora do
@@ -42,6 +43,9 @@ export function BrandingProvider({
   // Estado vive fora do React (cookie) — useSyncExternalStore em vez de
   // useState + useEffect de hidratação. Ver brandingStore.ts.
   const serverSnapshot = initialBranding ?? DEFAULT_BRANDING;
+  // Semeia o store com a identidade renderizada pelo servidor ANTES da
+  // primeira leitura do cliente (snapshots iguais = sem flash).
+  primeBrandingStore(serverSnapshot);
   const branding = useSyncExternalStore(
     subscribeBranding,
     getBrandingSnapshot,
@@ -64,7 +68,7 @@ export function BrandingProvider({
 
   // Favicon white-label: branding.faviconUrl era um campo declarado desde
   // sempre (tipo + default + persistido no cookie), mas nada o lia — o
-  // <link rel="icon"> ficava sempre no favicon padrão do Projeto Aurora
+  // <link rel="icon"> ficava sempre no favicon padrão do Projeto Nexus
   // (achado de auditoria original). safeResourceUrl (S-03) aplica a mesma
   // allowlist de esquema que a logo já usa: só https:// vira href de
   // verdade.
@@ -95,10 +99,10 @@ export function BrandingProvider({
     );
 
     iconLinks.forEach((link) => {
-      if (!link.dataset.auroraOriginalHref) {
-        link.dataset.auroraOriginalHref = link.href;
+      if (!link.dataset.nexusOriginalHref) {
+        link.dataset.nexusOriginalHref = link.href;
       }
-      link.href = safeFavicon || link.dataset.auroraOriginalHref;
+      link.href = safeFavicon || link.dataset.nexusOriginalHref;
     });
   }, [branding.faviconUrl]);
 

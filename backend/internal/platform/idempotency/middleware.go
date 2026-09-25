@@ -9,16 +9,20 @@ import (
 	"log/slog"
 	"net/http"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
-	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/metrics"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
-// Header é o nome do cabeçalho HTTP que ativa a idempotência para uma
-// requisição. Segue a convenção popularizada pela Stripe API.
-const Header = "Idempotency-Key"
+// Header é o cabeçalho que ativa a idempotência de uma mutação (A08 —
+// skill §1: "X-Idempotency-Key"). LegacyHeader (convenção Stripe) segue
+// aceito como alias para clientes antigos.
+const (
+	Header       = "X-Idempotency-Key"
+	LegacyHeader = "Idempotency-Key"
+)
 
 // MaxCachedResponseBytes limita quanto de uma resposta é guardado para
 // replay. Toda resposta hoje gerada pelos endpoints que usam este
@@ -44,6 +48,9 @@ func Middleware(store Store, logger *slog.Logger) func(http.Handler) http.Handle
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rawKey := r.Header.Get(Header)
+			if rawKey == "" {
+				rawKey = r.Header.Get(LegacyHeader)
+			}
 			if rawKey == "" {
 				next.ServeHTTP(w, r)
 				return

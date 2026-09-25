@@ -34,4 +34,11 @@ bin/
 Thumbs.db
 
 # Projeto de referência (port da acessibilidade) — nunca versionar aqui
-Projeto-Nova/
+Projeto Nexus/
+Projeto-Nexus/
+
+# Binários compilados do backend (nunca versionar artefatos de build)
+backend/api
+backend/worker
+backend/migrate
+backend/seedadmin

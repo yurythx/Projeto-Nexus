@@ -1,4 +1,4 @@
-name: CI/CD Pipeline — Projeto Aurora Base Governamental
+name: CI/CD Pipeline — Projeto Nexus Base Governamental
 
 on:
   push:
@@ -61,12 +61,12 @@ jobs:
       postgres:
         image: postgres:16-bookworm
         env:
-          POSTGRES_USER: aurora
-          POSTGRES_PASSWORD: aurora
-          POSTGRES_DB: aurora_ci
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus_ci
         ports: [ "5432:5432" ]
         options: >-
-          --health-cmd "pg_isready -U aurora -d aurora_ci"
+          --health-cmd "pg_isready -U nexus -d nexus_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - name: Checkout Repository
@@ -82,7 +82,7 @@ jobs:
 
       - name: up → down-to-zero → up (toda migration precisa de Down válido)
         env:
-          DB_DSN: "postgres://aurora:aurora@localhost:5432/aurora_ci?sslmode=disable"
+          DB_DSN: "postgres://nexus:nexus@localhost:5432/nexus_ci?sslmode=disable"
         run: |
           cd backend/migrations
           goose postgres "$DB_DSN" up

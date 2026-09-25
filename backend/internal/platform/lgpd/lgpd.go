@@ -12,10 +12,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 const CurrentTermVersion = "v1.0.0-2026"

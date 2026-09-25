@@ -4,41 +4,60 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 
-	"github.com/yurythx/projeto-aurora/internal/domain/events"
-	"github.com/yurythx/projeto-aurora/internal/platform/messaging"
-	"github.com/yurythx/projeto-aurora/internal/platform/ws"
+	"github.com/yurythx/projeto-nexus/internal/domain/events"
+	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
+	"github.com/yurythx/projeto-nexus/internal/platform/messaging"
+	"github.com/yurythx/projeto-nexus/internal/platform/ws"
 )
 
-// NewNotificationConsumer constrói o consumer que alimenta o Hub de
-// WebSocket (§37/§72): RabbitMQ -> Notification Consumer -> Hub ->
-// Navegador. Roda dentro do cmd/api (o Hub só existe lá), nunca no
-// cmd/worker.
-func NewNotificationConsumer(deps *Dependencies) *messaging.Consumer {
-	return messaging.NewConsumer(
-		deps.Messaging,
-		messaging.QueueNotificationWebsocket.Name,
-		deps.Config.RabbitMQ.PrefetchCount,
-		deps.Config.RabbitMQ.MaxRetries,
-		deps.Logger,
-	)
+// RunAPIBackground roda, no processo da API, tudo que vive ao lado do
+// servidor HTTP: o backplane do Hub (Redis), o consumidor de notificações
+// (RabbitMQ -> Hub), a invalidação do cache do IAM, o watcher de estado
+// dos módulos e os workers de plugin marcados para o processo "api".
+// Bloqueia até ctx acabar.
+func RunAPIBackground(ctx context.Context, d *Dependencies) {
+	var wg sync.WaitGroup
+	run := func(name string, fn processor) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = supervised(name, d.Logger, fn)(ctx)
+		}()
+	}
+	run("ws_hub", d.Hub.Run)
+	run("iam_invalidation", d.IAM.RunInvalidationListener)
+	run("kernel_watch", d.Kernel.Watch)
+	run("kernel_supervisor", func(ctx context.Context) error {
+		return d.Kernel.Supervise(ctx, kernel.ProcessAPI, nil, nil)
+	})
+	run("notification_consumer", func(ctx context.Context) error {
+		c := messaging.NewConsumer(d.Messaging, messaging.QueueNotificationWebsocket.Name,
+			d.Config.RabbitMQ.PrefetchCount, d.Config.RabbitMQ.MaxRetries, d.Logger)
+		return c.Consume(ctx, NotificationHandler(d.Hub, d.Logger))
+	})
+	wg.Wait()
 }
 
-// NotificationHandler encaminha todo evento que recebe para o Hub tal
-// como está — o Hub e este handler não carregam nenhuma regra de negócio,
-// só retransmitem envelopes de evento já formados para os navegadores
-// conectados (§37).
+// NotificationHandler encaminha ao navegador os eventos de difusão geral
+// (fila nexus.notification.websocket só recebe eventos seguros — ver
+// messaging.QueueNotificationWebsocket). Eventos de agenda privados nunca
+// são difundidos.
 func NotificationHandler(hub *ws.Hub, logger *slog.Logger) events.MessageHandler {
 	return func(ctx context.Context, event events.Event) error {
-		body, err := json.Marshal(event)
-		if err != nil {
-			// Deveria ser inalcançável (acabamos de desserializar este
-			// mesmo envelope), mas nunca descarta uma notificação
-			// silenciosamente — loga bem alto se acontecer.
-			logger.Error("notification: failed to re-marshal event for broadcast", slog.Any("error", err))
+		if event.Type == "calendar.event.created" {
+			var p struct {
+				Visibility string `json:"visibility"`
+			}
+			if err := json.Unmarshal(event.Payload, &p); err == nil && p.Visibility == "private" {
+				return nil
+			}
+		}
+		if err := hub.Publish(ctx, ws.TopicBroadcast, "event", event); err != nil {
+			logger.Error("notification: falha ao difundir evento", slog.Any("error", err))
 			return err
 		}
-		hub.Broadcast(body)
 		return nil
 	}
 }

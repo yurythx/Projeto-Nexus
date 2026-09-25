@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
 )
 
 func TestFromRequest_PopulatesIPAndCorrelation(t *testing.T) {

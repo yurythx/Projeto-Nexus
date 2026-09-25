@@ -17,11 +17,11 @@ import { deleteCookie, readCookie, writeCookie } from "@/lib/prefs/cookies";
 // do React que precisa re-renderizar quando muda".
 //
 // Migração: versões anteriores gravavam em localStorage
-// ("nova-sidebar-collapsed"). Na 1ª leitura sem cookie, um valor legado no
+// ("nexus-sidebar-collapsed"). Na 1ª leitura sem cookie, um valor legado no
 // localStorage é promovido para cookie e o antigo apagado.
 
-export const SIDEBAR_COLLAPSED_COOKIE = "nova-sidebar-collapsed";
-const LEGACY_STORAGE_KEY = "nova-sidebar-collapsed";
+export const SIDEBAR_COLLAPSED_COOKIE = "nexus-sidebar-collapsed";
+const LEGACY_STORAGE_KEY = "nexus-sidebar-collapsed";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();

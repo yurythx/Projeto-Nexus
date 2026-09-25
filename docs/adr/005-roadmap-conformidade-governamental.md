@@ -2,7 +2,7 @@
 
 - **Status:** Em execução
 - **Data:** 2026-09-09
-- **Autores:** Engenharia Projeto Aurora
+- **Autores:** Engenharia Projeto Nexus
 
 ## Contexto
 
@@ -55,8 +55,8 @@ arquitetura** que a execução exige.
   mesmo via `GET /api/v1/me` (que exige apenas autenticação).
 - `GET /api/v1/users` passa a devolver `UserListItem` (sem `email` nem
   `last_seen_at`). O e-mail completo só aparece em `GET /users/{id}`
-  (aurora-auditor / aurora-admin) e em `/me` (o próprio titular).
-- **Mudança de comportamento:** um `aurora-user` puro deixa de listar o
+  (nexus-auditor / nexus-admin) e em `/me` (o próprio titular).
+- **Mudança de comportamento:** um `nexus-user` puro deixa de listar o
   diretório e, com G-05, deixa de ver as integrações. Confirmado como
   desejável (menor privilégio); revertível num único commit se o produto
   discordar.
@@ -100,7 +100,7 @@ arquitetura** que a execução exige.
   PII entre titulares, trilha incompleta em operação crítica) fechados
   com mudanças localizadas; blueprint volta a ser um bom exemplo.
 - **Custos:** mais uma linha em `rate_limit_buckets` por identidade
-  ativa; `aurora-user` puro perde acesso a listagens (ver 5.4);
+  ativa; `nexus-user` puro perde acesso a listagens (ver 5.4);
   `TRUSTED_PROXIES` precisa ser configurado corretamente em cada
   ambiente com proxy reverso, senão o IP real do cliente não é
   registrado.

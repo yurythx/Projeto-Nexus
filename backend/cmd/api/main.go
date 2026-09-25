@@ -1,4 +1,4 @@
-// Command api roda a API HTTP do Projeto Aurora: endpoints REST, notificações
+// Command api roda a API HTTP do Projeto Nexus: endpoints REST, notificações
 // via WebSocket, health/readiness/metrics. O processamento assíncrono de
 // jobs fica em cmd/worker, não aqui — os dois processos são deployados e
 // escalados separadamente (§7/§20).
@@ -18,7 +18,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/yurythx/projeto-aurora/internal/app"
+	"github.com/yurythx/projeto-nexus/internal/app"
 )
 
 // shutdownTimeout limita quanto tempo a API espera as requisições em
@@ -49,24 +49,14 @@ func run() error {
 	}
 	defer deps.Close()
 
-	// O Hub de WebSocket e o consumer do RabbitMQ que o alimenta vivem no
-	// processo da API (§37) — o cmd/worker nunca os toca. Os dois rodam
-	// durante toda a vida do processo e são aguardados (join) no graceful
-	// shutdown mais abaixo.
+	// Backplane do WebSocket, consumidor de notificações, invalidação do
+	// cache do IAM, watcher de módulos e workers de plugin do processo
+	// "api" — todos encerram no graceful shutdown abaixo.
 	var background sync.WaitGroup
-	background.Add(2)
+	background.Add(1)
 	go func() {
 		defer background.Done()
-		if err := deps.Hub.Run(ctx); err != nil {
-			deps.Logger.Error("websocket hub stopped with error", slog.Any("error", err))
-		}
-	}()
-	go func() {
-		defer background.Done()
-		notificationConsumer := app.NewNotificationConsumer(deps)
-		if err := notificationConsumer.Consume(ctx, app.NotificationHandler(deps.Hub, deps.Logger)); err != nil {
-			deps.Logger.Error("notification consumer stopped with error", slog.Any("error", err))
-		}
+		app.RunAPIBackground(ctx, deps)
 	}()
 
 	router := app.NewRouter(deps)
@@ -77,12 +67,14 @@ func run() error {
 	instrumentedRouter := otelhttp.NewHandler(router, "http.server")
 
 	server := &http.Server{
-		Addr:              deps.Config.HTTP.Addr(),
-		Handler:           instrumentedRouter,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
+		Addr:    deps.Config.HTTP.Addr(),
+		Handler: instrumentedRouter,
+		// Timeouts anti-DoS/Slowloris (skill §4): 2s / 5s / 10s / 120s por
+		// padrão, ajustáveis por HTTP_*_TIMEOUT.
+		ReadHeaderTimeout: deps.Config.HTTP.ReadHeaderTimeout,
+		ReadTimeout:       deps.Config.HTTP.ReadTimeout,
+		WriteTimeout:      deps.Config.HTTP.WriteTimeout,
+		IdleTimeout:       deps.Config.HTTP.IdleTimeout,
 	}
 
 	serveErrCh := make(chan error, 1)

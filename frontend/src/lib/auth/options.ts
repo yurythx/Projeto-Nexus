@@ -5,25 +5,28 @@ import KeycloakProvider from "next-auth/providers/keycloak";
 
 import { BACKEND_INTERNAL_URL } from "@/lib/env";
 
-// Env somente de servidor — nunca com prefixo NEXT_PUBLIC_, nunca enviada
-// ao navegador (§30: segredos nunca em NEXT_PUBLIC_*).
+// Autenticação do Projeto Nexus (skill §2):
+//  1. Padrão ouro — Keycloak DEDICADO (OIDC Authorization Code + PKCE),
+//     com usuários federados do Active Directory via LDAP/LDAPS;
+//  2. Fallback local — POST /api/v1/auth/login no backend Go, que emite
+//     um JWT RS256 próprio (contingência / ambiente isolado).
+//
+// O frontend NÃO decide autorização: roles e grupos do token servem só
+// para exibição; permissões efetivas ("recurso:ação") e lotações vêm de
+// GET /api/v1/me, resolvidas pelo IAM do backend a cada requisição.
+
+// Somente servidor — nunca NEXT_PUBLIC_* (segredos não chegam ao navegador).
 const issuer = process.env.KEYCLOAK_ISSUER_URL;
 const clientId = process.env.KEYCLOAK_FRONTEND_CLIENT_ID;
 const clientSecret = process.env.KEYCLOAK_FRONTEND_CLIENT_SECRET;
 
-if (!issuer || !clientId || !clientSecret) {
+export const keycloakEnabled = Boolean(issuer && clientId && clientSecret);
+
+if (!keycloakEnabled) {
   console.warn(
-    "Missing Keycloak frontend OIDC configuration: KEYCLOAK_ISSUER_URL, " +
-      "KEYCLOAK_FRONTEND_CLIENT_ID and KEYCLOAK_FRONTEND_CLIENT_SECRET are not all present. Keycloak login is disabled.",
+    "Keycloak não configurado (KEYCLOAK_ISSUER_URL / KEYCLOAK_FRONTEND_CLIENT_ID / KEYCLOAK_FRONTEND_CLIENT_SECRET) — apenas o login local estará disponível.",
   );
 }
-
-// O mesmo endereço interno que o proxy BFF usa (ver
-// app/api/backend/[...path]/route.ts) — o login local também é uma
-// chamada server-to-server ao backend Go, nunca exposta ao navegador.
-// Parametrizado em lib/env.ts (S-04).
-const backendInternalURL = BACKEND_INTERNAL_URL;
-
 
 interface KeycloakTokenResponse {
   access_token: string;
@@ -33,11 +36,7 @@ interface KeycloakTokenResponse {
   error?: string;
 }
 
-/** Renova um access token expirado através do endpoint de token do
- * Keycloak, usando o refresh_token guardado na sessão. Só se aplica a
- * sessões que vieram do Keycloak — o login local (ver
- * localLoginAuthorize) não tem conceito de refresh token, uma sessão
- * local expirada simplesmente exige logar de novo. */
+/** Renova o access token do Keycloak com o refresh_token da sessão. */
 async function refreshAccessToken(token: JWT): Promise<JWT> {
   try {
     const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
@@ -49,35 +48,26 @@ async function refreshAccessToken(token: JWT): Promise<JWT> {
         grant_type: "refresh_token",
         refresh_token: token.refreshToken as string,
       }),
-      // Sem timeout, um Keycloak lento/pendurado trava o callback jwt (que
-      // roda em toda requisição que toca a sessão).
       signal: AbortSignal.timeout(5000),
     });
-
     const refreshed: KeycloakTokenResponse = await response.json();
     if (!response.ok || refreshed.error || !refreshed.access_token) {
-      throw refreshed;
+      throw new Error("refresh recusado");
     }
-    // expires_in ausente/NaN viraria accessTokenExpires=NaN e, como
-    // `Date.now() < NaN` é sempre false, o token entraria em loop de
-    // refresh a cada requisição, martelando o Keycloak.
     const ttlSeconds = Number(refreshed.expires_in);
     if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
-      throw new Error(`expires_in inválido: ${refreshed.expires_in}`);
+      throw new Error("expires_in inválido");
     }
-
     return {
       ...token,
       accessToken: refreshed.access_token,
       accessTokenExpires: Date.now() + ttlSeconds * 1000,
       refreshToken: refreshed.refresh_token ?? token.refreshToken,
+      idToken: refreshed.id_token ?? token.idToken,
       error: undefined,
     };
   } catch {
-    // Marca o erro na sessão em vez de lançar — o chamador (callback jwt)
-    // segue com um token expirado + error="RefreshAccessTokenError", e é
-    // esse campo que o middleware/proxy.ts usa para decidir redirecionar
-    // para /login. NÃO logamos `err` (pode conter eco do refresh_token).
+    // Nunca logar o erro bruto (pode ecoar o refresh_token).
     console.error("Falha ao renovar o access token do Keycloak");
     return { ...token, error: "RefreshAccessTokenError" };
   }
@@ -87,84 +77,74 @@ interface LocalLoginResponse {
   data: {
     access_token: string;
     expires_at: string;
-    user: { id: string; username: string; email: string };
+    user: { id: string; username: string; email: string; display_name?: string };
   } | null;
   error: { code: string; message: string } | null;
 }
 
+/** Decodifica (sem validar — a validação é do backend) as claims usadas
+ * só para exibição: roles e grupos do AD. */
+function decodeDisplayClaims(accessToken: string): { roles: string[]; groups: string[] } {
+  try {
+    const part = accessToken.split(".")[1];
+    if (!part) return { roles: [], groups: [] };
+    const payload = JSON.parse(Buffer.from(part, "base64url").toString("utf-8"));
+    const roles = new Set<string>();
+    for (const r of payload.roles ?? []) roles.add(String(r));
+    for (const r of payload.realm_access?.roles ?? []) roles.add(String(r));
+    if (clientId) for (const r of payload.resource_access?.[clientId]?.roles ?? []) roles.add(String(r));
+    const groups = Array.isArray(payload.groups) ? payload.groups.map(String) : [];
+    return { roles: [...roles], groups };
+  } catch {
+    return { roles: [], groups: [] };
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
-    ...(issuer && clientId && clientSecret
+    ...(keycloakEnabled
       ? [
           KeycloakProvider({
-            issuer,
-            clientId,
-            clientSecret,
-            // As checks padrão do KeycloakProvider já incluem "pkce" e "state"
-            // — Authorization Code + PKCE conforme §30, sem configuração extra
-            // necessária.
+            issuer: issuer!,
+            clientId: clientId!,
+            clientSecret: clientSecret!,
           }),
         ]
       : []),
-
-    // Login local (§ Sistema de Login Local) — um caminho ADICIONAL ao
-    // Keycloak, nunca um substituto. Chama o mesmo endpoint que qualquer
-    // outro cliente HTTP chamaria (POST /api/v1/auth/login no backend
-    // Go); este provider só faz a ponte entre o formulário de
-    // usuário/senha e a sessão do NextAuth. Se LOCAL_AUTH_ENABLED=false
-    // no backend, o endpoint responde 404 e authorize() retorna null —
-    // o botão de login local continua aparecendo no frontend, mas
-    // qualquer tentativa falha com a mensagem genérica de credenciais
-    // inválidas (não vaza se o recurso está desligado ou se a senha
-    // estava errada).
     CredentialsProvider({
       id: "local",
-      name: "Local",
+      name: "Conta local",
       credentials: {
         username: { label: "Usuário", type: "text" },
         password: { label: "Senha", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
-          return null;
-        }
-
-        // authorize() SÓ pode retornar um usuário quando o backend confirma
-        // a credencial. Qualquer outro desfecho — backend fora do ar, JSON
-        // ilegível, 401/403/404/500 — é `null` (o NextAuth converte em
-        // "credenciais inválidas", sem vazar o motivo). Nunca há "sessão
-        // demo": código que decide autenticação não pode ter modo de
-        // conveniência (era um bypass — senha errada logava como demo-user).
+        if (!credentials?.username || !credentials?.password) return null;
         let res: Response;
         try {
-          res = await fetch(`${backendInternalURL}/api/v1/auth/login`, {
+          res = await fetch(`${BACKEND_INTERNAL_URL}/api/v1/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username: credentials.username,
-              password: credentials.password,
-            }),
-            signal: AbortSignal.timeout(5000),
+            body: JSON.stringify({ username: credentials.username, password: credentials.password }),
+            signal: AbortSignal.timeout(8000),
           });
-        } catch (err) {
-          console.error("Local login: backend inacessível — negando", err);
+        } catch {
+          console.error("Login local: backend inacessível");
           return null;
         }
-
         let body: LocalLoginResponse;
         try {
           body = await res.json();
         } catch {
           return null;
         }
-
-        if (!res.ok || !body.data) {
-          return null;
+        if (res.status === 429) {
+          throw new Error("TooManyAttempts");
         }
-
+        if (!res.ok || !body.data) return null;
         return {
           id: body.data.user.id,
-          name: body.data.user.username,
+          name: body.data.user.display_name || body.data.user.username,
           email: body.data.user.email,
           accessToken: body.data.access_token,
           accessTokenExpires: new Date(body.data.expires_at).getTime(),
@@ -173,168 +153,34 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  // Estratégia de sessão em JWT: a sessão é um cookie criptografado,
-  // HttpOnly, SameSite=Lax, marcado Secure automaticamente sempre que
-  // NEXTAUTH_URL é https:// (padrão do next-auth — §30) — nunca
-  // localStorage ou sessionStorage. O access token bruto vive só dentro
-  // deste token criptografado no lado do servidor, nunca no objeto
-  // `session` exposto a Client Components — ver o callback session abaixo.
-  //
-  // Usando deliberadamente o nome/opções de cookie padrão do next-auth
-  // aqui, em vez de um nome customizado: toda chamada de getToken() do
-  // lado do servidor (proxy.ts, o proxy BFF do backend) precisa concordar
-  // exatamente sobre qual nome de cookie ler, e um nome customizado é mais
-  // um lugar onde as coisas podem silenciosamente sair de sincronia e
-  // quebrar a autenticação.
   session: { strategy: "jwt" },
 
   callbacks: {
-    async signIn({ account }) {
-      if (account?.provider === "keycloak") {
-        let hasAssistencia = false;
-        const groupsSet = new Set<string>();
-        const rolesSet = new Set<string>();
-
-        if (account.access_token && typeof account.access_token === "string") {
-          try {
-            const parts = account.access_token.split(".");
-            if (parts.length === 3 && parts[1]) {
-              const payloadStr = Buffer.from(parts[1], "base64url").toString("utf-8");
-              const payload = JSON.parse(payloadStr);
-
-              if (Array.isArray(payload.roles)) {
-                payload.roles.forEach((r: string) => rolesSet.add(r));
-              }
-              if (Array.isArray(payload.realm_access?.roles)) {
-                payload.realm_access.roles.forEach((r: string) => rolesSet.add(r));
-              }
-              if (clientId && payload.resource_access?.[clientId]?.roles) {
-                payload.resource_access[clientId].roles.forEach((r: string) => rolesSet.add(r));
-              }
-              if (Array.isArray(payload.groups)) {
-                payload.groups.forEach((g: string) => groupsSet.add(g));
-              }
-              if (Array.isArray(payload.ad_groups)) {
-                payload.ad_groups.forEach((g: string) => groupsSet.add(g));
-              }
-              if (typeof payload.ad_ou === "string") {
-                groupsSet.add(payload.ad_ou);
-              }
-            }
-          } catch (err) {
-            console.error("Falha ao analisar token para validação de grupos no signIn:", err);
-          }
-        }
-
-        const isAdmin =
-          rolesSet.has("aurora-admin") ||
-          rolesSet.has("admin") ||
-          rolesSet.has("super_admin") ||
-          Array.from(groupsSet).some((g) => {
-            const gl = g.toLowerCase();
-            return gl.includes("admin") || gl.includes("gestao") || gl.includes("gestor");
-          });
-
-        if (isAdmin) {
-          hasAssistencia = true;
-        } else {
-          hasAssistencia = Array.from(groupsSet).some((g) => {
-            const gl = g.toLowerCase();
-            return (
-              gl.includes("assistencia") ||
-              gl.includes("assistência") ||
-              gl.includes("sempras") ||
-              gl.includes("cras") ||
-              gl.includes("creas") ||
-              gl.includes("pop") ||
-              gl.includes("mulher") ||
-              gl.includes("abrigo") ||
-              gl.includes("tutelar")
-            );
-          });
-        }
-
-        if (!hasAssistencia) {
-          return "/login?error=NaoPertenceAssistenciaSocial";
-        }
-      }
-
-      return true;
-    },
-
     async jwt({ token, account, user }) {
       if (account?.provider === "keycloak") {
         token.accessToken = account.access_token;
         token.accessTokenExpires = account.expires_at ? account.expires_at * 1000 : undefined;
         token.refreshToken = account.refresh_token;
         token.idToken = account.id_token;
+        token.provider = "keycloak";
       } else if (account?.provider === "local" && user) {
         token.accessToken = user.accessToken;
         token.accessTokenExpires = user.accessTokenExpires;
         token.refreshToken = undefined;
         token.idToken = undefined;
+        token.provider = "local";
       }
-
-      // Decodificação NÃO-VERIFICADA do payload — não confere assinatura,
-      // issuer nem audiência. Isso é seguro aqui porque token.accessToken
-      // já veio de uma fonte confiável DENTRO deste mesmo callback (a troca
-      // OAuth com o Keycloak, ou a resposta do endpoint de login local do
-      // backend Go — nunca do navegador), nunca de um valor fornecido pelo
-      // chamador. As roles extraídas abaixo servem só para a UI decidir o
-      // que mostrar (menus, botões) — a fronteira de autorização real é
-      // sempre o backend Go (auth.RequirePermission), que valida
-      // assinatura/iss/aud a cada requisição via JWKS (ver
-      // internal/platform/auth/oidc.go). Nunca reaproveite este trecho para
-      // decodificar um token de origem menos confiável.
-      if (token.accessToken && typeof token.accessToken === "string") {
-        try {
-          const parts = (token.accessToken as string).split(".");
-          if (parts.length === 3 && parts[1]) {
-            const payloadStr = Buffer.from(parts[1], "base64url").toString("utf-8");
-            const payload = JSON.parse(payloadStr);
-            const rolesSet = new Set<string>();
-
-            if (Array.isArray(payload.roles)) {
-              payload.roles.forEach((r: string) => rolesSet.add(r));
-            }
-            if (Array.isArray(payload.realm_access?.roles)) {
-              payload.realm_access.roles.forEach((r: string) => rolesSet.add(r));
-            }
-            if (clientId && payload.resource_access?.[clientId]?.roles) {
-              payload.resource_access[clientId].roles.forEach((r: string) => rolesSet.add(r));
-            }
-
-            token.roles = Array.from(rolesSet);
-
-            const groupsSet = new Set<string>();
-            if (Array.isArray(payload.groups)) {
-              payload.groups.forEach((g: string) => groupsSet.add(g));
-            }
-            if (Array.isArray(payload.ad_groups)) {
-              payload.ad_groups.forEach((g: string) => groupsSet.add(g));
-            }
-            if (typeof payload.ad_ou === "string") {
-              groupsSet.add(payload.ad_ou);
-            }
-            if (rolesSet.has("aurora-admin") || rolesSet.has("admin") || rolesSet.has("super_admin")) {
-              groupsSet.add("Grupo_Assistencia_Social");
-              groupsSet.add("Grupo_AS_Gestao");
-            }
-            token.groups = Array.from(groupsSet);
-          }
-        } catch (err) {
-          console.error("Failed to decode token roles and groups", err);
-        }
+      if (typeof token.accessToken === "string") {
+        const claims = decodeDisplayClaims(token.accessToken);
+        token.roles = claims.roles;
+        token.groups = claims.groups;
       }
-
-      if (token.accessTokenExpires && Date.now() < (token.accessTokenExpires as number)) {
+      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
         return token;
       }
-
       if (token.refreshToken) {
         return refreshAccessToken(token);
       }
-
       return { ...token, error: "RefreshAccessTokenError" };
     },
 
@@ -342,12 +188,11 @@ export const authOptions: NextAuthOptions = {
       session.user = session.user ?? {};
       session.user.roles = token.roles ?? [];
       session.user.groups = token.groups ?? [];
-      session.error = token.error as string | undefined;
+      session.provider = token.provider;
+      session.error = token.error;
       return session;
     },
   },
 
-  pages: {
-    signIn: "/login",
-  },
+  pages: { signIn: "/login" },
 };

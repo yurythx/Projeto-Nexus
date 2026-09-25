@@ -1,4 +1,4 @@
-// Selo circular — o elemento de assinatura do Projeto Aurora (§ redesenho
+// Selo circular — o elemento de assinatura do Projeto Nexus (§ redesenho
 // 2026-08). Um carimbo de repartição: anéis concêntricos, borda pontilhada,
 // dizeres curvos e um miolo com o monograma da marca sobre os dizeres de
 // documento oficial. Aparece como marca d'água discreta no painel de login
@@ -36,8 +36,8 @@ export function Seal({
       style={{ color: "currentColor" }}
     >
       <defs>
-        <path id="aurora-seal-top" d="M 26 100 A 74 74 0 0 1 174 100" />
-        <path id="aurora-seal-bottom" d="M 32 100 A 68 68 0 0 0 168 100" />
+        <path id="nexus-seal-top" d="M 26 100 A 74 74 0 0 1 174 100" />
+        <path id="nexus-seal-bottom" d="M 32 100 A 68 68 0 0 0 168 100" />
       </defs>
 
       <circle cx="100" cy="100" r="96" stroke="currentColor" strokeWidth="2" />
@@ -60,7 +60,7 @@ export function Seal({
         fill="currentColor"
         style={{ fontFamily: "var(--font-mono, monospace)" }}
       >
-        <textPath href="#aurora-seal-top" startOffset="50%" textAnchor="middle">
+        <textPath href="#nexus-seal-top" startOffset="50%" textAnchor="middle">
           {topText}
         </textPath>
       </text>
@@ -71,12 +71,12 @@ export function Seal({
         fill="currentColor"
         style={{ fontFamily: "var(--font-mono, monospace)" }}
       >
-        <textPath href="#aurora-seal-bottom" startOffset="50%" textAnchor="middle">
+        <textPath href="#nexus-seal-bottom" startOffset="50%" textAnchor="middle">
           {bottomText}
         </textPath>
       </text>
 
-      {/* Miolo: monograma "A" de Aurora (mesmo desenho de Logo.tsx/icon.svg,
+      {/* Miolo: monograma "A" de Nexus (mesmo desenho de Logo.tsx/icon.svg,
           escalado pro selo) sobre os dizeres de documento oficial. */}
       <g transform="translate(100 92)">
         <polygon points="0,-15 -9,15 -15,15" fill="currentColor" />

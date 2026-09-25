@@ -1,6 +1,6 @@
 -- +goose Up
 -- keycloak_settings — configuração OIDC do Keycloak editável em tempo de
--- execução pelo aurora-admin (menu Configurações > Keycloak / IAM),
+-- execução pelo nexus-admin (menu Configurações > Keycloak / IAM),
 -- persistida no Postgres em vez de só existir como variável de ambiente.
 -- Linha única (id fixo 'default', como um singleton) — não há múltiplos
 -- realms/clients configuráveis por esta tela, só o realm que o backend

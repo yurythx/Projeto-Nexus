@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 // Consentimento de visitante NÃO autenticado (gap G-11).
@@ -60,5 +60,5 @@ func (s *Service) handleAcceptAnon(w http.ResponseWriter, r *http.Request) {
 // rate limit por IP (mesma ideia do login local).
 func RegisterPublicRoutes(r chi.Router, s *Service, limiter httpserver.Limiter) {
 	r.With(httpserver.RateLimit(s.logger, limiter, httpserver.ClientIPKey)).
-		Post("/api/v1/lgpd/accept-anon", s.handleAcceptAnon)
+		Post("/lgpd/accept-anon", s.handleAcceptAnon)
 }

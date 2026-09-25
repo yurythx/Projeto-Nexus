@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 
-const DISMISSED_KEY = "aurora-pwa-install-dismissed";
+const DISMISSED_KEY = "nexus-pwa-install-dismissed";
 
 // BeforeInstallPromptEvent não faz parte do lib.dom.d.ts padrão do
 // TypeScript (é uma extensão específica de navegadores baseados em

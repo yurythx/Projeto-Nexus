@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
 )
 
 // testRSAKeyPEM generates a throwaway RSA private key (PKCS1 PEM) of the
@@ -36,7 +36,7 @@ func testSigner(t *testing.T, ttl time.Duration) *LocalSigner {
 
 func TestIssueToken_ThenVerifyToken_RoundTrips(t *testing.T) {
 	signer := testSigner(t, time.Hour)
-	account := LocalAccount{ID: "user-1", Username: "admin", Email: "admin@projeto-aurora.local", Roles: []string{"aurora-admin", "aurora-user"}}
+	account := LocalAccount{ID: "user-1", Username: "admin", Email: "admin@projeto-nexus.local", Roles: []string{"nexus-admin", "nexus-user"}}
 
 	token, expiresAt, err := signer.IssueToken(account)
 	if err != nil {
@@ -62,8 +62,8 @@ func TestIssueToken_ThenVerifyToken_RoundTrips(t *testing.T) {
 	if identity.Source != SourceLocal {
 		t.Errorf("Source = %q, want %q", identity.Source, SourceLocal)
 	}
-	if !identity.HasRole("aurora-admin") || !identity.HasRole("aurora-user") {
-		t.Errorf("Roles = %v, want to include aurora-admin and aurora-user", identity.Roles)
+	if !identity.HasRole("nexus-admin") || !identity.HasRole("nexus-user") {
+		t.Errorf("Roles = %v, want to include nexus-admin and nexus-user", identity.Roles)
 	}
 }
 

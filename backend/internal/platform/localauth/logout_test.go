@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
 )
 
 // capturingExecer satisfaz a interface (não exportada) que audit.NewWriter
@@ -31,7 +31,7 @@ func (c *capturingExecer) Exec(_ context.Context, _ string, args ...any) (pgconn
 
 func TestLogout_RecordsAuditWithIdentityIPAndCorrelation(t *testing.T) {
 	exec := &capturingExecer{}
-	h := NewHandlers(newFakeStore(), testSigner(t), audit.NewWriter(exec), testLogger())
+	h := NewHandlers(newFakeStore(), testSigner(t), audit.NewWriter(exec), nil, nil, testLogger())
 
 	uid := uuid.New()
 	corr := uuid.NewString()
@@ -54,17 +54,18 @@ func TestLogout_RecordsAuditWithIdentityIPAndCorrelation(t *testing.T) {
 		t.Fatalf("audit Exec chamado %d vezes, want exatamente 1", exec.calls)
 	}
 
-	// Ordem dos args de audit.Writer.Record: [0]=id, [1]=UserID,
-	// [2]=Action, [3]=ResourceType, [4]=ResourceID, [5]=metadataJSON,
-	// [6]=CorrelationID, [7]=sanitizeIP(IPAddress).
-	if got := exec.lastArgs[2]; got != audit.ActionLogout {
+	// Ordem dos args de audit.Writer.Record: [0]=id, [1]=actor_id,
+	// [2]=actor_subject, [3]=actor_roles, [4]=ip, [5]=user_agent,
+	// [6]=entity_context, [7]=action, [8]=resource_type, [9]=resource_id,
+	// [10]=diff_before, [11]=diff_after, [12]=metadata, [13]=correlation_id.
+	if got := exec.lastArgs[7]; got != audit.ActionLogout {
 		t.Errorf("action = %v, want %q", got, audit.ActionLogout)
 	}
-	if got, _ := exec.lastArgs[7].(string); got != "203.0.113.9" {
-		t.Errorf("ip_address = %v, want 203.0.113.9 (porta removida por sanitizeIP)", exec.lastArgs[7])
+	if got, _ := exec.lastArgs[4].(string); got != "203.0.113.9" {
+		t.Errorf("ip_address = %v, want 203.0.113.9 (porta removida por sanitizeIP)", exec.lastArgs[4])
 	}
-	if cid, ok := exec.lastArgs[6].(*uuid.UUID); !ok || cid == nil || cid.String() != corr {
-		t.Errorf("correlation_id = %v, want %s", exec.lastArgs[6], corr)
+	if cid, ok := exec.lastArgs[13].(*uuid.UUID); !ok || cid == nil || cid.String() != corr {
+		t.Errorf("correlation_id = %v, want %s", exec.lastArgs[13], corr)
 	}
 	if userID, ok := exec.lastArgs[1].(*uuid.UUID); !ok || userID == nil || userID.String() != uid.String() {
 		t.Errorf("user_id = %v, want %s (subject de token local é o id interno)", exec.lastArgs[1], uid)
@@ -72,7 +73,7 @@ func TestLogout_RecordsAuditWithIdentityIPAndCorrelation(t *testing.T) {
 }
 
 func TestLogout_WithoutIdentityIs401(t *testing.T) {
-	h := NewHandlers(newFakeStore(), testSigner(t), nil, testLogger())
+	h := NewHandlers(newFakeStore(), testSigner(t), nil, nil, nil, testLogger())
 
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	rec := httptest.NewRecorder()

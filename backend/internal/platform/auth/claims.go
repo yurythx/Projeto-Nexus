@@ -1,39 +1,23 @@
 package auth
 
 // accessTokenClaims espelha o subconjunto das claims de um access token do
-// Keycloak que a plataforma se importa. O Keycloak coloca os roles de
-// realm (globais) em "realm_access.roles" e os roles por client em
+// Keycloak que a plataforma usa. O Keycloak coloca os roles de realm em
+// "realm_access.roles" e os roles por client em
 // "resource_access.<client_id>.roles" — os dois são mesclados em
-// Identity.Roles, já que o código de autorização (rbac.go) não precisa
-// distinguir a origem do role, só se o usuário o possui.
-import "strings"
-
+// Identity.Roles. "groups" vem do mapper "Group Membership" do client,
+// alimentado pela federação LDAP/LDAPS com o Active Directory.
 type accessTokenClaims struct {
-	Subject             string                   `json:"sub"`
-	PreferredUsername   string                   `json:"preferred_username"`
-	Email               string                   `json:"email"`
-	GovBRConfiabilidade string                   `json:"govbr_confiabilidade"`
-	RealmAccess         roleContainer            `json:"realm_access"`
-	ResourceAccess      map[string]roleContainer `json:"resource_access"`
-	Groups              []string                 `json:"groups"`
+	Subject           string                   `json:"sub"`
+	PreferredUsername string                   `json:"preferred_username"`
+	Email             string                   `json:"email"`
+	Name              string                   `json:"name"`
+	RealmAccess       roleContainer            `json:"realm_access"`
+	ResourceAccess    map[string]roleContainer `json:"resource_access"`
+	Groups            []string                 `json:"groups"`
 }
 
 type roleContainer struct {
 	Roles []string `json:"roles"`
-}
-
-// parseGovBRLevel normaliza a string do claim de confiabilidade do Gov.br.
-func parseGovBRLevel(levelStr string) GovBRLevel {
-	switch strings.ToUpper(strings.TrimSpace(levelStr)) {
-	case "BRONZE", "1":
-		return GovBRLevelBronze
-	case "PRATA", "2":
-		return GovBRLevelPrata
-	case "OURO", "3":
-		return GovBRLevelOuro
-	default:
-		return GovBRLevelUnknown
-	}
 }
 
 // toIdentity mescla os roles de realm com os roles concedidos para
@@ -58,12 +42,12 @@ func (c accessTokenClaims) toIdentity(clientID string) Identity {
 	}
 
 	return Identity{
-		Subject:    c.Subject,
-		Username:   c.PreferredUsername,
-		Email:      c.Email,
-		Roles:      roles,
-		Groups:     c.Groups,
-		GovBRLevel: parseGovBRLevel(c.GovBRConfiabilidade),
-		Source:     SourceKeycloak,
+		Subject:  c.Subject,
+		Username: c.PreferredUsername,
+		Email:    c.Email,
+		Name:     c.Name,
+		Roles:    roles,
+		Groups:   c.Groups,
+		Source:   SourceKeycloak,
 	}
 }

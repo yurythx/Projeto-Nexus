@@ -1,119 +1,79 @@
 package ws
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/redisx"
 )
 
-// Ticket é uma credencial de curta duração e uso único que autoriza
-// exatamente um upgrade de WebSocket (§38). Navegadores não conseguem
-// anexar um header Authorization ao handshake de WebSocket, e um access
-// token de vida longa na URL vazaria em logs/proxies, então a API emite um
-// destes em vez disso.
+// TicketTTL é a validade de um ticket de conexão: curto, de uso único.
+const TicketTTL = 30 * time.Second
+
+// ErrInvalidTicket indica ticket inexistente, expirado ou já usado.
+var ErrInvalidTicket = errors.New("ws: ticket inválido, expirado ou já utilizado")
+
+// Ticket autoriza UMA abertura de conexão WebSocket. O navegador não pode
+// mandar o bearer token num upgrade de WebSocket (sem headers
+// customizados), então ele troca o token por um ticket opaco via
+// POST /api/v1/ws/ticket e o apresenta na query string do /ws.
 type Ticket struct {
 	Value     string
-	UserID    string
 	ExpiresAt time.Time
-	used      bool
 }
 
-// TicketStore emite e resgata tickets em memória. É deliberadamente
-// single-instance (a plataforma não tem Redis por decisão de arquitetura —
-// §7); um deployment de API com múltiplas réplicas precisaria de um
-// armazenamento compartilhado (ex.: uma tabela de vida curta no Postgres,
-// no mesmo espírito do internal/platform/ratelimit.PostgresLimiter) em vez
-// deste. Como o ticket é resgatado quase imediatamente após ser emitido
-// (o navegador abre o WebSocket logo depois de receber o ticket via HTTP),
-// na prática o risco de a réplica errada não conhecer o ticket é baixo,
-// mas é uma limitação documentada, não um esquecimento.
+// TicketStore guarda os tickets no Redis — um ticket emitido por uma
+// réplica pode ser resgatado por qualquer outra (GETDEL é atômico: uso
+// único garantido mesmo sob corrida).
 type TicketStore struct {
-	mu      sync.Mutex
-	tickets map[string]*Ticket
-	ttl     time.Duration
-	done    chan struct{}
+	redis *redis.Client
+	ttl   time.Duration
 }
 
-// NewTicketStore constrói um store cujos tickets expiram depois de ttl.
-func NewTicketStore(ttl time.Duration) *TicketStore {
-	s := &TicketStore{
-		tickets: make(map[string]*Ticket),
-		ttl:     ttl,
-		done:    make(chan struct{}),
-	}
-	go s.evictExpiredLoop()
-	return s
+// NewTicketStore cria o armazenamento de tickets.
+func NewTicketStore(rdb *redis.Client, ttl time.Duration) *TicketStore {
+	return &TicketStore{redis: rdb, ttl: ttl}
 }
 
-// Issue emite um novo ticket para userID.
-func (s *TicketStore) Issue(userID string) (*Ticket, error) {
+// Issue emite um ticket para info.
+func (s *TicketStore) Issue(ctx context.Context, info ClientInfo) (*Ticket, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return nil, fmt.Errorf("ws: generate ticket: %w", err)
+		return nil, fmt.Errorf("ws: gerar ticket: %w", err)
 	}
-
-	t := &Ticket{
-		Value:     hex.EncodeToString(raw),
-		UserID:    userID,
-		ExpiresAt: time.Now().Add(s.ttl),
+	value := hex.EncodeToString(raw)
+	body, err := json.Marshal(info)
+	if err != nil {
+		return nil, fmt.Errorf("ws: serializar ticket: %w", err)
 	}
-
-	s.mu.Lock()
-	s.tickets[t.Value] = t
-	s.mu.Unlock()
-
-	return t, nil
+	if err := s.redis.Set(ctx, redisx.Key("ws", "ticket", value), body, s.ttl).Err(); err != nil {
+		return nil, fmt.Errorf("ws: gravar ticket: %w", err)
+	}
+	return &Ticket{Value: value, ExpiresAt: time.Now().Add(s.ttl)}, nil
 }
 
-// Redeem valida e consome um ticket. Um ticket só pode ser resgatado
-// exatamente uma vez, e apenas antes de expirar — a segunda tentativa de
-// uso do mesmo valor (replay) é sempre rejeitada.
-func (s *TicketStore) Redeem(value string) (*Ticket, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	t, ok := s.tickets[value]
-	if !ok {
-		return nil, fmt.Errorf("ws: unknown or already-redeemed ticket")
+// Redeem consome o ticket (uso único) e devolve a identidade associada.
+func (s *TicketStore) Redeem(ctx context.Context, value string) (ClientInfo, error) {
+	if len(value) != 64 {
+		return ClientInfo{}, ErrInvalidTicket
 	}
-	if t.used {
-		return nil, fmt.Errorf("ws: ticket already used")
+	body, err := s.redis.GetDel(ctx, redisx.Key("ws", "ticket", value)).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return ClientInfo{}, ErrInvalidTicket
 	}
-	if time.Now().After(t.ExpiresAt) {
-		delete(s.tickets, value)
-		return nil, fmt.Errorf("ws: ticket expired")
+	if err != nil {
+		return ClientInfo{}, fmt.Errorf("ws: resgatar ticket: %w", err)
 	}
-
-	t.used = true
-	delete(s.tickets, value)
-	return t, nil
-}
-
-// Close para o loop de remoção em segundo plano.
-func (s *TicketStore) Close() { close(s.done) }
-
-// evictExpiredLoop remove periodicamente tickets expirados que nunca
-// chegaram a ser resgatados, para que o mapa não cresça indefinidamente
-// com tickets emitidos mas nunca usados (ex.: cliente que fechou a aba
-// antes de abrir o WebSocket).
-func (s *TicketStore) evictExpiredLoop() {
-	ticker := time.NewTicker(s.ttl)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-s.done:
-			return
-		case <-ticker.C:
-			now := time.Now()
-			s.mu.Lock()
-			for k, t := range s.tickets {
-				if now.After(t.ExpiresAt) {
-					delete(s.tickets, k)
-				}
-			}
-			s.mu.Unlock()
-		}
+	var info ClientInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return ClientInfo{}, ErrInvalidTicket
 	}
+	return info, nil
 }

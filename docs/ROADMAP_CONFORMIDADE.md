@@ -1,4 +1,4 @@
-# Roadmap de Conformidade Governamental — Projeto Aurora
+# Roadmap de Conformidade Governamental — Projeto Nexus
 
 Origem: auditoria de conformidade de **2026-09-09** (e-MAG 2.0 / WCAG 2.1
 AA, LGPD 13.709/2018, LAI 12.527/2011 + LC 131/2009, OWASP ASVS, SGD/MGI,
@@ -78,7 +78,7 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | `API_RATE_LIMIT_MAX` | `600` | Requisições por identidade por janela; excedente → `429 RATE_LIMITED` |
 | `METRICS_SCRAPE_TOKEN` | *(vazio)* | Vazio: `/metrics` aberto. Definido: exige `Authorization: Bearer <token>` |
 | `TRUSTED_PROXIES` | *(vazio)* | CIDRs cujo `X-Forwarded-For` é confiável; fora deles, só `RemoteAddr` |
-| `AUDIT_WORM_BUCKET` | `aurora-audit-worm` | Bucket dedicado (com Object Lock) da cópia WORM da auditoria |
+| `AUDIT_WORM_BUCKET` | `nexus-audit-worm` | Bucket dedicado (com Object Lock) da cópia WORM da auditoria |
 | `AUDIT_WORM_RETENTION_DAYS` | `1825` | Retenção Compliance por objeto WORM (5 anos) |
 
 Todos aceitam o padrão `<VAR>_FILE` (Docker/K8s secrets). Limiters

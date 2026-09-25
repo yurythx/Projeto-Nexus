@@ -12,9 +12,9 @@ endif
 COMPOSE      := docker compose -f docker-compose.yml -f docker-compose.dev.yml
 COMPOSE_PROD := docker compose -f docker-compose.yml
 GOOSE_DIR    := backend/migrations
-DB_USER      ?= aurora
-DB_PASSWORD  ?= aurora_pass
-DB_NAME      ?= aurora
+DB_USER      ?= nexus
+DB_PASSWORD  ?= nexus_pass
+DB_NAME      ?= nexus
 HOST_DB_PORT ?= 5433
 DB_DSN       ?= postgres://$(DB_USER):$(DB_PASSWORD)@localhost:$(HOST_DB_PORT)/$(DB_NAME)?sslmode=disable
 

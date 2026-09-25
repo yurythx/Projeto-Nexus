@@ -10,7 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {
@@ -35,7 +36,7 @@ func TestSeedAdmin_CreatesUserWithHashedRandomPassword(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, username)
 	})
 
-	password, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-aurora.local", "Seedadmin Test", "aurora-admin,aurora-user", "")
+	password, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-nexus.local", "Seedadmin Test", "nexus-admin,nexus-user", "")
 	if err != nil {
 		t.Fatalf("seedAdmin: %v", err)
 	}
@@ -54,10 +55,10 @@ func TestSeedAdmin_CreatesUserWithHashedRandomPassword(t *testing.T) {
 	if !active {
 		t.Error("expected the created user to be active")
 	}
-	if len(roles) != 2 || roles[0] != "aurora-admin" || roles[1] != "aurora-user" {
-		t.Errorf("roles = %v, want [aurora-admin aurora-user]", roles)
+	if len(roles) != 2 || roles[0] != "nexus-admin" || roles[1] != "nexus-user" {
+		t.Errorf("roles = %v, want [nexus-admin nexus-user]", roles)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+	if err := passwords.Verify(hash, password); err != nil {
 		t.Errorf("the stored hash does not match the returned password: %v", err)
 	}
 }
@@ -70,7 +71,7 @@ func TestSeedAdmin_SecondRun_ResetsPasswordAndLockout(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, username)
 	})
 
-	firstPassword, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-aurora.local", "Seedadmin Test", "aurora-admin", "")
+	firstPassword, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-nexus.local", "Seedadmin Test", "nexus-admin", "")
 	if err != nil {
 		t.Fatalf("seedAdmin (primeira vez): %v", err)
 	}
@@ -81,7 +82,7 @@ func TestSeedAdmin_SecondRun_ResetsPasswordAndLockout(t *testing.T) {
 		t.Fatalf("simulate lockout: %v", err)
 	}
 
-	secondPassword, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-aurora.local", "Seedadmin Test", "aurora-admin", "")
+	secondPassword, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-nexus.local", "Seedadmin Test", "nexus-admin", "")
 	if err != nil {
 		t.Fatalf("seedAdmin (segunda vez): %v", err)
 	}
@@ -114,7 +115,7 @@ func TestSeedAdmin_PasswordOverride_UsesGivenPasswordInsteadOfRandom(t *testing.
 	})
 
 	const fixedPassword = "e2e-fixed-password-not-random"
-	got, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-aurora.local", "Seedadmin Test", "aurora-admin", fixedPassword)
+	got, err := seedAdmin(ctx, pool, username, "seedadmin-test@projeto-nexus.local", "Seedadmin Test", "nexus-admin", fixedPassword)
 	if err != nil {
 		t.Fatalf("seedAdmin: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestSeedAdmin_PasswordOverride_UsesGivenPasswordInsteadOfRandom(t *testing.
 	if err := pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE username = $1`, username).Scan(&hash); err != nil {
 		t.Fatalf("query created user: %v", err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(fixedPassword)); err != nil {
+	if err := passwords.Verify(hash, fixedPassword); err != nil {
 		t.Errorf("stored hash does not match the override password: %v", err)
 	}
 }
@@ -148,7 +149,7 @@ func TestSeedAdmin_RefusesToOverwriteKeycloakLinkedAccount(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, username)
 	})
 
-	_, err = seedAdmin(ctx, pool, username, "someone-else@projeto-aurora.local", "Someone Else", "aurora-admin", "")
+	_, err = seedAdmin(ctx, pool, username, "someone-else@projeto-nexus.local", "Someone Else", "nexus-admin", "")
 	if err == nil {
 		t.Fatal("expected seedAdmin to refuse overwriting a Keycloak-linked account, got no error")
 	}

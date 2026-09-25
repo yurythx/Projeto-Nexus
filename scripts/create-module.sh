@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script de Scaffolding para novos módulos no Projeto Aurora (Clean Architecture)
+# Script de Scaffolding para novos módulos no Projeto Nexus (Clean Architecture)
 # Uso: ./scripts/create-module.sh <nome-do-modulo>
 # Exemplo: ./scripts/create-module.sh contratos
 # ==============================================================================
@@ -22,7 +22,7 @@ BACKEND_MOD_DIR="${ROOT_DIR}/backend/internal/modules/${MODULE_NAME}"
 FRONTEND_PAGE_DIR="${ROOT_DIR}/frontend/src/app/(protected)/${MODULE_NAME}"
 MIGRATION_DIR="${ROOT_DIR}/backend/migrations"
 
-echo "🚀 Criando novo módulo '${MODULE_NAME}' no Projeto Aurora com Clean Architecture..."
+echo "🚀 Criando novo módulo '${MODULE_NAME}' no Projeto Nexus com Clean Architecture..."
 
 # 1. Criar estrutura de diretórios do Backend Go
 mkdir -p "${BACKEND_MOD_DIR}/domain"
@@ -64,7 +64,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yurythx/projeto-aurora/internal/modules/${MODULE_NAME}/domain"
+	"github.com/yurythx/projeto-nexus/internal/modules/${MODULE_NAME}/domain"
 )
 
 type Service struct {
@@ -97,7 +97,7 @@ package infrastructure
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/google/uuid"
-	"github.com/yurythx/projeto-aurora/internal/modules/${MODULE_NAME}/domain"
+	"github.com/yurythx/projeto-nexus/internal/modules/${MODULE_NAME}/domain"
 )
 
 type PostgresRepository struct {
@@ -129,8 +129,8 @@ package transport
 import (
 	"net/http"
 
-	"github.com/yurythx/projeto-aurora/internal/modules/${MODULE_NAME}/application"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	"github.com/yurythx/projeto-nexus/internal/modules/${MODULE_NAME}/application"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 type Handlers struct {
@@ -173,7 +173,7 @@ export default function ${CAP_MODULE_NAME}Page() {
         </span>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Módulo ${CAP_MODULE_NAME}</h1>
-          <p className="text-sm text-muted">Módulo corporativo gerado pelo scaffolding do Projeto Aurora.</p>
+          <p className="text-sm text-muted">Módulo corporativo gerado pelo scaffolding do Projeto Nexus.</p>
         </div>
       </div>
 

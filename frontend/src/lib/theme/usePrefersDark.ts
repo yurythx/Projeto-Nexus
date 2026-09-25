@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 // página está aberta), sem o padrão setState-dentro-de-efeito que a regra
 // de lint react-hooks/set-state-in-effect desencoraja. Usado só por
 // ThemeToggle.tsx para decidir qual ícone mostrar quando NENHUMA escolha
-// explícita de tema foi feita ainda (sem cookie "nova-theme") — a
+// explícita de tema foi feita ainda (sem cookie "nexus-theme") — a
 // aparência de fato (cores) já segue prefers-color-scheme via puro CSS em
 // globals.css, isto é só para o ícone do botão concordar com o que a tela
 // já está mostrando.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
 )
 
 // LocalIssuer é a identidade em nome da qual o backend assina seus
@@ -19,7 +19,7 @@ import (
 // verifica", então issuer e audience coincidem deliberadamente. Também
 // serve para diferenciar nos logs/depuração um token local de um token do
 // Keycloak.
-const LocalIssuer = "projeto-aurora-local"
+const LocalIssuer = "projeto-nexus-local"
 
 // minRSAKeyBits é o tamanho mínimo de chave aceito por NewLocalSigner —
 // abaixo disso a assinatura RSA não é mais considerada segura pelos
@@ -32,6 +32,7 @@ const minRSAKeyBits = 2048
 // este tipo nunca deveria conseguir carregar o hash por engano.
 type LocalAccount struct {
 	ID       string
+	Name     string
 	Username string
 	Email    string
 	Roles    []string
@@ -48,6 +49,7 @@ type localClaims struct {
 	jwt.RegisteredClaims
 	PreferredUsername string   `json:"preferred_username"`
 	Email             string   `json:"email"`
+	Name              string   `json:"name"`
 	Roles             []string `json:"roles"`
 	Groups            []string `json:"groups"`
 }
@@ -135,6 +137,7 @@ func (s *LocalSigner) IssueToken(account LocalAccount) (token string, expiresAt 
 		},
 		PreferredUsername: account.Username,
 		Email:             account.Email,
+		Name:              account.Name,
 		Roles:             account.Roles,
 		Groups:            account.Groups,
 	}
@@ -170,6 +173,7 @@ func (s *LocalSigner) verifyToken(rawToken string) (Identity, error) {
 		Subject:  claims.Subject,
 		Username: claims.PreferredUsername,
 		Email:    claims.Email,
+		Name:     claims.Name,
 		Roles:    claims.Roles,
 		Groups:   claims.Groups,
 		Source:   SourceLocal,

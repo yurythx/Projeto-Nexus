@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 )
@@ -40,4 +41,19 @@ type Provider interface {
 
 	// PresignedGetURL gera uma URL temporária para o frontend visualizar/fazer download diretamente.
 	PresignedGetURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error)
+
+	// Stat devolve metadados do objeto (ErrObjectNotFound se não existir) —
+	// usado para confirmar um upload direto: tamanho e tipo são conferidos
+	// DEPOIS do PUT, já que a URL pré-assinada não limita o corpo.
+	Stat(ctx context.Context, bucketName, objectName string) (ObjectInfo, error)
 }
+
+// ObjectInfo são os metadados de um objeto armazenado.
+type ObjectInfo struct {
+	Size        int64
+	ContentType string
+	ETag        string
+}
+
+// ErrObjectNotFound indica objeto inexistente.
+var ErrObjectNotFound = errors.New("storage: objeto não encontrado")

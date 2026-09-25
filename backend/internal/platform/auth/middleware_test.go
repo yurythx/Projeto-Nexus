@@ -15,7 +15,7 @@ import (
 	josejwk "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
 )
 
 // testOIDCProvider sobe um endpoint HTTP real e autocontido de discovery
@@ -138,19 +138,19 @@ func testHandlerEchoIdentity() http.Handler {
 
 func TestRequireAuthentication_ValidToken(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
+	verifier := newTestVerifier(t, provider, "nexus-backend", "nexus-backend")
 	logger := slog.Default()
 
 	token := provider.signToken(t, tokenOpts{
 		subject:           "sub-1",
 		preferredUsername: "jdoe",
 		email:             "jdoe@example.com",
-		audience:          "aurora-backend",
+		audience:          "nexus-backend",
 		realmRoles:        []string{RoleUser},
 		expiresAt:         time.Now().Add(time.Hour),
 	})
 
-	handler := RequireAuthentication(verifier, logger)(testHandlerEchoIdentity())
+	handler := RequireAuthentication(verifier, nil, logger)(testHandlerEchoIdentity())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -168,8 +168,8 @@ func TestRequireAuthentication_ValidToken(t *testing.T) {
 
 func TestRequireAuthentication_MissingHeader(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
-	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
+	verifier := newTestVerifier(t, provider, "nexus-backend", "nexus-backend")
+	handler := RequireAuthentication(verifier, nil, slog.Default())(testHandlerEchoIdentity())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	rec := httptest.NewRecorder()
@@ -182,12 +182,12 @@ func TestRequireAuthentication_MissingHeader(t *testing.T) {
 
 func TestRequireAuthentication_ExpiredToken(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
-	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
+	verifier := newTestVerifier(t, provider, "nexus-backend", "nexus-backend")
+	handler := RequireAuthentication(verifier, nil, slog.Default())(testHandlerEchoIdentity())
 
 	token := provider.signToken(t, tokenOpts{
 		subject:   "sub-1",
-		audience:  "aurora-backend",
+		audience:  "nexus-backend",
 		expiresAt: time.Now().Add(-time.Hour), // already expired
 	})
 
@@ -203,8 +203,8 @@ func TestRequireAuthentication_ExpiredToken(t *testing.T) {
 
 func TestRequireAuthentication_WrongAudience(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
-	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
+	verifier := newTestVerifier(t, provider, "nexus-backend", "nexus-backend")
+	handler := RequireAuthentication(verifier, nil, slog.Default())(testHandlerEchoIdentity())
 
 	token := provider.signToken(t, tokenOpts{
 		subject:   "sub-1",
@@ -224,8 +224,8 @@ func TestRequireAuthentication_WrongAudience(t *testing.T) {
 
 func TestRequireAuthentication_MalformedScheme(t *testing.T) {
 	provider := newTestOIDCProvider(t)
-	verifier := newTestVerifier(t, provider, "aurora-backend", "aurora-backend")
-	handler := RequireAuthentication(verifier, slog.Default())(testHandlerEchoIdentity())
+	verifier := newTestVerifier(t, provider, "nexus-backend", "nexus-backend")
+	handler := RequireAuthentication(verifier, nil, slog.Default())(testHandlerEchoIdentity())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")

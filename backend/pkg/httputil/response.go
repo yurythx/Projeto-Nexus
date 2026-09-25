@@ -13,11 +13,11 @@ import (
 	"net/http"
 	"strings"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
 )
 
-// Envelope é o formato de resposta padrão de todo endpoint do Projeto Aurora.
+// Envelope é o formato de resposta padrão de todo endpoint do Projeto Nexus.
 type Envelope struct {
 	Data  any        `json:"data"`
 	Error *ErrorBody `json:"error"`
@@ -129,7 +129,7 @@ func writeProblemDetails(w http.ResponseWriter, r *http.Request, appErr *apperro
 	w.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
 	w.WriteHeader(appErr.Status)
 	_ = json.NewEncoder(w).Encode(ProblemDetails{
-		Type:      "urn:aurora:error:" + strings.ToLower(string(appErr.Code)),
+		Type:      "urn:nexus:error:" + strings.ToLower(string(appErr.Code)),
 		Title:     title,
 		Status:    appErr.Status,
 		Detail:    appErr.Message,

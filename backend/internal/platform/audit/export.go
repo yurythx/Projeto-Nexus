@@ -15,9 +15,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 // maxExportWindow limita o intervalo [from,to] de um único relatório. Um
@@ -58,7 +58,7 @@ func (e *Exporter) RegisterRoutes(r chi.Router) {
 
 type exportRow struct {
 	ID            string `json:"id" xml:"id"`
-	UserID        string `json:"user_id" xml:"user_id"`
+	ActorID       string `json:"actor_id" xml:"actor_id"`
 	Action        string `json:"action" xml:"action"`
 	ResourceType  string `json:"resource_type" xml:"resource_type"`
 	ResourceID    string `json:"resource_id" xml:"resource_id"`
@@ -110,7 +110,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	// mais uma página sem uma segunda query.
 	var sb strings.Builder
 	sb.WriteString(`
-		SELECT id, COALESCE(user_id::text,'SISTEMA'), action,
+		SELECT id, COALESCE(actor_id::text,'SISTEMA'), action,
 		       COALESCE(resource_type,''), COALESCE(resource_id,''),
 		       COALESCE(correlation_id::text,''), COALESCE(ip_address::text,''),
 		       COALESCE(metadata::text,'{}'), created_at
@@ -138,7 +138,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var rw exportRow
 		var createdAt time.Time
-		if err := rows.Scan(&rw.ID, &rw.UserID, &rw.Action, &rw.ResourceType, &rw.ResourceID,
+		if err := rows.Scan(&rw.ID, &rw.ActorID, &rw.Action, &rw.ResourceType, &rw.ResourceID,
 			&rw.CorrelationID, &rw.IPAddress, &rw.Metadata, &createdAt); err != nil {
 			continue
 		}
@@ -200,7 +200,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 		cw := csv.NewWriter(w)
 		_ = cw.Write([]string{"ID", "Usuario_ID", "Acao", "Tipo_Recurso", "ID_Recurso", "Correlation_ID", "IP", "Metadata", "Data_Hora_UTC"})
 		for _, rw := range collected {
-			_ = cw.Write([]string{rw.ID, rw.UserID, rw.Action, rw.ResourceType, rw.ResourceID, rw.CorrelationID, rw.IPAddress, rw.Metadata, rw.CreatedAt})
+			_ = cw.Write([]string{rw.ID, rw.ActorID, rw.Action, rw.ResourceType, rw.ResourceID, rw.CorrelationID, rw.IPAddress, rw.Metadata, rw.CreatedAt})
 		}
 		cw.Flush()
 	}
@@ -212,11 +212,6 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	entry.Action = "audit.exported"
 	entry.ResourceType = "audit_logs"
 	entry.ResourceID = meta.Dataset
-	if id, ok := auth.IdentityFromContext(r.Context()); ok {
-		if uid, perr := uuid.Parse(id.Subject); perr == nil {
-			entry.UserID = &uid
-		}
-	}
 	entry.Metadata = map[string]any{
 		"format": format, "window_from": meta.WindowFrom, "window_to": meta.WindowTo,
 		"action_filter": actionFilter, "rows": meta.Rows, "paginated": nextCursor != "",

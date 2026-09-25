@@ -9,7 +9,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 )
 
 // schemaFS embute o JSON Schema do envelope de evento no próprio binário
@@ -20,7 +20,7 @@ import (
 //go:embed envelope.schema.json
 var schemaFS embed.FS
 
-const schemaResourceID = "https://projeto-aurora.internal/schemas/event-envelope.json"
+const schemaResourceID = "https://projeto-nexus.internal/schemas/event-envelope.json"
 
 var (
 	compileOnce    sync.Once

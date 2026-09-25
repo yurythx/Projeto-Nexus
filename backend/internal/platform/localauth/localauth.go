@@ -24,20 +24,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// maxFailedAttempts é quantas tentativas seguidas de senha errada uma
-// conta local tolera antes de ser bloqueada temporariamente — defesa em
-// profundidade além do rate limit por IP já aplicado à rota (um IP nunca
-// é um identificador confiável contra um atacante distribuído/com proxies,
-// mas uma conta específica é). Valor fixo por enquanto — promovê-lo a uma
-// variável de configuração só faz sentido se algum ambiente real precisar
-// de um valor diferente, o que não é o caso hoje (YAGNI).
+// maxFailedAttempts é a partir de quantas tentativas seguidas de senha
+// errada a conta local é bloqueada. O bloqueio é PROGRESSIVO (A07): 1 min
+// na 5ª falha, dobrando a cada falha seguinte (2, 4, 8 min...), até
+// maxLockout — frustra força bruta sem exigir desbloqueio manual.
 const maxFailedAttempts = 5
 
-// lockoutDuration é por quanto tempo uma conta fica bloqueada depois de
-// atingir maxFailedAttempts — segue a faixa recomendada pela OWASP
-// (Account Lockout: alguns minutos, o bastante para frustrar força bruta
-// automatizada sem exigir intervenção manual de um admin a cada bloqueio).
-const lockoutDuration = 15 * time.Minute
+// maxLockout é o teto do bloqueio progressivo.
+const maxLockout = 24 * time.Hour
 
 // Account é o subconjunto de uma linha de "users" necessário para
 // autenticar um login local — nunca é serializado de volta ao cliente
@@ -86,6 +80,10 @@ type Store interface {
 	// errada aceita como tal (ou seja, não chamado quando a conta já
 	// estava bloqueada, ver Handlers.Login).
 	RegisterFailedAttempt(ctx context.Context, id uuid.UUID) error
+
+	// UpdatePasswordHash regrava o hash (rehash transparente bcrypt ->
+	// Argon2id após login bem-sucedido).
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 
 	// ResetFailedAttempts zera o contador e limpa locked_until — chamado
 	// em todo login bem-sucedido, para que um bloqueio antigo não
@@ -143,12 +141,14 @@ func (s *PostgresStore) RegisterFailedAttempt(ctx context.Context, id uuid.UUID)
 		UPDATE users
 		SET failed_login_attempts = failed_login_attempts + 1,
 		    locked_until = CASE
-		        WHEN failed_login_attempts + 1 >= $2 THEN now() + $3::interval
+		        WHEN failed_login_attempts + 1 >= $2 THEN now() + LEAST(
+		            interval '1 minute' * power(2, LEAST(failed_login_attempts + 1 - $2, 20)),
+		            $3::interval)
 		        ELSE locked_until
 		    END
 		WHERE id = $1
 	`
-	if _, err := s.pool.Exec(ctx, q, id, maxFailedAttempts, lockoutDuration.String()); err != nil {
+	if _, err := s.pool.Exec(ctx, q, id, maxFailedAttempts, maxLockout.String()); err != nil {
 		return fmt.Errorf("localauth: register failed attempt: %w", err)
 	}
 	return nil
@@ -158,6 +158,13 @@ func (s *PostgresStore) ResetFailedAttempts(ctx context.Context, id uuid.UUID) e
 	const q = `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`
 	if _, err := s.pool.Exec(ctx, q, id); err != nil {
 		return fmt.Errorf("localauth: reset failed attempts: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	if _, err := s.pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, hash); err != nil {
+		return fmt.Errorf("localauth: update password hash: %w", err)
 	}
 	return nil
 }

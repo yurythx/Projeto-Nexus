@@ -10,11 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/audit"
-	"github.com/yurythx/projeto-aurora/internal/platform/auth"
-	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 // Direitos do titular — LGPD art. 18 (F3.2 do roadmap de conformidade).
@@ -34,7 +34,11 @@ import (
 // "users": num token local o Subject já É esse id; num token do Keycloak
 // o Subject é o "sub" externo (coluna keycloak_subject).
 func (s *Service) resolveUserID(ctx context.Context, identity auth.Identity) (uuid.UUID, error) {
-	if id, err := uuid.Parse(identity.Subject); err == nil {
+	// O IAM já resolveu o id interno na autenticação.
+	if identity.UserID != uuid.Nil {
+		return identity.UserID, nil
+	}
+	if id, err := uuid.Parse(identity.Subject); err == nil && identity.Source == auth.SourceLocal {
 		var exists bool
 		if qerr := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, id).Scan(&exists); qerr == nil && exists {
 			return id, nil
@@ -126,7 +130,7 @@ func (s *Service) handleExportMyData(w http.ResponseWriter, r *http.Request) {
 	pkg.AuditTrail = s.collectRows(ctx, `
 		SELECT action, COALESCE(resource_type,''), COALESCE(resource_id,''),
 		       COALESCE(metadata::text,'{}'), COALESCE(ip_address::text,''), created_at
-		FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5000`, uid,
+		FROM audit_logs WHERE actor_id = $1 ORDER BY chain_pos DESC LIMIT 5000`, uid,
 		"action", "resource_type", "resource_id", "metadata", "ip_address", "created_at")
 
 	pkg.DSRRequests = s.collectRows(ctx, `
@@ -134,14 +138,14 @@ func (s *Service) handleExportMyData(w http.ResponseWriter, r *http.Request) {
 		FROM data_subject_requests WHERE user_id = $1 ORDER BY created_at DESC`, uid,
 		"kind", "status", "detail", "created_at", "completed_at")
 
-	filename := fmt.Sprintf("meus-dados-aurora-%s.json", time.Now().UTC().Format("20060102_150405"))
+	filename := fmt.Sprintf("meus-dados-nexus-%s.json", time.Now().UTC().Format("20060102_150405"))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, pkg, nil)
 
 	entry := audit.FromRequest(r)
-	entry.UserID = &uid
+	entry.ActorID = &uid
 	entry.Action = "lgpd.data_export.self"
 	entry.ResourceType = "user"
 	entry.ResourceID = uid.String()

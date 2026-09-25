@@ -1,5 +1,5 @@
 -- +goose Up
--- Baseline da plataforma Projeto Aurora (base genérica).
+-- Baseline da plataforma Projeto Nexus (base genérica).
 -- Consolida as migrations 000001–000042 no estado final: só as tabelas do
 -- núcleo — identidade (users + login local + lockout), jobs, outbox
 -- transacional, auditoria imutável, integrações, rate limiting distribuído,

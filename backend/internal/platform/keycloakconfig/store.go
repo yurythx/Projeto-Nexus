@@ -1,5 +1,5 @@
 // Package keycloakconfig implementa a configuração do Keycloak editável
-// em tempo de execução pelo aurora-admin (menu Configurações > Keycloak /
+// em tempo de execução pelo nexus-admin (menu Configurações > Keycloak /
 // IAM) — o mesmo espírito de internal/platform/configflags (persistida no
 // Postgres, sem cache, alterável sem reiniciar o processo), mas para os
 // parâmetros de conexão OIDC em vez de interruptores booleanos.
@@ -22,8 +22,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/yurythx/projeto-aurora/internal/platform/config"
-	"github.com/yurythx/projeto-aurora/internal/platform/secretcrypto"
+	"github.com/yurythx/projeto-nexus/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/secretcrypto"
 )
 
 // Settings é o estado persistido (e já decifrado, quando lido por Get)

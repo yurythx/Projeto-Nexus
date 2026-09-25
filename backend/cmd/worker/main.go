@@ -1,4 +1,4 @@
-// Command worker roda os processadores assíncronos do Projeto Aurora:
+// Command worker roda os processadores assíncronos do Projeto Nexus:
 // consumers das filas do RabbitMQ, publisher do outbox e rotinas de manutenção.
 package main
 
@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/yurythx/projeto-aurora/internal/app"
+	"github.com/yurythx/projeto-nexus/internal/app"
 )
 
 func main() {
@@ -30,12 +30,9 @@ func run() error {
 	}
 	defer deps.Close()
 
-	runner, err := app.NewWorker(deps)
-	if err != nil {
-		return fmt.Errorf("bootstrap worker: %w", err)
-	}
+	runner := app.NewWorker(deps)
 
-	deps.Logger.Info("projeto aurora worker starting")
+	deps.Logger.Info("projeto nexus worker starting")
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- runner.Run(ctx) }()

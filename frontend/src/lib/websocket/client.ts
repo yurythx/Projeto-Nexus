@@ -1,47 +1,65 @@
 import { ApiError } from "@/lib/api/client";
-import { parseEventEnvelope, type EventEnvelope } from "@/lib/validation/schemas";
 
-// "unauthorized" (achado real — usuário reportou nunca ver progresso de
-// scan em tempo real; o log do backend mostrava POST /api/v1/ws/ticket
-// devolvendo 401 a cada ~30s, pra sempre, na mesma sessão): getTicket
-// falhando com 401 significa que a SESSÃO em si expirou (o token que
-// tentaria buscar um ticket novo já não é mais válido) — reconectar com
-// backoff nunca vai funcionar até um login novo, ao contrário de um erro
-// de rede/servidor fora do ar (que scheduleReconnect já cobre bem).
-// Estado TERMINAL — nunca agenda outra tentativa a partir daqui.
+// Cliente de tempo real do Nexus. O servidor trabalha com TÓPICOS
+// (internal/platform/ws): "broadcast" e "user:<id>" são assinados
+// automaticamente; tópicos de plugin ("mercurio:room:<id>") são assinados
+// sob demanda e revalidados pelo autorizador do módulo. Frames:
+//   { "type": "...", "topic"?: "...", "data"?: ... }
+//
+// "unauthorized" é TERMINAL: o ticket foi negado com 401 (sessão expirou)
+// — reconectar não adianta até um novo login.
 export type ConnectionState = "idle" | "connecting" | "open" | "closed" | "unauthorized";
 
-interface NotificationClientOptions {
-  /** Busca um ticket novo de curta duração (§38) — chamado ao conectar e
-   * em toda reconexão, já que tickets são de uso único. */
+export interface Frame {
+  type: string;
+  topic?: string;
+  data?: unknown;
+}
+
+export type FrameHandler = (frame: Frame) => void;
+
+interface RealtimeClientOptions {
+  /** Ticket de uso único (POST /api/v1/ws/ticket) — um novo a cada conexão. */
   getTicket: () => Promise<string>;
   wsBaseUrl: string;
-  onMessage: (event: EventEnvelope) => void;
   onStateChange?: (state: ConnectionState) => void;
-  /** Sobrescrevível nos testes; usa o backoff exponencial real por padrão. */
+  /** Sobrescrevível nos testes. */
   backoffMs?: (attempt: number) => number;
+  /** Sobrescrevível nos testes. */
+  socketFactory?: (url: string) => WebSocket;
 }
 
 const MAX_BACKOFF_MS = 30_000;
 
-function defaultBackoff(attempt: number): number {
+export function defaultBackoff(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
 }
 
+export function parseFrame(raw: string): Frame | null {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (v && typeof v === "object" && typeof (v as Frame).type === "string") return v as Frame;
+  } catch {
+    // frame malformado
+  }
+  return null;
+}
+
 /**
- * Gerencia uma conexão WebSocket lógica com o endpoint de notificações da
- * plataforma: busca um ticket novo a cada (re)conexão, e reconecta com
- * backoff exponencial limitado em qualquer close/error — nunca um loop de
- * retry agressivo e sem limite (§39), o que sobrecarregaria o backend numa
- * instabilidade prolongada.
+ * Uma conexão lógica com reconexão exponencial limitada (nunca um loop
+ * agressivo), reassinatura automática dos tópicos após reconectar e
+ * distribuição dos frames para os assinantes locais.
  */
-export class NotificationClient {
+export class RealtimeClient {
   private socket: WebSocket | null = null;
   private attempt = 0;
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly topics = new Map<string, number>();
+  private readonly handlers = new Set<FrameHandler>();
+  state: ConnectionState = "idle";
 
-  constructor(private readonly opts: NotificationClientOptions) {}
+  constructor(private readonly opts: RealtimeClientOptions) {}
 
   connect(): void {
     this.stopped = false;
@@ -50,27 +68,49 @@ export class NotificationClient {
 
   disconnect(): void {
     this.stopped = true;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.socket?.close(1000, "client disconnect");
     this.socket = null;
+  }
+
+  /** Registra um ouvinte de frames; devolve a função de remoção. */
+  onFrame(handler: FrameHandler): () => void {
+    this.handlers.add(handler);
+    return () => this.handlers.delete(handler);
+  }
+
+  /** Assina um tópico (contagem de referências: vários componentes podem
+   * assinar o mesmo tópico). Devolve a função de cancelamento. */
+  subscribe(topic: string): () => void {
+    const n = this.topics.get(topic) ?? 0;
+    this.topics.set(topic, n + 1);
+    if (n === 0) this.send({ type: "subscribe", topic });
+    return () => {
+      const cur = this.topics.get(topic) ?? 0;
+      if (cur <= 1) {
+        this.topics.delete(topic);
+        this.send({ type: "unsubscribe", topic });
+      } else {
+        this.topics.set(topic, cur - 1);
+      }
+    };
+  }
+
+  send(frame: Frame): void {
+    if (this.socket && this.socket.readyState === 1) {
+      this.socket.send(JSON.stringify(frame));
+    }
   }
 
   private async open(): Promise<void> {
     if (this.stopped) return;
     this.setState("connecting");
-
     let ticket: string;
     try {
       ticket = await this.opts.getTicket();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        // Sessão expirada — retry é inútil até um login novo (nunca vai
-        // deixar de dar 401 sozinho). Pra qualquer OUTRO erro (rede,
-        // servidor fora do ar), continua reconectando com backoff, igual
-        // sempre fez.
         this.setState("unauthorized");
         return;
       }
@@ -80,44 +120,35 @@ export class NotificationClient {
     if (this.stopped) return;
 
     const url = `${this.opts.wsBaseUrl}?ticket=${encodeURIComponent(ticket)}`;
-    const socket = new WebSocket(url);
+    const socket = this.opts.socketFactory ? this.opts.socketFactory(url) : new WebSocket(url);
     this.socket = socket;
 
     socket.onopen = () => {
       this.attempt = 0;
       this.setState("open");
+      for (const topic of this.topics.keys()) socket.send(JSON.stringify({ type: "subscribe", topic }));
     };
-
     socket.onmessage = (ev) => {
-      const parsed = parseEventEnvelope(typeof ev.data === "string" ? ev.data : "");
-      if (!parsed) {
-        console.warn("projeto-aurora: dropped malformed WebSocket message");
-        return;
-      }
-      this.opts.onMessage(parsed);
+      const frame = parseFrame(typeof ev.data === "string" ? ev.data : "");
+      if (!frame) return;
+      for (const h of this.handlers) h(frame);
     };
-
     socket.onclose = () => {
       this.setState("closed");
       if (!this.stopped) this.scheduleReconnect();
     };
-
-    socket.onerror = () => {
-      // onclose dispara logo depois de onerror em WebSockets de
-      // navegador; a reconexão é agendada lá para evitar agendar duas
-      // vezes.
-      socket.close();
-    };
+    socket.onerror = () => socket.close();
   }
 
   private scheduleReconnect(): void {
     if (this.stopped) return;
-    const backoff = (this.opts.backoffMs ?? defaultBackoff)(this.attempt);
+    const delay = (this.opts.backoffMs ?? defaultBackoff)(this.attempt);
     this.attempt += 1;
-    this.reconnectTimer = setTimeout(() => void this.open(), backoff);
+    this.reconnectTimer = setTimeout(() => void this.open(), delay);
   }
 
   private setState(state: ConnectionState): void {
+    this.state = state;
     this.opts.onStateChange?.(state);
   }
 }

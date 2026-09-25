@@ -1,6 +1,6 @@
-# Projeto Aurora — Plataforma Enterprise Base Governamental
+# Projeto Nexus — Plataforma Enterprise Base Governamental
 
-O **Projeto Aurora** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica em estrita conformidade com as normas do Governo Federal Brasileiro** (SGD/MGI, e-MAG 2.0, DSGov, LGPD, Gov.br e OWASP) para o rápido desenvolvimento e desacoplamento de novos módulos de negócio municipais e estaduais.
+O **Projeto Nexus** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** em Go (Backend) e Next.js App Router (Frontend), desenvolvida para servir como **base enterprise genérica em estrita conformidade com as normas do Governo Federal Brasileiro** (SGD/MGI, e-MAG 2.0, DSGov, LGPD, Gov.br e OWASP) para o rápido desenvolvimento e desacoplamento de novos módulos de negócio municipais e estaduais.
 
 Ele fornece um **Core System (Kernel)** robusto com infraestrutura pronta de segurança HTTP, mensageria, outbox transacional, autenticação OIDC Gov.br / Local, mascaramento PII, auditoria imutável, busca full-text em PostgreSQL e um Design System governamental oficial (DSGov / e-MAG).
 
@@ -8,7 +8,7 @@ Ele fornece um **Core System (Kernel)** robusto com infraestrutura pronta de seg
 
 ## 🏛️ Conformidade Governamental (SGD/MGI) & Recursos Globais
 
-O Projeto Aurora atende integralmente aos 5 módulos de conformidade exigidos pela Secretaria de Governo Digital (SGD/MGI):
+O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pela Secretaria de Governo Digital (SGD/MGI):
 
 1. **Módulo 1: Segurança HTTP & Headers Defensivos (Go):** Headers OWASP (`HSTS`, `CSP com Nonce`, `X-Frame DENY`, `X-Content-Type nosniff`), rate-limiting e timeouts de servidor anti-DoS.
 2. **Módulo 2: Privacidade & LGPD (Go):** Mascaramento nativo de PII (`slog.LogValuer` em CPF, e-mail, telefone) e rastreabilidade correlacionada (`X-Request-ID`).
@@ -97,7 +97,7 @@ make seed-admin
 ```
 
 ### 5. Acessar a Aplicação
-- **Frontend (Painel Aurora):** [http://localhost:3002](http://localhost:3002)
+- **Frontend (Painel Nexus):** [http://localhost:3002](http://localhost:3002)
 - **API Healthcheck:** [http://localhost:8002/health](http://localhost:8002/health)
 
 ---
@@ -127,5 +127,5 @@ Para adicionar um novo módulo à aplicação (ex.: `patrimonio`):
    ```bash
    ./scripts/create-module.sh patrimonio
    ```
-2. **Guia Completo:** Consulte a documentação detalhada da arquitetura em [`docs/GUIDE_MODULOS.md`](file:///home/adm.yuri@rondonopolis.local/Área de trabalho/Projetos/Projeto-Aurora/docs/GUIDE_MODULOS.md).
+2. **Guia Completo:** Consulte a documentação detalhada da arquitetura em [`docs/GUIDE_MODULOS.md`](file:///home/adm.yuri@rondonopolis.local/Área de trabalho/Projetos/Projeto-Nexus/docs/GUIDE_MODULOS.md).
 3. **Módulo Blueprint:** Utilize a implementação de referência em `backend/internal/modules/example/` e no menu **"Módulo Modelo"** (`/exemplos` no frontend).

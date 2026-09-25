@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Projeto Aurora API
+  title: Projeto Nexus API
   description: |
-    API REST do Projeto Aurora — Core System (Kernel) em Go sobre
+    API REST do Projeto Nexus — Core System (Kernel) em Go sobre
     Arquitetura Microkernel: infraestrutura de autenticação, auditoria,
     outbox transacional e mensageria compartilhada por todo módulo de
     negócio (plug-in) registrado em `internal/modules/`. Todo endpoint
@@ -18,7 +18,7 @@ info:
 
     **RFC 7807 (Problem Details)**: um cliente que envia
     `Accept: application/problem+json` recebe as respostas de ERRO no
-    formato RFC 7807 (`type` = `urn:aurora:error:<code>`, `title`,
+    formato RFC 7807 (`type` = `urn:nexus:error:<code>`, `title`,
     `status`, `detail`, `instance`, mais as extensões `code` e
     `request_id`). Qualquer outro `Accept` mantém o envelope acima.
     Respostas de sucesso não mudam. Ver ADR
@@ -71,7 +71,7 @@ tags:
   - name: websocket
     description: Emissão de ticket para notificações em tempo real.
   - name: admin
-    description: "Operações administrativas restritas ao papel aurora-admin, ex.: feature flags."
+    description: "Operações administrativas restritas ao papel nexus-admin, ex.: feature flags."
   - name: lgpd
     description: >
       Consentimento (Lei 13.709/2018) e direitos do titular (art. 18):
@@ -436,7 +436,7 @@ paths:
       summary: Lista toda feature flag registrada
       operationId: listFeatureFlags
       description: >
-        Restrito ao papel aurora-admin. Inclui as flags semeadas por migration
+        Restrito ao papel nexus-admin. Inclui as flags semeadas por migration
         (`module_exemplos_enabled`) e qualquer outra já criada via
         PATCH.
       security:
@@ -466,7 +466,7 @@ paths:
       summary: Habilita ou desabilita uma feature flag
       operationId: setFeatureFlag
       description: >
-        Restrito ao papel aurora-admin. Efeito imediato em toda réplica da
+        Restrito ao papel nexus-admin. Efeito imediato em toda réplica da
         API/worker — não há cache em memória, cada checagem de flag
         consulta o Postgres diretamente (§ Feature Flags & Configuração
         Dinâmica). Se `key` ainda não existir, é criada nesta chamada
@@ -517,7 +517,7 @@ paths:
       summary: Estado atual da configuração do Keycloak
       operationId: getKeycloakSettings
       description: >
-        Restrito ao papel aurora-admin (§ Configuração Dinâmica do
+        Restrito ao papel nexus-admin (§ Configuração Dinâmica do
         Keycloak). Nunca devolve um client secret em texto plano — só se um
         está definido (`client_secret_set`/`frontend_client_secret_set`).
       security:
@@ -543,7 +543,7 @@ paths:
       summary: Salva a configuração do Keycloak
       operationId: saveKeycloakSettings
       description: >
-        Restrito ao papel aurora-admin. SEMPRE testa o discovery OIDC contra
+        Restrito ao papel nexus-admin. SEMPRE testa o discovery OIDC contra
         `issuer_url` antes de persistir — se o discovery falhar, nada é
         salvo e a resposta é 422. Depois de salvar com sucesso, o backend
         recarrega o verificador de tokens (`auth.Verifier.Reload`) na hora,
@@ -578,12 +578,12 @@ paths:
                   type: string
                   description: Vazio/ausente = manter o segredo já salvo.
             example:
-              issuer_url: "https://sso.orgao.gov.br/realms/aurora"
-              realm: "aurora"
-              client_id: "aurora-backend"
+              issuer_url: "https://sso.orgao.gov.br/realms/nexus"
+              realm: "nexus"
+              client_id: "nexus-backend"
               client_secret: "s3gr3d0-do-backend"
-              audience: "aurora-backend"
-              frontend_client_id: "aurora-frontend"
+              audience: "nexus-backend"
+              frontend_client_id: "nexus-frontend"
               frontend_client_secret: "s3gr3d0-do-frontend"
       responses:
         "200":
@@ -615,7 +615,7 @@ paths:
       summary: Testa uma configuração do Keycloak sem salvar
       operationId: testKeycloakSettings
       description: >
-        Restrito ao papel aurora-admin. Nunca persiste nada — só tenta o
+        Restrito ao papel nexus-admin. Nunca persiste nada — só tenta o
         discovery OIDC contra `issuer_url` e, se `client_id`/`client_secret`
         forem informados, uma troca `client_credentials` contra o
         token_endpoint descoberto (best-effort: falhar aqui não significa
@@ -803,7 +803,7 @@ paths:
       responses:
         "200":
           description: >
-            `meus-dados-aurora-<timestamp>.json` (`Content-Disposition:
+            `meus-dados-nexus-<timestamp>.json` (`Content-Disposition:
             attachment`).
           content:
             application/json: { schema: { type: object } }
@@ -1144,7 +1144,7 @@ components:
         A integração externa está temporariamente indisponível.
         `CIRCUIT_OPEN` (o circuit breaker interno abriu depois de falhas
         consecutivas — tende a se resolver sozinho) e `FEATURE_DISABLED`
-        (um aurora-admin desligou a integração via feature flag — só volta
+        (um nexus-admin desligou a integração via feature flag — só volta
         quando religada) usam o mesmo status 503, diferenciados pelo
         `error.code`.
       content:
@@ -1331,7 +1331,7 @@ components:
           enum: [database, environment, unset]
         issuer_url:
           type: string
-          description: URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/aurora) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido.
+          description: URL do realm no Keycloak (ex. https://sso.orgao.gov.br/realms/nexus) — de onde o backend baixa o documento de discovery OIDC e as chaves públicas (JWKS) usadas para validar todo token recebido.
         realm:
           type: string
           description: Nome do realm Keycloak — informativo (o backend descobre tudo que precisa a partir de issuer_url), mas exibido para conferência.
@@ -1394,7 +1394,7 @@ components:
           type: integer
         source:
           type: string
-          example: "aurora.example"
+          example: "nexus.example"
         occurred_at:
           type: string
           format: date-time

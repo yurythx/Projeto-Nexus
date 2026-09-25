@@ -15,10 +15,10 @@ const CURRENT_TERM_VERSION = "v1.0.0-2026";
 // mesmo visitante, ao autenticar depois, ter o aceite reconhecível.
 function getOrCreateDeviceId(): string {
   try {
-    let id = localStorage.getItem("aurora_device_id");
+    let id = localStorage.getItem("nexus_device_id");
     if (!id) {
       id = crypto.randomUUID();
-      localStorage.setItem("aurora_device_id", id);
+      localStorage.setItem("nexus_device_id", id);
     }
     return id;
   } catch {
@@ -33,7 +33,7 @@ export function LGPDConsentModal() {
 
   useEffect(() => {
     try {
-      const consent = localStorage.getItem("aurora_lgpd_consent");
+      const consent = localStorage.getItem("nexus_lgpd_consent");
       if (consent === CURRENT_TERM_VERSION) return;
     } catch {
       // localStorage indisponível — mostra o modal mesmo assim
@@ -70,7 +70,7 @@ export function LGPDConsentModal() {
       // Fallback gracioso se a rota estiver indisponível
     } finally {
       try {
-        localStorage.setItem("aurora_lgpd_consent", CURRENT_TERM_VERSION);
+        localStorage.setItem("nexus_lgpd_consent", CURRENT_TERM_VERSION);
       } catch {
         /* sem localStorage — o modal reaparece na próxima visita */
       }

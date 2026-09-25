@@ -8,7 +8,7 @@
 // exemplos deliberadamente seguros (agregados, nunca dado pessoal):
 //   - GET /transparencia/datasets        → catálogo + dicionário de dados
 //   - GET /transparencia/plataforma      → métricas agregadas da plataforma
-//   - GET /transparencia/integracoes     → status dos serviços externos
+//   - GET /transparencia/modulos         → módulos (plugins) ativos da plataforma
 //   - GET /transparencia/auditoria/acoes → catálogo de ações auditadas + volume
 //
 // Todos aceitam ?format=json|csv|xml (default: json) ou o header Accept.
@@ -28,28 +28,36 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/httpserver"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
-type Service struct {
-	db     *pgxpool.Pool
-	logger *slog.Logger
+// ModuleInfo é a visão pública de um módulo.
+type ModuleInfo struct {
+	Key, Name, Description string
+	Enabled                bool
 }
 
-func NewService(db *pgxpool.Pool, logger *slog.Logger) *Service {
-	return &Service{db: db, logger: logger}
+type Service struct {
+	db      *pgxpool.Pool
+	logger  *slog.Logger
+	modules func() []ModuleInfo
+}
+
+// NewService cria o serviço; modules lista o estado dos plugins (Kernel).
+func NewService(db *pgxpool.Pool, logger *slog.Logger, modules func() []ModuleInfo) *Service {
+	return &Service{db: db, logger: logger, modules: modules}
 }
 
 // RegisterRoutes monta as rotas públicas de transparência. r deve ser um
 // router SEM auth.RequireAuthentication; limiter aplica rate limit por IP.
 func RegisterRoutes(r chi.Router, s *Service, limiter httpserver.Limiter) {
-	r.Route("/api/v1/transparencia", func(t chi.Router) {
+	r.Route("/transparencia", func(t chi.Router) {
 		t.Use(httpserver.RateLimit(s.logger, limiter, httpserver.ClientIPKey))
 		t.Get("/datasets", s.handleCatalog)
 		t.Get("/plataforma", s.handlePlatform)
-		t.Get("/integracoes", s.handleIntegrations)
+		t.Get("/modulos", s.handleModules)
 		t.Get("/auditoria/acoes", s.handleAuditActions)
 	})
 }
@@ -63,18 +71,17 @@ func (s *Service) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			"endpoint": "/api/v1/transparencia/plataforma",
 			"campos": map[string]string{
 				"usuarios_ativos":      "inteiro — contagem de contas ativas (sem identificação)",
-				"integracoes_total":    "inteiro — total de integrações externas cadastradas",
+				"modulos_ativos":       "inteiro — total de módulos (plugins) ativos",
 				"termos_lgpd_vigentes": "texto — versão vigente dos Termos/Política de Privacidade",
 				"gerado_em":            "data-hora UTC (RFC3339)",
 			},
 			"periodicidade": "tempo real", "formatos": []string{"json", "csv", "xml"},
 		},
 		{
-			"id": "integracoes", "titulo": "Serviços externos e disponibilidade",
-			"endpoint": "/api/v1/transparencia/integracoes",
+			"id": "modulos", "titulo": "Módulos da plataforma e disponibilidade",
+			"endpoint": "/api/v1/transparencia/modulos",
 			"campos": map[string]string{
-				"nome": "texto", "tipo": "texto", "status": "texto (online|offline|degraded|unknown|disabled)",
-				"ultima_verificacao": "data-hora UTC ou vazio",
+				"chave": "texto", "nome": "texto", "descricao": "texto", "ativo": "booleano",
 			},
 			"periodicidade": "tempo real", "formatos": []string{"json", "csv", "xml"},
 		},
@@ -98,39 +105,31 @@ func (s *Service) handleCatalog(w http.ResponseWriter, r *http.Request) {
 // ---- plataforma -------------------------------------------------------
 
 func (s *Service) handlePlatform(w http.ResponseWriter, r *http.Request) {
-	var usuariosAtivos, integracoesTotal int
+	var usuariosAtivos, modulosAtivos int
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE active`).Scan(&usuariosAtivos)
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM integrations`).Scan(&integracoesTotal)
+	for _, m := range s.modules() {
+		if m.Enabled {
+			modulosAtivos++
+		}
+	}
 
 	row := map[string]any{
 		"usuarios_ativos":      usuariosAtivos,
-		"integracoes_total":    integracoesTotal,
+		"modulos_ativos":       modulosAtivos,
 		"termos_lgpd_vigentes": "v1.0.0-2026",
 		"gerado_em":            time.Now().UTC().Format(time.RFC3339),
 	}
 	s.write(w, r, "plataforma", nil, []map[string]any{row})
 }
 
-// ---- integrações ----------------------------------------------------
+// ---- módulos ---------------------------------------------------------
 
-func (s *Service) handleIntegrations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `
-		SELECT name, type, status, COALESCE(last_check_at::text, '')
-		FROM integrations ORDER BY name`)
-	if err != nil {
-		httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("transparency integrations: %w", err)))
-		return
-	}
-	defer rows.Close()
+func (s *Service) handleModules(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
-	for rows.Next() {
-		var name, typ, status, lastCheck string
-		if err := rows.Scan(&name, &typ, &status, &lastCheck); err != nil {
-			continue
-		}
-		out = append(out, map[string]any{"nome": name, "tipo": typ, "status": status, "ultima_verificacao": lastCheck})
+	for _, m := range s.modules() {
+		out = append(out, map[string]any{"chave": m.Key, "nome": m.Name, "descricao": m.Description, "ativo": m.Enabled})
 	}
-	s.write(w, r, "integracoes", nil, out)
+	s.write(w, r, "modulos", nil, out)
 }
 
 // ---- ações auditadas (agregado) -----------------------------------

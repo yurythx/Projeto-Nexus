@@ -1,12 +1,12 @@
-# 📖 Guia do Desenvolvedor — Plataforma Projeto Aurora
+# 📖 Guia do Desenvolvedor — Plataforma Projeto Nexus
 
-Bem-vindo ao guia de desenvolvimento e arquitetura do **Projeto Aurora**. Este documento foi elaborado para capacitar engenheiros de software, arquitetos e equipes de TI municipais a desenvolver, manter e expandir aplicações corporativas sobre a base governamental padronizada.
+Bem-vindo ao guia de desenvolvimento e arquitetura do **Projeto Nexus**. Este documento foi elaborado para capacitar engenheiros de software, arquitetos e equipes de TI municipais a desenvolver, manter e expandir aplicações corporativas sobre a base governamental padronizada.
 
 ---
 
 ## 🏛️ 1. Visão Geral e Arquitetura
 
-O **Projeto Aurora** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** combinado a um **Monólito Modular & Clean Architecture**:
+O **Projeto Nexus** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** combinado a um **Monólito Modular & Clean Architecture**:
 
 - **Core System / Kernel (`internal/platform/`)**: Infraestrutura central reutilizável que fornece os serviços fundamentais da plataforma:
   - Autenticação OIDC Gov.br / Local RSA.

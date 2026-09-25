@@ -173,3 +173,15 @@ func (p *MinioProvider) PresignedGetURL(ctx context.Context, bucketName, objectN
 	}
 	return url.String(), nil
 }
+
+// Stat implementa Provider.
+func (p *MinioProvider) Stat(ctx context.Context, bucketName, objectName string) (ObjectInfo, error) {
+	info, err := p.client.StatObject(ctx, bucketName, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return ObjectInfo{}, ErrObjectNotFound
+		}
+		return ObjectInfo{}, fmt.Errorf("minio stat %s/%s: %w", bucketName, objectName, err)
+	}
+	return ObjectInfo{Size: info.Size, ContentType: info.ContentType, ETag: info.ETag}, nil
+}

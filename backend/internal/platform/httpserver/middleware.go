@@ -18,10 +18,10 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
-	apperrors "github.com/yurythx/projeto-aurora/internal/domain/errors"
-	"github.com/yurythx/projeto-aurora/internal/platform/logging"
-	"github.com/yurythx/projeto-aurora/internal/platform/metrics"
-	"github.com/yurythx/projeto-aurora/pkg/httputil"
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/logging"
+	"github.com/yurythx/projeto-nexus/internal/platform/metrics"
+	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 const RequestIDHeader = "X-Request-ID"
@@ -110,8 +110,8 @@ func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hijacker.Hijack()
 }
 
-// Metrics registra nix_http_requests_total e
-// nix_http_request_duration_seconds (§53). Rotula pelo *padrão* de rota
+// Metrics registra nexus_http_requests_total e
+// nexus_http_request_duration_seconds (§53). Rotula pelo *padrão* de rota
 // que o chi casou (ex.: "/api/v1/users/{id}"), lido do contexto de
 // roteamento depois que ServeHTTP retorna — nunca o path bruto, que
 // explodiria a cardinalidade das métricas com uma série por id de usuário.
@@ -171,13 +171,15 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
 		// Incondicional: o navegador ignora HSTS quando a resposta chega
 		// por HTTP puro (dev local), então mandar sempre é inofensivo e
 		// não depende de detectar TLS terminado upstream.
-		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		h.Set("Cross-Origin-Resource-Policy", "same-site")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -217,8 +219,8 @@ type Limiter interface {
 // então o limite *efetivo* vira N × o configurado. Serve bem para
 // desenvolvimento local ou um deployment de réplica única; produção deve
 // usar internal/platform/ratelimit.PostgresLimiter, que é compartilhado
-// por todas as réplicas (rate limiting distribuído — a plataforma não usa
-// Redis por design, §7, então o compartilhamento é feito via Postgres).
+// por todas as réplicas: internal/platform/ratelimit.RedisLimiter (padrão)
+// ou PostgresLimiter.
 type InMemoryLimiter struct {
 	mu       sync.Mutex
 	limiters map[string]*rateEntry
@@ -414,6 +416,29 @@ func timeoutExceptWebSocket(d time.Duration) func(http.Handler) http.Handler {
 				return
 			}
 			wrapped.ServeHTTP(w, r)
+		})
+	}
+}
+
+// TrustedRealIP reescreve r.RemoteAddr com o IP real do cliente (ver
+// ClientIP) quando a conexão TCP vem de um proxy reverso confiável. Roda
+// primeiro na cadeia: rate limiting, auditoria e prova de consentimento
+// passam a enxergar o IP real sem cada um reimplementar a leitura segura
+// do X-Forwarded-For. Sem proxies configurados, é um no-op.
+func TrustedRealIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if len(trusted) == 0 {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			host, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				host = r.RemoteAddr
+			}
+			if ip := ClientIP(r, trusted); ip != "" && ip != host {
+				r.RemoteAddr = net.JoinHostPort(ip, "0")
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
