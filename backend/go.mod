@@ -2,6 +2,8 @@ module github.com/yurythx/projeto-nexus
 
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/coreos/go-oidc/v3 v3.20.0

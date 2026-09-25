@@ -36,7 +36,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 
 ```text
 .
-├── backend/                   # ⚙️ Backend em Go (1.25+) — Arquitetura Microkernel
+├── backend/                   # ⚙️ Backend em Go (1.26+) — Arquitetura Microkernel
 │   ├── cmd/
 │   │   ├── api/               # API REST e Servidor WebSocket
 │   │   ├── worker/            # Processador background RabbitMQ / Outbox
@@ -94,7 +94,7 @@ Os plug-ins são ativados e desativados em runtime em **Configurações → Mód
 
 ### Pré-requisitos
 - Docker & Docker Compose
-- Go 1.25+ (opcional para rodar local fora do container)
+- Go 1.26+ (opcional para rodar local fora do container)
 - Node.js 20+ (opcional para rodar frontend fora do container)
 
 ### 1. Configurar Variáveis de Ambiente
