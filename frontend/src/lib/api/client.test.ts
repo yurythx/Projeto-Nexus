@@ -24,6 +24,18 @@ describe("apiClient", () => {
     expect(data).toEqual({ id: "1" });
   });
 
+  it("sends a fresh X-Idempotency-Key on mutations, never on reads", async () => {
+    mockFetchOnce(200, { data: {}, error: null });
+    await apiClient.post("v1/blog/posts", { title: "x" });
+    await apiClient.post("v1/blog/posts", { title: "x" });
+    await apiClient.get("v1/blog/posts");
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    const key = (i: number) => (calls[i]![1].headers as Record<string, string>)["X-Idempotency-Key"];
+    expect(key(0)).toMatch(/^[0-9a-f-]{36}$/);
+    expect(key(1)).not.toBe(key(0));
+    expect(key(2)).toBeUndefined();
+  });
+
   it("passes through meta alongside data", async () => {
     mockFetchOnce(200, { data: [], error: null, meta: { page: 1 } });
     const { meta } = await apiClient.get<unknown[]>("v1/users");

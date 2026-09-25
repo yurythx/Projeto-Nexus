@@ -30,11 +30,18 @@ npm run dev
 
 ## Organização
 
-- `src/app` — rotas (App Router): landing page, `/sobre`, `/login`, as
-  rotas autenticadas em `(protected)/**` (`/dashboard`, `/contratos`,
-  `/pessoal`, `/monitoramento`, `/integracoes`, `/configuracao`), o route
-  handler do NextAuth e o proxy
-  BFF `/api/backend/*`.
+- `src/app` — rotas (App Router): site público (`/`, `/sobre`, `/servicos`,
+  `/setores`, `/eventos`, `/contato`, `/verificar/{id}`), `/login`, a área
+  autenticada em `(protected)/**` (dashboard, telas de cada plug-in,
+  `/auditoria`, `/configuracao/*`, `/perfil`), o route handler do NextAuth e
+  os proxies BFF `/api/backend/*` (autenticado) e `/api/public/*` (allowlist
+  anônima).
+- `src/lib/nexus` — `NexusProvider` (identidade efetiva via `GET /me` e estado
+  dos módulos via `GET /system/modules`), `types.ts` (espelho dos DTOs Go) e
+  `upload.ts` (upload direto ao MinIO por URL pré-assinada, SHA-256 local).
+- `src/components/nexus` — peças de tela reutilizadas pelos plug-ins
+  (`PageHeader`, `DataState`, `Pagination`, `ConfirmButton`, `Markdown`
+  seguro, `useAction`).
 - `src/lib/auth` — configuração do NextAuth: login local usuário/senha
   (CredentialsProvider, RS256) **ou** SSO Keycloak (Authorization Code +
   PKCE); sessão em JWT nos dois casos.

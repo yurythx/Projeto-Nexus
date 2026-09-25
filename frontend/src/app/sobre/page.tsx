@@ -4,15 +4,16 @@ import { connection } from "next/server";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PublicShell } from "@/components/layout/PublicShell";
+import { getServerBranding } from "@/lib/branding/server";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/ui/Table";
 
 const description =
-  "Visão geral da arquitetura de Assistência Social e sua conformidade estrita com as normas do Governo Federal (e-MAG, DSGov, LGPD, OIDC Gov.br, e-PING e OWASP).";
+  "Visão geral da arquitetura da plataforma e sua conformidade com as normas do Governo Federal (e-MAG, DSGov, LGPD, e-PING e OWASP).";
 
 export const metadata: Metadata = {
-  title: "Sobre & Conformidade Governamental — Assistência Social",
+  title: "Sobre & Conformidade",
   description,
-  openGraph: { title: "Sobre & Conformidade — Assistência Social", description, type: "website" },
+  openGraph: { title: "Sobre & Conformidade", description, type: "website" },
 };
 
 // Detalhamento dos 5 Módulos de Conformidade Governamental
@@ -32,8 +33,8 @@ const govConformityModules = [
   {
     module: "Módulo 3: Autenticação Federada & Interoperabilidade",
     norm: "Portaria SGD/SEDGG Nº 2.154 & e-PING",
-    tech: "go-oidc/v3, JWKS Keycloak/Gov.br, Níveis Bronze/Prata/Ouro e OpenAPI 3.0",
-    justification: "Realiza a verificação de assinatura JWT localmente via JWKS sem chamadas adicionais por requisição, mapeando os Níveis de Confiabilidade do Login Único Gov.br (Prata/Ouro) para autorização granular (RBAC). Expõe especificações RESTful e-PING.",
+    tech: "go-oidc/v3, JWKS do Keycloak dedicado (cache + rotação), federação LDAP/LDAPS com o AD, fallback RS256 e OpenAPI 3.0",
+    justification: "Verifica a assinatura JWT localmente via JWKS sem chamadas adicionais por requisição e mapeia grupos do Active Directory para Perfis e escopos organizacionais (RBAC multi-escopo). Expõe especificações RESTful e-PING.",
   },
   {
     module: "Módulo 4: Acessibilidade Digital e-MAG",
@@ -80,7 +81,7 @@ const principles = [
     icon: Lock,
     title: "DevSecOps & Privacidade",
     description:
-      "Autenticação Gov.br / Keycloak OIDC, mascaramento de PII em logs, CSP estrita com nonce e trilhas de auditoria imutáveis no Postgres.",
+      "Autenticação Keycloak OIDC com federação AD, mascaramento de PII em logs, CSP estrita com nonce e trilhas de auditoria imutáveis no Postgres.",
   },
   {
     icon: Radar,
@@ -92,6 +93,7 @@ const principles = [
 
 export default async function AboutPage() {
   await connection();
+  const brand = await getServerBranding();
 
   return (
     <PublicShell>
@@ -101,9 +103,9 @@ export default async function AboutPage() {
             <ShieldCheck size={16} className="text-success" />
             Conformidade Federal SGD/MGI
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Sobre a Plataforma de Assistência Social & Diretrizes Governamentais</h1>
+          <h1 className="text-3xl font-bold text-foreground">Sobre a plataforma & diretrizes governamentais</h1>
           <p className="text-muted leading-relaxed">
-            A plataforma de <strong>Assistência Social (SEMPRAS)</strong> foi projetada para servir como infraestrutura de atendimento para a Prefeitura Municipal de Rondonópolis. Ela unifica os rígidos padrões de <strong>Segurança (OWASP), Acessibilidade (e-MAG / WCAG 2.1 AA), Identidade Visual (DSGov), Privacidade (LGPD) e Interoperabilidade (OIDC / e-PING)</strong>.
+            O <strong>{brand.appName}</strong>, operado por <strong>{brand.orgName}</strong>, é uma base Microkernel que unifica os rígidos padrões de <strong>Segurança (OWASP), Acessibilidade (e-MAG / WCAG 2.1 AA), Identidade Visual (DSGov), Privacidade (LGPD) e Interoperabilidade (OIDC / e-PING)</strong>.
           </p>
         </section>
 
@@ -112,7 +114,7 @@ export default async function AboutPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">Conformidade com Normas Governamentais (SGD/MGI)</h2>
             <p className="mt-1 text-sm text-muted">
-              Mapeamento dos 5 módulos de conformidade implementados na plataforma de Assistência Social e suas justificativas técnicas.
+              Mapeamento dos 5 módulos de conformidade implementados na plataforma e suas justificativas técnicas.
             </p>
           </div>
           <div className="overflow-hidden rounded-xl border border-surface-border bg-surface">
@@ -172,14 +174,14 @@ export default async function AboutPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">OWASP Top 10 Enterprise</h2>
             <p className="mt-1 text-sm text-muted">
-              Tratado como checklist de engenharia desde o primeiro commit. A coluna da direita descreve a prática hoje na plataforma de Assistência Social.
+              Tratado como checklist de engenharia desde o primeiro commit. A coluna da direita descreve a prática hoje na plataforma.
             </p>
           </div>
           <Table caption="Riscos do OWASP Top 10 e a prática correspondente adotada na plataforma.">
             <TableHead>
               <TableRow>
                 <TableHeaderCell>Risco</TableHeaderCell>
-                <TableHeaderCell>Prática na Assistência Social</TableHeaderCell>
+                <TableHeaderCell>Prática na plataforma</TableHeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -202,7 +204,7 @@ export default async function AboutPage() {
             <strong className="text-foreground">Backend (Go 1.25):</strong> Arquitetura Limpa (Clean Architecture), roteador Chi v5, banco de dados PostgreSQL 16 com `pgxpool`, mensageria RabbitMQ via AMQP, `log/slog` com mascaramento PII, e suporte a testes unitários com 100% de mocks zerados.
           </p>
           <p className="text-sm text-muted leading-relaxed">
-            <strong className="text-foreground">Frontend (Next.js 16 App Router):</strong> React 19 em TypeScript estrito, Tailwind CSS v4 com temas DSGov/e-MAG, `NextAuth.js` com SSO Keycloak/Gov.br, widget VLibras desacoplado da hidratação, e auditoria de acessibilidade por `jsx-a11y`.
+            <strong className="text-foreground">Frontend (Next.js 16 App Router):</strong> React 19 em TypeScript estrito, Tailwind CSS v4 com temas DSGov/e-MAG, `NextAuth.js` com SSO Keycloak, widget VLibras desacoplado da hidratação, e auditoria de acessibilidade por `jsx-a11y`.
           </p>
         </section>
       </div>

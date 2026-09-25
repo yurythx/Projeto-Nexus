@@ -1,26 +1,31 @@
 import type { MetadataRoute } from "next";
 
 import { APP_URL } from "@/lib/env";
+import { getFeatures } from "@/lib/features/getFeatures";
 
-// Sitemap mínimo, honesto: só as duas rotas públicas de verdade (/ e
-// /sobre) têm metadados OG (ver page.tsx/sobre/page.tsx, § auditoria
-// 2026-08) — tudo abaixo de /dashboard, /integracoes, /configuracao,
-// /seguranca é autenticado e não pertence aqui (um crawler nunca
-// consegue passar da tela de login mesmo assim).
-//
-// Sem NEXT_PUBLIC_SITE_URL dedicada nesta aplicação — reaproveita
-// NEXTAUTH_URL, a mesma variável que já serve de base pra outras
-// construções de URL absoluta no frontend (ver
-// app/api/auth/keycloak-logout-url/route.ts), com o mesmo fallback pra
-// desenvolvimento local.
-const baseUrl = APP_URL;
+// Só páginas públicas. As seções de plug-ins entram apenas quando o
+// módulo está ativo no Kernel (GET /system/public-modules) — um módulo
+// desativado responde 404 e não deve ser anunciado a crawlers.
+const MODULE_PAGES: { path: string; module: string }[] = [
+  { path: "/servicos", module: "catalog" },
+  { path: "/setores", module: "directory" },
+  { path: "/eventos", module: "calendar" },
+  { path: "/contato", module: "contact" },
+];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const { features } = await getFeatures();
+  const now = new Date();
   return [
-    { url: baseUrl, lastModified: new Date(), changeFrequency: "monthly", priority: 1 },
-    { url: `${baseUrl}/sobre`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
-    { url: `${baseUrl}/padroes`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
-    { url: `${baseUrl}/acessibilidade`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.5 },
-    { url: `${baseUrl}/privacidade`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.5 },
+    { url: APP_URL, lastModified: now, changeFrequency: "monthly", priority: 1 },
+    { url: `${APP_URL}/sobre`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    ...MODULE_PAGES.filter((p) => features[p.module]).map((p) => ({
+      url: `${APP_URL}${p.path}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
+    { url: `${APP_URL}/acessibilidade`, lastModified: now, changeFrequency: "yearly", priority: 0.5 },
+    { url: `${APP_URL}/privacidade`, lastModified: now, changeFrequency: "yearly", priority: 0.5 },
   ];
 }

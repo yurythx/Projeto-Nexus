@@ -8,13 +8,13 @@ import { getFeatures } from "@/lib/features/getFeatures";
 import { MODULE } from "@/lib/features/modules";
 import { APP_URL } from "@/lib/env";
 
-const description = "Fale com a Assistência Social — envie sua mensagem e retornaremos em breve.";
+const description = "Envie sua dúvida, sugestão, reclamação ou elogio — você recebe um número de protocolo para acompanhamento.";
 
 export const metadata: Metadata = {
   title: "Contato",
   description,
   alternates: { canonical: `${APP_URL}/contato` },
-  openGraph: { title: "Contato — Assistência Social", description, type: "website", url: `${APP_URL}/contato` },
+  openGraph: { title: "Contato", description, type: "website", url: `${APP_URL}/contato` },
 };
 
 export default async function ContatoPage({

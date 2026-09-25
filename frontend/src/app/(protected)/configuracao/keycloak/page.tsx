@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { KeycloakSettingsForm } from "@/components/settings/KeycloakSettingsForm";
 import { ApiError } from "@/lib/api/client";

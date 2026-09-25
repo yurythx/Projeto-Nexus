@@ -21,15 +21,27 @@ import { API_PUBLIC_URL, MINIO_PUBLIC_URL, WS_PUBLIC_URL, toOrigin } from "@/lib
 // 2. Proteção de rota: redireciona visitas não autenticadas a qualquer
 //    seção protegida (PROTECTED_PREFIXES) para /login, sem deixar a
 //    página nem começar a renderizar.
-// Seções autenticadas (§ Reestruturação de rotas): as duas compartilham
-// um único grupo de rotas no App Router (app/(protected)/), mas esse
-// grupo não aparece na URL — proxy.ts só enxerga o caminho real, então
-// precisa saber sobre as duas independentemente.
+// Seções autenticadas — tudo o que vive em app/(protected)/. O grupo de
+// rotas não aparece na URL, então cada prefixo é listado aqui. Módulos
+// plugáveis entram mesmo desativados: o 404 do módulo inativo é decidido
+// pela API (Guard do Kernel), nunca pelo proxy.
 const PROTECTED_PREFIXES = [
   "/dashboard",
-  "/integracoes",
   "/configuracao",
   "/monitoramento",
+  "/auditoria",
+  "/perfil",
+  "/busca",
+  "/mercurio",
+  "/blog",
+  "/wiki",
+  "/agenda",
+  "/diretorio",
+  "/arquivos",
+  "/signum",
+  "/tramite",
+  "/gestao",
+  "/exemplos",
 ];
 
 export async function proxy(request: NextRequest) {
@@ -40,6 +52,8 @@ export async function proxy(request: NextRequest) {
   // MinIO via URL pré-assinada, e a própria API). Deduplicadas — API e WS
   // costumam ser o mesmo host:porta em esquemas diferentes.
   const apiOrigin = toOrigin(API_PUBLIC_URL);
+  // Capas do Blog e miniaturas vêm do MinIO por URL pré-assinada.
+  const minioOrigin = MINIO_PUBLIC_URL ? toOrigin(MINIO_PUBLIC_URL) : undefined;
   const connectOrigins = [
     ...new Set(
       [
@@ -70,7 +84,7 @@ export async function proxy(request: NextRequest) {
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""};
     style-src 'self' 'unsafe-inline' ${vlibrasHosts};
-    img-src 'self' blob: data: ${vlibrasHosts};
+    img-src 'self' blob: data: ${vlibrasHosts}${minioOrigin ? ` ${minioOrigin}` : ""};
     font-src 'self' data: ${vlibrasHosts};
     connect-src 'self' blob: data: ${vlibrasHosts}${connectOrigins ? ` ${connectOrigins}` : ""}${connectSrcDev};
     worker-src 'self' blob: data: https://vlibras.gov.br https://*.vlibras.gov.br;

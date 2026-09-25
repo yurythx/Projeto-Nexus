@@ -18,6 +18,7 @@
 import useSWR, { type SWRConfiguration } from "swr";
 
 import { apiClient, ApiError } from "@/lib/api/client";
+import type { PageMeta } from "@/lib/nexus/types";
 
 // swrFetcher: a MESMA forma de erro que apiClient já lança (ApiError) —
 // nenhum componente que já tratava ApiError (ver ProjectFindingHistoryPanel
@@ -60,4 +61,30 @@ export const defaultSWRConfig: SWRConfiguration = {
 // compartilhados entre todo useApiQuery da área autenticada.
 export function useApiQuery<T>(path: string | null, config?: SWRConfiguration<T>) {
   return useSWR<T>(path, swrFetcher, config);
+}
+
+// Respostas paginadas (httputil.WritePage): data = itens, meta = PageMeta.
+export interface Paged<T> {
+  items: T[];
+  meta?: PageMeta;
+}
+
+export async function pagedFetcher<T>(path: string): Promise<Paged<T>> {
+  const { data, meta } = await apiClient.get<T[]>(path);
+  return { items: data ?? [], meta: meta as Paged<T>["meta"] };
+}
+
+/** Lista paginada: `path` já inclui ?page=&page_size= e filtros. */
+export function useApiPage<T>(path: string | null, config?: SWRConfiguration<Paged<T>>) {
+  return useSWR<Paged<T>>(path, pagedFetcher<T>, config);
+}
+
+/** Monta "caminho?query" ignorando valores vazios. */
+export function withQuery(path: string, params: Record<string, string | number | boolean | undefined | null>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  }
+  const qs = q.toString();
+  return qs ? `${path}?${qs}` : path;
 }

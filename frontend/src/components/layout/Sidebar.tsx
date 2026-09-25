@@ -21,6 +21,13 @@ interface NavItem {
 // cabeçalho (#global-search).
 const HIDDEN_FROM_MENU = new Set(["iam", "audit", "egress", "search"]);
 
+// Módulos cuja tela principal é de gestão (a face pública fica no site
+// institucional): só aparecem no menu para quem tem a permissão.
+const MENU_PERMISSION: Record<string, string> = {
+  catalog: "catalog:manage",
+  contact: "contact:read",
+};
+
 const ADMIN_PERMISSIONS = [
   "modules:manage", "iam:manage", "users:read", "branding:manage", "keycloak:manage",
   "egress:manage", "catalog:manage", "contact:read", "mercurio:manage", "calendar:manage",
@@ -31,6 +38,7 @@ const ADMIN_PERMISSIONS = [
 export function buildNav(modules: ModuleStatus[], can: (p: string) => boolean): { modules: NavItem[]; admin: NavItem[] } {
   const mods = modules
     .filter((m) => m.enabled && !m.core && !HIDDEN_FROM_MENU.has(m.key) && m.route)
+    .filter((m) => !MENU_PERMISSION[m.key] || can(MENU_PERMISSION[m.key]!))
     .map((m) => ({ href: m.route, label: m.name, icon: m.icon }));
   const admin: NavItem[] = [];
   if (can("audit:read")) admin.push({ href: "/auditoria", label: "Auditoria", icon: ShieldCheck });

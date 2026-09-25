@@ -42,7 +42,7 @@ func (m *Module) Manifest() kernel.Manifest {
 		DefaultEnabled: true,
 		Public:         true,
 		Icon:           "layout-grid",
-		Route:          "/servicos",
+		Route:          "/gestao/servicos",
 		Permissions:    []kernel.PermissionInfo{{Key: "catalog:manage", Description: "Criar, editar e publicar serviços do catálogo"}},
 	}
 }

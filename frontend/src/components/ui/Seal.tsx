@@ -10,8 +10,8 @@
 export function Seal({
   size = 220,
   className = "",
-  topText = "ASSISTÊNCIA SOCIAL ✦ SEMPRAS",
-  bottomText = "PREFEITURA DE RONDONÓPOLIS",
+  topText = "PROJETO NEXUS ✦ PLATAFORMA",
+  bottomText = "DOCUMENTO OFICIAL",
   decorative = false,
 }: {
   size?: number;
@@ -29,7 +29,7 @@ export function Seal({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role={decorative ? undefined : "img"}
-      aria-label={decorative ? undefined : "Selo da Assistência Social"}
+      aria-label={decorative ? undefined : "Selo do Projeto Nexus"}
       aria-hidden={decorative || undefined}
       focusable="false"
       className={`shrink-0 ${className}`}

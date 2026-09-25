@@ -1,155 +1,89 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
-import { Plus, RefreshCw, Box, AlertCircle } from "lucide-react";
+import { Plus } from "lucide-react";
+import type { FormEvent } from "react";
 
+import { DataState } from "@/components/nexus/DataState";
+import { PageHeader } from "@/components/nexus/PageHeader";
+import { fmtDateTime, useAction } from "@/components/nexus/useAction";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { apiClient } from "@/lib/api/client";
-import { Skeleton } from "@/components/ui/Skeleton";
+import { useApiQuery } from "@/lib/api/swr";
+import { useNexus } from "@/lib/nexus/NexusProvider";
 
 interface ExampleItem {
   id: string;
   title: string;
   description: string;
+  status: string;
   created_at: string;
 }
 
+/**
+ * Blueprint de tela de plug-in (par do módulo backend "example"):
+ * leitura com useApiQuery + DataState, mutação com useAction (toast de
+ * sucesso/erro), ação condicionada à permissão "example:manage" — que a
+ * API revalida no middleware (A01).
+ */
 export default function ExemplosPage() {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { can } = useNexus();
+  const list = useApiQuery<ExampleItem[]>("v1/examples");
+  const { run, pending } = useAction();
 
-  const { data, error, isLoading, mutate } = useSWR<{ data: ExampleItem[] }>(
-    "v1/examples",
-    () => apiClient.get<ExampleItem[]>("v1/examples").then((res) => res)
-  );
-
-  const items = data?.data ?? [];
-
-  async function handleCreate(e: React.FormEvent) {
+  async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!title.trim()) return;
-
-    setIsCreating(true);
-    setErrorMsg(null);
-    try {
-      await apiClient.post("v1/examples", {
-        title: title.trim(),
-        description: description.trim(),
-      });
-      setTitle("");
-      setDescription("");
-      await mutate();
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Erro ao criar item de exemplo.");
-    } finally {
-      setIsCreating(false);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const ok = await run(
+      () => apiClient.post("v1/examples", { title: String(fd.get("title") ?? "").trim(), description: String(fd.get("description") ?? "").trim() }),
+      "Item criado",
+    );
+    if (ok) {
+      form.reset();
+      void list.mutate();
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Módulo Modelo (Exemplo Blueprint)</h1>
-        <p className="text-sm text-muted">
-          Página de referência demonstrando consumo REST tipado, gerenciamento de estado e integração com a API da Assistência Social.
-        </p>
-      </div>
+      <PageHeader eyebrow="Módulo-modelo" title="Exemplo (blueprint)" description="Referência de como um plug-in consome a API: consulta tipada, estados padrão, mutação auditada e autorização por escopo." />
 
-      {/* Formulário de Criação */}
-      <div className="rounded-xl border border-surface-border bg-surface p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground mb-4">Novo Item de Exemplo</h2>
-        
-        {errorMsg && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-status-offline/10 p-3 text-xs text-status-offline">
-            <AlertCircle size={16} />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+      {can("example:manage") && (
+        <Card>
+          <CardHeader>
+            <CardTitle as="h2">Novo item</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-5">
+            <form onSubmit={create} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <Input id="ex-title" name="title" label="Título *" required maxLength={200} autoComplete="off" />
+              <Input id="ex-desc" name="description" label="Descrição" maxLength={1000} autoComplete="off" />
+              <Button type="submit" loading={pending}>
+                <Plus size={16} aria-hidden="true" className="mr-1" /> Criar
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-        <form onSubmit={handleCreate} className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Título *"
-              name="title"
-              autoComplete="off"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Novo serviço cadastrado"
-              required
-            />
-            <Input
-              label="Descrição"
-              name="description"
-              autoComplete="off"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Descrição detalhada da demanda"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="submit" variant="primary" disabled={isCreating || !title.trim()}>
-              <Plus size={16} className="mr-2" />
-              {isCreating ? "Salvando..." : "Criar Item"}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Tabela / Lista de Itens */}
-      <div className="rounded-xl border border-surface-border bg-surface shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-surface-border p-4 bg-surface-hover/50">
-          <h3 className="text-sm font-medium text-foreground">Itens Cadastrados</h3>
-          <Button variant="ghost" size="sm" onClick={() => mutate()}>
-            <RefreshCw size={14} className="mr-1.5" />
-            Atualizar
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div role="status" aria-live="polite" className="flex flex-col gap-3 p-6">
-            <span className="sr-only">Carregando…</span>
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : error ? (
-          <div className="p-8 text-center text-xs text-status-offline">
-            Erro ao carregar os itens de exemplo. Verifique a conexão com o backend.
-          </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center">
-            <Box size={36} className="text-muted/40 mb-3" />
-            <p className="text-sm font-medium text-foreground">Nenhum item cadastrado</p>
-            <p className="text-xs text-muted max-w-sm mt-1">
-              Utilize o formulário acima para cadastrar o primeiro registro de exemplo neste módulo.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-surface-border">
-            {items.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-4 hover:bg-surface-hover transition-colors">
-                <div>
-                  <h4 className="text-sm font-semibold text-foreground">{item.title}</h4>
-                  {item.description && (
-                    <p className="text-xs text-muted mt-0.5">{item.description}</p>
-                  )}
-                </div>
-                <div className="text-[11px] font-mono text-muted">
-                  {new Date(item.created_at).toLocaleTimeString("pt-BR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
+      <DataState loading={list.isLoading} error={list.error} onRetry={() => void list.mutate()} empty={(list.data ?? []).length === 0} emptyTitle="Nenhum item cadastrado">
+        <ul className="flex flex-col divide-y divide-surface-border rounded-xl border border-surface-border bg-surface">
+          {(list.data ?? []).map((item) => (
+            <li key={item.id} className="flex items-center justify-between gap-3 p-4">
+              <div>
+                <p className="font-medium">{item.title}</p>
+                {item.description && <p className="text-sm text-muted">{item.description}</p>}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <span className="flex items-center gap-2 text-xs text-muted">
+                <Badge>{item.status}</Badge>
+                {fmtDateTime(item.created_at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </DataState>
     </div>
   );
 }

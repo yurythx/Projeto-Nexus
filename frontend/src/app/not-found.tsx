@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
-import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
+import { AccessibilityBar } from "@/components/layout/AccessibilityBar";
 
 // 404 no tema da aplicação (§ auditoria 2026-08) em vez da página padrão,
 // não estilizada, do Next.js. Server Component simples — cobre tanto
@@ -15,11 +15,11 @@ import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
 export default function NotFound() {
   return (
     <div className="flex min-h-screen flex-col pt-10">
-      <header id="menu" className="fixed inset-x-0 top-0 z-50">
-        <EMagAccessibilityBar />
+      <header className="fixed inset-x-0 top-0 z-50">
+        <AccessibilityBar showSearchShortcut={false} />
       </header>
       <main
-        id="conteudo"
+        id="main-content"
         tabIndex={-1}
         className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center outline-none"
       >

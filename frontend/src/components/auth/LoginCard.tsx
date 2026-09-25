@@ -103,10 +103,10 @@ export function LoginCard() {
             <span>Acesso Não Autorizado</span>
           </div>
           <p className="font-medium text-danger">
-            O usuário não pertence ao grupo da assistência social.
+            Sua conta não tem acesso a esta plataforma.
           </p>
           <p className="text-xs text-muted">
-            Para acessar a plataforma da SEMPRAS, sua conta institucional do Active Directory deve estar vinculada aos grupos de serviço socioassistencial.
+            Sua conta do Active Directory precisa pertencer a um grupo mapeado para um Perfil de acesso. Procure o administrador do sistema.
           </p>
         </div>
       ) : oauthError ? (

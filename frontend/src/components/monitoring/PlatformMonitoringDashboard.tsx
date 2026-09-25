@@ -288,7 +288,7 @@ export function PlatformMonitoringDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Infraestrutura & Dependências</h2>
-            <p className="text-xs text-muted">Componentes essenciais que sustentam a plataforma de Assistência Social.</p>
+            <p className="text-xs text-muted">Componentes essenciais que sustentam a plataforma.</p>
           </div>
         </div>
 

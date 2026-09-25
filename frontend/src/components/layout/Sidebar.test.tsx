@@ -29,4 +29,11 @@ describe("buildNav", () => {
     const all = buildNav(modules, (p) => hasPermission(["*"], p));
     expect(all.admin.map((a) => a.href)).toEqual(["/auditoria", "/monitoramento", "/configuracao"]);
   });
+
+  it("módulos de gestão (catálogo, contato) exigem a permissão para entrar no menu", () => {
+    const mods = [mod("catalog", { route: "/gestao/servicos" }), mod("contact", { route: "/gestao/contato" })];
+    expect(buildNav(mods, () => false).modules).toEqual([]);
+    const nav = buildNav(mods, (p) => hasPermission(["contact:read"], p));
+    expect(nav.modules.map((m) => m.href)).toEqual(["/gestao/contato"]);
+  });
 });

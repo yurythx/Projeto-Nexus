@@ -34,7 +34,7 @@ func (m *Module) Manifest() kernel.Manifest {
 		DefaultEnabled: true,
 		Public:         true,
 		Icon:           "mail",
-		Route:          "/contato",
+		Route:          "/gestao/contato",
 		Permissions: []kernel.PermissionInfo{
 			{Key: "contact:read", Description: "Ler mensagens recebidas (contém dados pessoais)"},
 			{Key: "contact:manage", Description: "Triar e responder mensagens"},

@@ -47,10 +47,20 @@ async function request<T>(
   // (parametrizada em lib/env.ts, default acompanhando a porta atual).
   const baseUrl = typeof window !== "undefined" ? "" : APP_URL;
 
+  // Toda mutação leva uma X-Idempotency-Key própria (skill §1 / A08): um
+  // reenvio da MESMA requisição (retry de rede, proxy, duplo clique que
+  // escapou do estado de loading) é deduplicado no backend.
+  const method = (init?.method ?? "GET").toUpperCase();
+  const idempotency: Record<string, string> =
+    method !== "GET" && method !== "HEAD" && typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? { "X-Idempotency-Key": crypto.randomUUID() }
+      : {};
+
   const res = await fetch(`${baseUrl}/api/backend/${cleanPath}`, {
     ...init,
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...idempotency,
       ...(init?.headers ?? {}),
     },
   });
@@ -127,9 +137,6 @@ export const apiClient = {
       method: "PATCH",
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
-  // put/delete: nenhum módulo atual os usa ainda — mantidos por
-  // completude do cliente HTTP genérico, mesmo formato de corpo/erro que
-  // post/patch já têm.
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",
