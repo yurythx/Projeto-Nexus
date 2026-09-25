@@ -1,6 +1,8 @@
 import {
   BookOpen,
   Box,
+  Briefcase,
+  ClipboardList,
   Calendar,
   Contact,
   Folder,
@@ -9,11 +11,13 @@ import {
   Mail,
   MessagesSquare,
   Newspaper,
+  Package,
   PenTool,
   Search,
   Send,
   ShieldCheck,
   Users,
+  Wallet,
   type LucideProps,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -35,6 +39,10 @@ const ICONS: Record<string, ComponentType<LucideProps>> = {
   "pen-tool": PenTool,
   "folder-kanban": FolderKanban,
   box: Box,
+  briefcase: Briefcase,
+  "clipboard-list": ClipboardList,
+  package: Package,
+  wallet: Wallet,
 };
 
 export function ModuleIcon({ name, ...props }: { name: string } & LucideProps) {

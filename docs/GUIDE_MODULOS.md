@@ -18,13 +18,13 @@ O Projeto Nexus utiliza o modelo **Microkernel (Plug-in Architecture)** combinad
         ▼
  ┌──────────────────────────────────────────────────────────┐
  │               CORE SYSTEM (KERNEL) — GO                  │
- │  (Auth OIDC, LGPD, Audit, Rate Limit, Outbox, WS Hub)    │
+ │  (IAM, Auditoria, Rate Limit, Outbox, WS Hub, Guard)    │
  └──────────────────────────┬───────────────────────────────┘
-                            │ (Injeção de Dependências)
+                            │ (RegisterModule + modkit.Deps)
                             ▼
  ┌──────────────────────────────────────────────────────────┐
  │          PLUG-IN DE NEGÓCIO (ex.: patrimonio)            │
- │  Transport (Chi) -> Application -> Domain -> Postgres    │
+ │  Manifest · Transport -> Application -> Domain -> PG     │
  └──────────────────────────┬───────────────────────────────┘
                             │ (Transação ACID)
  ┌──────────────────────────┴───────────────────────────────┐
@@ -42,176 +42,144 @@ O Projeto Nexus utiliza o modelo **Microkernel (Plug-in Architecture)** combinad
 
 ## ⚡ Scaffolding Automático de Módulos
 
-Para criar a estrutura inicial de um novo módulo com 1 comando:
+Para criar um novo plug-in com 1 comando:
 
 ```bash
 ./scripts/create-module.sh <nome_do_modulo>
-# Exemplo:
-./scripts/create-module.sh financeiro
+# ou
+make new-module NAME=financeiro
 ```
 
-O script gera automaticamente:
-1. Pastas do Go (`internal/modules/<nome>/domain`, `application`, `infrastructure`, `transport`).
-2. Página do Next.js em `app/(protected)/<nome>/page.tsx`.
-3. Migration SQL da Feature Flag do módulo em `backend/migrations/`.
+O script copia o blueprint `internal/modules/example` (código que roda em produção, portanto o esqueleto já nasce compilando) e:
+1. Gera `internal/modules/<nome>/` com `module.go` (Manifest do Kernel) e as camadas `domain`, `application`, `infrastructure`, `transport`.
+2. Cria a migration sequencial `backend/migrations/0001NN_<nome>.sql` (goose).
+3. Registra o plug-in no Kernel (`internal/app/modules.go` → `Kernel.MustRegister`).
+4. Cria a página `frontend/src/app/(protected)/<nome>/page.tsx` sobre o kit (`DataState`, `useAction`, `useNexus`) e protege a rota em `src/proxy.ts`.
+
+O módulo nasce **desativado** (`DefaultEnabled: false`); ative em **Configurações → Módulos**.
 
 ---
 
 ## 📁 Estrutura de Pastas de um Módulo
 
-Ao criar um novo módulo chamado `financeiro`, a estrutura deve seguir:
-
 ### Backend (`backend/internal/modules/financeiro/`)
 ```text
 internal/modules/financeiro/
-├── domain/            # Interfaces, Entidades e Erros de Domínio
-│   ├── entity.go
-│   └── repository.go
-├── application/       # Use Cases, DTOs e Lógica de Aplicação
-│   ├── dto.go
-│   └── service.go
-├── infrastructure/    # Implementação de Repositório PostgreSQL e Queries SQL
-│   └── postgres_repo.go
-└── transport/         # Handlers HTTP / Fiber / Chi e DTOs de Request/Response
-    └── http_handler.go
+├── module.go          # kernel.Plugin: Manifest + RegisterRoutes/Workers/Consumers/SearchProviders…
+├── domain/            # Entidades, invariantes e erros de domínio (sem dependência de infraestrutura)
+├── application/       # Casos de uso: transação (database.WithTx) + outbox + auditoria
+├── infrastructure/    # Repositório PostgreSQL (pgx, queries parametrizadas)
+└── transport/         # Handlers chi: Bind/Validate, RequirePermission, WriteOK/WritePage
 ```
 
 ### Frontend (`frontend/src/`)
 ```text
 src/
-├── app/(protected)/financeiro/      # Páginas Next.js (App Router)
-│   └── page.tsx
-├── components/financeiro/           # Componentes específicos do módulo
-│   ├── FinanceiroList.tsx
-│   └── FinanceiroModal.tsx
-└── lib/validation/schemas.ts       # Schemas Zod para formulários e eventos WS
+├── app/(protected)/financeiro/   # Páginas (App Router), protegidas pelo proxy + layout (protected)
+│   ├── page.tsx
+│   └── [id]/page.tsx
+├── components/financeiro/        # Componentes específicos do módulo
+└── lib/nexus/types.ts            # Espelho TypeScript dos DTOs Go do módulo
 ```
 
 ---
 
-## 🛠️ Passo a Passo para Criar um Novo Módulo
+## 🛠️ Passo a Passo
 
-### 1. Criar a Migration SQL (`backend/migrations/`)
-Crie um novo arquivo de migration com numeração sequencial via `goose`:
+### 1. Migration (`backend/migrations/`)
+Numeração sequencial, um arquivo com `Up` e `Down` (o CI roda `up → down → up`):
+
 ```sql
--- 000042_create_financeiro_table.sql
 -- +goose Up
-CREATE TABLE IF NOT EXISTS financeiro_titulos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    descricao VARCHAR(255) NOT NULL,
-    valor NUMERIC(15, 2) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'pendente',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE financeiro_titulos (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    descricao  TEXT NOT NULL,
+    valor      NUMERIC(15, 2) NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pendente',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- +goose Down
 DROP TABLE IF EXISTS financeiro_titulos;
 ```
 
----
-
-### 2. Definir a Entidade e Evento no Backend (`domain/`)
-No backend, defina a struct do modelo de dados e o evento de domínio a ser publicado no Outbox:
+### 2. Manifest do plug-in (`module.go`)
+O Manifest é o contrato com o Kernel: chave, dependências, permissões (exibidas na tela de Perfis), ícone e rota do frontend (usados para montar o menu).
 
 ```go
-package domain
-
-import (
-	"time"
-	"github.com/google/uuid"
-)
-
-type Titulo struct {
-	ID        uuid.UUID `json:"id"`
-	Descricao string    `json:"descricao"`
-	Valor     float64   `json:"valor"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+func (m *Module) Manifest() kernel.Manifest {
+	return kernel.Manifest{
+		Key:            "financeiro",
+		Name:           "Financeiro",
+		Description:    "Títulos a pagar e a receber.",
+		DefaultEnabled: false,
+		DependsOn:      []string{"signum"}, // opcional: o Kernel recusa ativar sem as dependências
+		Icon:           "wallet",           // nome lucide (ver components/layout/ModuleIcon.tsx)
+		Route:          "/financeiro",
+		Permissions: []kernel.PermissionInfo{
+			{Key: "financeiro:read", Description: "Consultar títulos"},
+			{Key: "financeiro:manage", Description: "Criar e baixar títulos"},
+		},
+	}
 }
 
-const EventTituloCriado = "financeiro.titulo.created"
-```
-
----
-
-### 3. Registrar o Evento na Transação do Outbox (`infrastructure/`)
-Ao salvar a entidade no banco de dados, insira a mensagem na tabela `outbox` **na mesma transação SQL** para garantir a propriedade ACID (*Exactly-Once delivery*):
-
-```go
-func (r *PostgresRepository) Create(ctx context.Context, t *domain.Titulo) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	// 1. Insere o registro na tabela do módulo
-	_, err = tx.Exec(ctx, `INSERT INTO financeiro_titulos (id, descricao, valor) VALUES ($1, $2, $3)`, t.ID, t.Descricao, t.Valor)
-	if err != nil {
-		return err
-	}
-
-	// 2. Registra o evento no Transactional Outbox
-	payload, _ := json.Marshal(map[string]any{"id": t.ID, "descricao": t.Descricao})
-	_, err = tx.Exec(ctx, `
-		INSERT INTO outbox (id, event_type, payload, status)
-		VALUES ($1, $2, $3, 'pending')
-	`, uuid.New(), domain.EventTituloCriado, payload)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+func (m *Module) RegisterRoutes(r kernel.Routes) {
+	m.handlers.RegisterRoutes(r.Authed) // r.Public: rotas anônimas com rate limit por IP
 }
 ```
 
----
+Com o módulo desativado, o **Guard** do Kernel responde 404 (`MODULE_DISABLED`) em toda a superfície HTTP, para workers e consumidores de fila, derruba as assinaturas WebSocket dos tópicos `<chave>:*` e remove o módulo da Busca Global — sem reiniciar o processo.
 
-### 4. Conectar o Router HTTP (`internal/app/router.go`)
-Registre as rotas REST do módulo no roteador principal:
+### 3. Caso de uso transacional (`application/`)
+Negócio, evento (Transactional Outbox) e auditoria imutável commitam **na mesma transação**:
 
 ```go
-r.Route("/api/v1/financeiro", func(r chi.Router) {
-    r.Use(auth.RequireAuthentication)
-    r.Get("/", financeiroHandler.List)
-    r.Post("/", financeiroHandler.Create)
+err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
+	if err := s.repo.CreateTx(ctx, tx, titulo); err != nil {
+		return err
+	}
+	if err := s.outbox.Write(ctx, tx, "financeiro.titulo.created", "financeiro_titulo", titulo.ID.String(), uuid.Nil, payload); err != nil {
+		return err
+	}
+	return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "financeiro.titulo.created", "financeiro_titulo", titulo.ID.String(), nil, titulo))
 })
 ```
 
----
+O Relay Worker publica o evento no RabbitMQ; consumidores deduplicam por `event_id` (DLQ para falhas definitivas). Mutações HTTP aceitam `X-Idempotency-Key` — o `apiClient` do frontend já envia uma chave nova por requisição.
 
-### 5. Registrar a Feature Flag do Módulo (Controle em /configuracao)
-Todo módulo deve possuir uma entrada em `feature_flags` para ser ativado/desativado pelos administradores no painel de configurações:
+### 4. Rotas HTTP (`transport/`)
+Autorização `recurso:ação` sempre no middleware (A01), nunca só na tela:
 
-```sql
--- Migration SQL
-INSERT INTO feature_flags (key, enabled, description) VALUES
-    ('module_financeiro_enabled', true, 'Habilita a exibição e uso do Módulo Financeiro.')
-ON CONFLICT (key) DO NOTHING;
+```go
+func (h *Handlers) RegisterRoutes(r chi.Router) {
+	r.With(auth.RequirePermission(h.logger, "financeiro:read")).Get("/financeiro/titulos", h.List)
+	r.With(auth.RequirePermission(h.logger, "financeiro:manage")).Post("/financeiro/titulos", h.Create)
+}
 ```
 
-No frontend (`Sidebar.tsx`), associe a flag ao item do menu:
+Use `httputil.Bind` (limite de corpo + campos desconhecidos recusados + validação), `httputil.Page`/`WritePage` para listas e `httputil.WriteError` (RFC 7807 quando o cliente pede `application/problem+json`).
+
+### 5. Tela no frontend
 ```tsx
-{ href: "/financeiro", label: "Financeiro", icon: DollarSign, flag: "module_financeiro_enabled" }
+"use client";
+export default function FinanceiroPage() {
+  const { can } = useNexus();                                    // permissões efetivas (só exibição)
+  const list = useApiPage<Titulo>(withQuery("v1/financeiro/titulos", { page }));
+  const { run } = useAction();                                   // toast de sucesso/erro
+  // …
+  return (
+    <DataState loading={list.isLoading} error={list.error} empty={!list.data?.items.length}>
+      {/* tabela */}
+    </DataState>
+  );
+}
 ```
-Quando o administrador desabilitar a flag no painel `/configuracao`, o item do menu desaparecerá automaticamente da interface.
 
----
-
-### 6. Consumir e Notificar no Frontend (`Next.js`)
-No frontend, adicione o manipulador do evento no `NotificationCenter.tsx` para exibir toasts e atualizar contadores em tempo real quando o evento WebSocket for recebido:
-
-```tsx
-// NotificationCenter.tsx
-case "financeiro.titulo.created":
-  showToast({
-    title: "Novo Título Financeiro",
-    description: `Título criado com sucesso: ${event.payload.descricao}`,
-    variant: "success",
-  });
-  break;
-```
+- O item de menu aparece sozinho a partir do Manifest (`Route`/`Icon`) quando o módulo está ativo — nada a editar no `Sidebar`.
+- Chamadas sempre por `apiClient`/`useApiQuery` (BFF `/api/backend/*`: o token nunca chega ao navegador).
+- Uploads: peça um `UploadTicket` ao backend e envie direto ao MinIO com `putToTicket` (`lib/nexus/upload.ts`).
+- Tempo real: `useTopic("financeiro:…", handler)` assina um tópico autorizado pelo `WSProvider` do plug-in.
 
 ---
 
