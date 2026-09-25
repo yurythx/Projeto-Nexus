@@ -1,0 +1,22 @@
+services:
+  postgres:
+    ports:
+    - ${HOST_DB_PORT:-5433}:5432
+  rabbitmq:
+    ports:
+    - ${HOST_RABBITMQ_PORT:-5673}:5672
+    - ${HOST_RABBITMQ_MGMT_PORT:-15673}:15672
+  minio:
+    ports:
+    - ${HOST_MINIO_PORT:-9002}:9000
+    - ${HOST_MINIO_CONSOLE_PORT:-9003}:9001
+  backend-api:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: debug
+      LOG_FORMAT: text
+  backend-worker:
+    environment:
+      APP_ENV: development
+      APP_LOG_LEVEL: debug
+      LOG_FORMAT: text
