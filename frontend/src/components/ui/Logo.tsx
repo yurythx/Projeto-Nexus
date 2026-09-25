@@ -23,7 +23,7 @@ export function Logo({ size = 32, className = "" }: { size?: number; className?:
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label="Assistência Social"
+      aria-label="Projeto Nexus"
       className={`shrink-0 ${className}`}
     >
       <rect x="1" y="1" width="26" height="26" rx="8" fill="#16305a" />

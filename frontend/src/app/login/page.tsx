@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Suspense, type CSSProperties } from "react";
 
 import { LoginCard } from "@/components/auth/LoginCard";
-import { EMagAccessibilityBar } from "@/components/layout/EMagAccessibilityBar";
+import { getServerBranding } from "@/lib/branding/server";
+import { AccessibilityBar } from "@/components/layout/AccessibilityBar";
 import { Logo } from "@/components/ui/Logo";
 import { Seal } from "@/components/ui/Seal";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -23,6 +24,7 @@ const capabilities = [
 
 export default async function LoginPage() {
   await connection();
+  const brand = await getServerBranding();
 
   const cookieStore = await cookies();
   const themeCookie = cookieStore.get("nexus-theme")?.value;
@@ -30,11 +32,11 @@ export default async function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col pt-10">
-      <header id="menu" className="fixed inset-x-0 top-0 z-50">
-        <EMagAccessibilityBar />
+      <header className="fixed inset-x-0 top-0 z-50">
+        <AccessibilityBar showSearchShortcut={false} />
       </header>
 
-      <main id="conteudo" tabIndex={-1} className="flex min-h-0 flex-1 outline-none">
+      <main id="main-content" tabIndex={-1} className="flex min-h-0 flex-1 outline-none">
       <div
         className="relative hidden overflow-hidden bg-brand-panel text-white lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:p-12"
         style={{ "--seal": "#d1524a" } as CSSProperties}
@@ -47,16 +49,16 @@ export default async function LoginPage() {
 
         <div className="relative flex items-center gap-2.5 text-lg font-semibold">
           <Logo size={30} />
-          Assistência Social
+          {brand.appName}
         </div>
 
         <div className="relative flex flex-col gap-6">
-          <p className="dateline text-white/60">SEMPRAS · Prefeitura de Rondonópolis</p>
+          <p className="dateline text-white/60">{brand.orgName}</p>
           <h1 className="max-w-md text-3xl font-semibold leading-tight text-white">
-            Sistema Integrado de Atendimento Socioassistencial.
+            Acesso à plataforma institucional.
           </h1>
           <p className="max-w-sm text-sm text-white/75">
-            Plataforma municipal de acolhimento, prontuários, triagem técnica e acompanhamento familiar.
+            {brand.appDescription || "Entre com sua conta corporativa (SSO) ou credencial local."}
           </p>
           <ul className="mt-1 flex flex-col gap-3 text-sm text-white/90">
             {capabilities.map((item) => (
@@ -82,7 +84,7 @@ export default async function LoginPage() {
 
         <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold lg:hidden">
           <Logo size={30} />
-          Assistência Social
+          {brand.appName}
         </Link>
 
         <Suspense fallback={null}>
@@ -95,7 +97,7 @@ export default async function LoginPage() {
       </div>
       </main>
 
-      <footer id="rodape" tabIndex={-1} className="sr-only">
+      <footer id="gov-footer" tabIndex={-1} className="sr-only">
         Rodapé da página de login
       </footer>
     </div>

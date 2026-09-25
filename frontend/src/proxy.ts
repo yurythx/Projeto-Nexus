@@ -21,15 +21,27 @@ import { API_PUBLIC_URL, MINIO_PUBLIC_URL, WS_PUBLIC_URL, toOrigin } from "@/lib
 // 2. Proteção de rota: redireciona visitas não autenticadas a qualquer
 //    seção protegida (PROTECTED_PREFIXES) para /login, sem deixar a
 //    página nem começar a renderizar.
-// Seções autenticadas (§ Reestruturação de rotas): as duas compartilham
-// um único grupo de rotas no App Router (app/(protected)/), mas esse
-// grupo não aparece na URL — proxy.ts só enxerga o caminho real, então
-// precisa saber sobre as duas independentemente.
+// Seções autenticadas — tudo o que vive em app/(protected)/. O grupo de
+// rotas não aparece na URL, então cada prefixo é listado aqui. Módulos
+// plugáveis entram mesmo desativados: o 404 do módulo inativo é decidido
+// pela API (Guard do Kernel), nunca pelo proxy.
 const PROTECTED_PREFIXES = [
   "/dashboard",
-  "/integracoes",
   "/configuracao",
   "/monitoramento",
+  "/auditoria",
+  "/perfil",
+  "/busca",
+  "/mercurio",
+  "/blog",
+  "/wiki",
+  "/agenda",
+  "/diretorio",
+  "/arquivos",
+  "/signum",
+  "/tramite",
+  "/gestao",
+  "/exemplos",
 ];
 
 export async function proxy(request: NextRequest) {

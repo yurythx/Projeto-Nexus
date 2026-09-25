@@ -4,6 +4,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { PublicShell } from "@/components/layout/PublicShell";
+import { getServerBranding } from "@/lib/branding/server";
 
 // Casada com lgpd.CurrentTermVersion no backend
 // (backend/internal/platform/lgpd/lgpd.go). Trocar a versão aqui e lá
@@ -11,18 +12,18 @@ import { PublicShell } from "@/components/layout/PublicShell";
 const TERM_VERSION = "v1.0.0-2026";
 
 const description =
-  "Política de Privacidade e Proteção de Dados Pessoais da Assistência Social (SEMPRAS), em conformidade com a LGPD (Lei 13.709/2018).";
+  "Política de Privacidade e Proteção de Dados Pessoais da plataforma, em conformidade com a LGPD (Lei 13.709/2018).";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade — Assistência Social",
+  title: "Política de Privacidade",
   description,
-  openGraph: { title: "Política de Privacidade — Assistência Social", description, type: "website" },
+  openGraph: { title: "Política de Privacidade", description, type: "website" },
 };
 
 const dataCategories = [
   {
     categoria: "Identificação e credenciais",
-    itens: "Nome de usuário, e-mail, nome de exibição, hash da senha (login local), identificador do Login Único Gov.br / Keycloak, papéis de acesso.",
+    itens: "Nome de usuário, e-mail, nome de exibição, hash da senha (login local), identificador no Keycloak / Active Directory, grupos, perfis e lotações.",
     base: "Execução de políticas públicas e prestação de serviço público (art. 7º, III) e, no login local, consentimento (art. 7º, I).",
   },
   {
@@ -45,7 +46,7 @@ const dataCategories = [
 const rights = [
   ["Confirmação e acesso", "Baixe tudo que a plataforma guarda sobre você em GET /api/v1/lgpd/meus-dados (JSON estruturado) — ou peça pelo canal do Encarregado."],
   ["Portabilidade", "O mesmo pacote JSON acima é interoperável e serve para portabilidade a outro fornecedor."],
-  ["Correção", "Dados de identificação vêm do Login Único Gov.br / do cadastro do órgão — a correção é feita na fonte."],
+  ["Correção", "Dados de identificação vêm do Active Directory / cadastro do órgão — a correção é feita na fonte."],
   ["Eliminação / anonimização", "POST /api/v1/lgpd/solicitar-exclusao registra o pedido; a conta é anonimizada automaticamente. A trilha de auditoria e os registros de consentimento são mantidos como registro legal (art. 16, I e III)."],
   ["Informação sobre compartilhamento", "Ver a seção “Com quem compartilhamos” abaixo."],
   ["Revogação do consentimento", "Aplicável ao login local; revogar implica não conseguir mais autenticar por esse meio."],
@@ -53,6 +54,7 @@ const rights = [
 
 export default async function PrivacidadePage() {
   await connection();
+  const brand = await getServerBranding();
 
   return (
     <PublicShell>
@@ -64,8 +66,8 @@ export default async function PrivacidadePage() {
           </div>
           <h1 className="text-3xl font-bold text-foreground">Política de Privacidade e Proteção de Dados</h1>
           <p className="text-muted leading-relaxed">
-            Esta política descreve como a plataforma de <strong>Assistência Social (SEMPRAS)</strong>, infraestrutura da{" "}
-            <strong>Prefeitura Municipal de Rondonópolis</strong>, trata dados pessoais de servidores e
+            Esta política descreve como o <strong>{brand.appName}</strong>, operado por{" "}
+            <strong>{brand.orgName}</strong>, trata dados pessoais de servidores e
             cidadãos que utilizam seus sistemas, em conformidade com a Lei Geral de Proteção de Dados.
           </p>
           <p className="rounded-lg border border-warning/40 bg-warning/5 px-4 py-3 text-xs text-muted">
@@ -80,9 +82,8 @@ export default async function PrivacidadePage() {
             <UserCheck size={18} className="text-primary" aria-hidden="true" /> 1. Controlador
           </h2>
           <p className="text-sm text-muted leading-relaxed">
-            O controlador dos dados é a <strong>Prefeitura Municipal de Rondonópolis/MT</strong>. A
-            plataforma de Assistência Social é a base sobre a qual os atendimentos socioassistenciais municipais são gerenciados; cada
-            unidade possui rotinas específicas de acolhimento e proteção de dados.
+            O controlador dos dados é <strong>{brand.orgName}</strong>. Cada módulo ativo da plataforma
+            trata apenas os dados necessários à sua finalidade, com trilha de auditoria imutável.
           </p>
         </section>
 
@@ -113,7 +114,7 @@ export default async function PrivacidadePage() {
         <section className="flex flex-col gap-3">
           <h2 className="text-xl font-semibold text-foreground">3. Finalidades</h2>
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted leading-relaxed">
-            <li>Autenticar e autorizar o acesso aos sistemas municipais (SSO Gov.br/Keycloak e login local).</li>
+            <li>Autenticar e autorizar o acesso aos sistemas do órgão (SSO Keycloak com federação AD e login local).</li>
             <li>Manter trilha de auditoria imutável das operações, para controle interno e transparência (LAI).</li>
             <li>Registrar o aceite dos Termos de Uso e desta Política.</li>
             <li>Aplicar preferências de acessibilidade e interface.</li>
@@ -128,7 +129,7 @@ export default async function PrivacidadePage() {
             compartilhamento operacional com:
           </p>
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted leading-relaxed">
-            <li><strong>Login Único Gov.br / Keycloak</strong> — autenticação federada (identidade e nível de confiabilidade).</li>
+            <li><strong>Keycloak / Active Directory</strong> — autenticação federada (identidade e grupos corporativos).</li>
             <li><strong>Órgãos de controle</strong> (CGU, TCE, Ministério Público) — mediante requisição legal, a trilha de auditoria higienizada.</li>
             <li><strong>Provedores de infraestrutura</strong> contratados pelo órgão para hospedar a aplicação, como operadores, sob contrato e instrução do controlador.</li>
           </ul>
@@ -188,8 +189,8 @@ export default async function PrivacidadePage() {
             <Mail size={18} className="text-primary" aria-hidden="true" /> 8. Encarregado de Dados (DPO)
           </h2>
           <p className="text-sm text-muted leading-relaxed">
-            Solicitações relativas a dados pessoais podem ser feitas pelos canais de atendimento da
-            Prefeitura Municipal de Rondonópolis (ver rodapé) ou pelo canal específico do Encarregado de
+            Solicitações relativas a dados pessoais podem ser feitas pelos canais de atendimento de{" "}
+            {brand.orgName} (ver rodapé) ou pelo canal específico do Encarregado de
             Proteção de Dados, <span className="italic">a ser designado e publicado pelo órgão</span>.
           </p>
         </section>

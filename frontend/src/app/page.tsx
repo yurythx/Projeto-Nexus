@@ -20,19 +20,19 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PublicShell } from "@/components/layout/PublicShell";
+import { getServerBranding } from "@/lib/branding/server";
 
 const description =
-  "Assistência Social — Rede Municipal de Proteção Social Básica e Especial, programas socioassistenciais, acolhimento e garantia de direitos da Prefeitura Municipal de Rondonópolis (SEMPRAS).";
+  "Plataforma institucional modular (Microkernel) em conformidade com e-MAG, DSGov, LGPD e OWASP Top 10.";
 
 export const metadata: Metadata = {
-  title: "Assistência Social — SEMPRAS",
   description,
-  openGraph: { title: "Assistência Social — SEMPRAS", description, type: "website" },
+  openGraph: { description, type: "website" },
 };
 
 const pillars = [
   { n: 1, label: "Arquitetura Microkernel & Plug-ins" },
-  { n: 2, label: "Autenticação OIDC Gov.br / Keycloak" },
+  { n: 2, label: "Keycloak dedicado + federação AD" },
   { n: 3, label: "e-MAG Acessibilidade & VLibras" },
   { n: 4, label: "Identidade Visual DSGov / White-Label" },
   { n: 5, label: "LGPD & Mascaramento PII em Logs" },
@@ -54,9 +54,9 @@ const govModules = [
   },
   {
     code: "M03",
-    title: "Autenticação OIDC Gov.br (Login Único)",
-    description: "Validação local JWKS do Keycloak/Gov.br com mapeamento dos Níveis de Confiabilidade Bronze, Prata e Ouro.",
-    reason: "Atende à Portaria SGD/SEDGG Nº 2.154 garantindo que apenas contas verificadas acessem serviços críticos.",
+    title: "Identidade: Keycloak dedicado + RS256",
+    description: "OIDC com Keycloak apartado, federação LDAP/LDAPS com o Active Directory, JWKS com cache e rotação, e fallback local RS256.",
+    reason: "Grupos do AD são mapeados para Perfis e escopos (Entidade, Unidade, Departamento) sem dependência de provedores externos.",
   },
   {
     code: "M04",
@@ -77,7 +77,7 @@ const services = [
     icon: LinkIcon,
     title: "Arquitetura Microkernel (Plug-in System)",
     description:
-      "Core Kernel centralizado em Go 1.25. Acople e gerencie novos módulos de negócio como plug-ins independentes com desacoplamento total.",
+      "Core Kernel em Go. Acople e gerencie novos módulos de negócio como plug-ins independentes com desacoplamento total.",
   },
   {
     icon: Bell,
@@ -95,7 +95,7 @@ const services = [
     icon: ShieldCheck,
     title: "Resiliência & Outbox Transacional",
     description:
-      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega Exactly-Once para todos os módulos.",
+      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega garantida, idempotência e DLQ para todos os módulos.",
   },
 ];
 
@@ -114,18 +114,19 @@ const owaspPractices = [
 
 export default async function LandingPage() {
   await connection();
+  const brand = await getServerBranding();
 
   return (
     <PublicShell>
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-20 px-6 py-12">
         <section className="flex flex-col gap-8">
           <div className="flex flex-col gap-5">
-            <p className="dateline">Prefeitura Municipal de Rondonópolis · SEMPRAS</p>
-            <h1 className="max-w-2xl text-4xl font-extrabold leading-[1.15] text-foreground sm:text-5xl">
-              Sua fundação enterprise em conformidade com o Governo Federal.
+            <p className="dateline">{brand.orgName}</p>
+            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.15] text-foreground sm:text-5xl">
+              {brand.appName}
             </h1>
             <p className="max-w-2xl text-muted text-base">
-              A plataforma de <strong className="font-semibold text-foreground">Assistência Social de Rondonópolis</strong> oferece infraestrutura de alta performance pré-configurada em estrita conformidade com as normas federais: <strong className="text-foreground">e-MAG, DSGov, LGPD, Gov.br (OIDC) e OWASP Top 10</strong>.
+              {brand.appDescription || "Plataforma institucional modular"} — construída em estrita conformidade com as normas federais: <strong className="text-foreground">e-MAG, DSGov, LGPD e OWASP Top 10</strong>.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/login">

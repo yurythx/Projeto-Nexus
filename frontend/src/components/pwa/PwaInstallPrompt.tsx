@@ -3,6 +3,7 @@
 import { Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useBranding } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
 
 const DISMISSED_KEY = "nexus-pwa-install-dismissed";
@@ -31,6 +32,7 @@ function readDismissed(): boolean {
 // dispensa uma vez não vê de novo neste navegador (mas volta a
 // aparecer se o app for reinstalado ou o storage for limpo).
 export function PwaInstallPrompt() {
+  const { branding } = useBranding();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   // Lazy initializer (não um efeito): readDismissed() é síncrono e seguro
   // de chamar durante o render (nunca lança, ver o try/catch dentro) —
@@ -81,7 +83,7 @@ export function PwaInstallPrompt() {
     >
       <Download size={20} aria-hidden="true" className="shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">Instalar o Assistência Social</p>
+        <p className="text-sm font-medium text-foreground">Instalar o {branding.appName}</p>
         <p className="text-xs text-muted">Acesse direto da tela inicial, como um aplicativo.</p>
       </div>
       <Button size="sm" onClick={() => void install()}>

@@ -10,20 +10,18 @@ import { listPublishedServices } from "@/lib/catalog/catalog";
 import { APP_URL } from "@/lib/env";
 import { ServiceIcon } from "@/lib/catalog/icons";
 
-const description = "Central de serviços da Assistência Social — catálogo oficial de unidades, benefícios e acolhimento socioassistencial da Prefeitura Municipal de Rondonópolis (SEMPRAS).";
+const description = "Carta de serviços da instituição: o que é oferecido, para quem, requisitos, etapas, prazos e canais de atendimento.";
 
 export const metadata: Metadata = {
   title: "Serviços",
   description,
   alternates: { canonical: `${APP_URL}/servicos` },
-  openGraph: { title: "Serviços — Assistência Social", description, type: "website", url: `${APP_URL}/servicos` },
+  openGraph: { title: "Serviços", description, type: "website", url: `${APP_URL}/servicos` },
 };
 
 export default async function ServicosPage() {
-  // Achado real (auditoria "módulo desativado não pode ficar acessível")
-  // — mesmo racional de app/blog/(site)/page.tsx: a listagem nunca
-  // tratava um 404 (Guard de módulo desativado) como "não existe", só a
-  // página de detalhe (getPublishedService) já fazia isso.
+  // Módulo "catalog" desativado no Kernel → o Guard responde 404 e a
+  // página inteira deixa de existir (não só a lista vazia).
   let services: Awaited<ReturnType<typeof listPublishedServices>>;
   try {
     services = await listPublishedServices();
@@ -45,7 +43,7 @@ export default async function ServicosPage() {
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-surface-border py-16 text-center text-muted">
             <LayoutGrid size={32} aria-hidden="true" />
             <p className="max-w-md">
-              Nenhum serviço publicado ainda. O catálogo oficial de serviços socioassistenciais é gerenciado pela equipe técnica em Gerenciar Serviços (SEMPRAS).
+              Nenhum serviço publicado ainda. O catálogo é mantido pela equipe responsável na área administrativa (permissão catalog:manage).
             </p>
           </div>
         ) : (
@@ -59,7 +57,7 @@ export default async function ServicosPage() {
                       </span>
                       {svc.category && <span className="text-xs font-medium text-muted">{svc.category}</span>}
                       <CardTitle as="h2" className="text-lg">
-                        {svc.name}
+                        {svc.title}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex flex-1 flex-col gap-3">

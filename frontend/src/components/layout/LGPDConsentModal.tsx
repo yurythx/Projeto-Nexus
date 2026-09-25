@@ -5,6 +5,7 @@ import { ShieldCheck, Lock, FileText, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 
+import { useBranding } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
 
 const CURRENT_TERM_VERSION = "v1.0.0-2026";
@@ -27,6 +28,7 @@ function getOrCreateDeviceId(): string {
 }
 
 export function LGPDConsentModal() {
+  const { branding } = useBranding();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const { status } = useSession();
@@ -104,9 +106,9 @@ export function LGPDConsentModal() {
 
         <div id="lgpd-description" className="flex flex-col gap-3 text-xs text-muted leading-relaxed">
           <p>
-            Para garantir a transparência e a segurança da sua navegação, a{" "}
-            <strong>Prefeitura Municipal de Rondonópolis</strong> utiliza a infraestrutura de{" "}
-            <strong>Assistência Social (SEMPRAS)</strong> com estrita observância à LGPD.
+            Para garantir a transparência e a segurança da sua navegação,{" "}
+            <strong>{branding.orgName}</strong> opera o <strong>{branding.appName}</strong> com estrita
+            observância à LGPD.
           </p>
           <div className="flex flex-col gap-2 rounded-xl bg-surface-hover p-3 border border-surface-border">
             <div className="flex items-start gap-2">

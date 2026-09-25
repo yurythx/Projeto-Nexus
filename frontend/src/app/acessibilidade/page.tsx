@@ -4,11 +4,12 @@ import Link from "next/link";
 import { connection } from "next/server";
 
 import { PublicShell } from "@/components/layout/PublicShell";
+import { getServerBranding } from "@/lib/branding/server";
 
 export const metadata: Metadata = {
-  title: "Acessibilidade | Prefeitura de Rondonópolis",
+  title: "Acessibilidade",
   description:
-    "Declaração e instruções de acessibilidade e-MAG do portal oficial e sistemas da Prefeitura Municipal de Rondonópolis.",
+    "Declaração e instruções de acessibilidade e-MAG da plataforma.",
 };
 
 // § Padronização de páginas públicas: esta página tinha seu próprio
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
 // de introdução, sem ícone em caixa nem breadcrumb).
 export default async function AccessibilityPage() {
   await connection();
+  const brand = await getServerBranding();
 
   return (
     <PublicShell>
@@ -34,7 +36,7 @@ export default async function AccessibilityPage() {
           </div>
           <h1 className="text-3xl font-bold text-foreground">Acessibilidade</h1>
           <p className="text-muted leading-relaxed">
-            Portal Oficial da Prefeitura Municipal de Rondonópolis — em conformidade com as normas{" "}
+            {brand.appName} ({brand.orgName}) — em conformidade com as normas{" "}
             <strong>e-MAG (Modelo de Acessibilidade do Governo Federal)</strong>.
           </p>
         </section>
@@ -53,19 +55,19 @@ export default async function AccessibilityPage() {
             <ul className="flex flex-col gap-2.5 text-xs text-foreground font-mono">
               <li className="flex items-center gap-2 rounded-lg bg-surface-hover p-2 border border-surface-border">
                 <span className="rounded bg-primary px-2 py-0.5 text-white font-bold">Alt + 1</span>
-                <span>Início do conteúdo principal da página (`#conteudo`)</span>
+                <span>Início do conteúdo principal da página (`#main-content`)</span>
               </li>
               <li className="flex items-center gap-2 rounded-lg bg-surface-hover p-2 border border-surface-border">
                 <span className="rounded bg-primary px-2 py-0.5 text-white font-bold">Alt + 2</span>
-                <span>Início do menu principal (`#menu`)</span>
+                <span>Início do menu principal (`#main-menu`)</span>
               </li>
               <li className="flex items-center gap-2 rounded-lg bg-surface-hover p-2 border border-surface-border">
                 <span className="rounded bg-primary px-2 py-0.5 text-white font-bold">Alt + 3</span>
-                <span>Busca interna (`#busca`)</span>
+                <span>Busca interna (`#global-search`)</span>
               </li>
               <li className="flex items-center gap-2 rounded-lg bg-surface-hover p-2 border border-surface-border">
                 <span className="rounded bg-primary px-2 py-0.5 text-white font-bold">Alt + 4</span>
-                <span>Início do rodapé (`#rodape`)</span>
+                <span>Início do rodapé (`#gov-footer`)</span>
               </li>
             </ul>
 
@@ -156,7 +158,7 @@ export default async function AccessibilityPage() {
               <h2>Legislação sobre Acessibilidade</h2>
             </div>
             <p className="text-xs text-muted leading-relaxed">
-              O Portal da Prefeitura Municipal de Rondonópolis e a plataforma de Assistência Social cumprem
+              O {brand.appName} cumpre
               rigorosamente os seguintes normativos legais:
             </p>
             <ul className="flex flex-col gap-3 text-xs">
@@ -214,7 +216,7 @@ export default async function AccessibilityPage() {
 
             <dt className="font-semibold text-foreground">Responsável</dt>
             <dd className="text-muted leading-relaxed">
-              Equipe de Tecnologia e Engenharia da SEMPRAS, sob coordenação da Secretaria de Assistência Social da Prefeitura Municipal de Rondonópolis.
+              Equipe de tecnologia responsável pela plataforma em {brand.orgName}.
             </dd>
 
             <dt className="font-semibold text-foreground">Método</dt>
