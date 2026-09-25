@@ -52,6 +52,8 @@ export async function proxy(request: NextRequest) {
   // MinIO via URL pré-assinada, e a própria API). Deduplicadas — API e WS
   // costumam ser o mesmo host:porta em esquemas diferentes.
   const apiOrigin = toOrigin(API_PUBLIC_URL);
+  // Capas do Blog e miniaturas vêm do MinIO por URL pré-assinada.
+  const minioOrigin = MINIO_PUBLIC_URL ? toOrigin(MINIO_PUBLIC_URL) : undefined;
   const connectOrigins = [
     ...new Set(
       [
@@ -82,7 +84,7 @@ export async function proxy(request: NextRequest) {
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ""};
     style-src 'self' 'unsafe-inline' ${vlibrasHosts};
-    img-src 'self' blob: data: ${vlibrasHosts};
+    img-src 'self' blob: data: ${vlibrasHosts}${minioOrigin ? ` ${minioOrigin}` : ""};
     font-src 'self' data: ${vlibrasHosts};
     connect-src 'self' blob: data: ${vlibrasHosts}${connectOrigins ? ` ${connectOrigins}` : ""}${connectSrcDev};
     worker-src 'self' blob: data: https://vlibras.gov.br https://*.vlibras.gov.br;
