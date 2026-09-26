@@ -130,9 +130,8 @@ func (s *PostgresStore) Fail(ctx context.Context, key string) error {
 // indefinidamente em um sistema de alto tráfego.
 const retention = 24 * time.Hour
 
-// Cleanup apaga periodicamente chaves de idempotência antigas, no mesmo
-// espírito de internal/platform/ratelimit.Cleanup. Registrado como um
-// processor do worker.
+// Cleanup apaga periodicamente chaves de idempotência antigas. Registrado
+// como um processor do worker.
 func Cleanup(pool *pgxpool.Pool) func(ctx context.Context) error {
 	return cleanup(pool, 15*time.Minute)
 }

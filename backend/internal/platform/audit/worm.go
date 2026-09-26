@@ -35,8 +35,7 @@ type wormExporter struct {
 	now           func() time.Time
 }
 
-// WORMExporter é um processor do worker (mesmo formato de
-// ratelimit.Cleanup). Serializa cada dia COMPLETO de audit_logs ainda não
+// WORMExporter é um processor do worker. Serializa cada dia COMPLETO de audit_logs ainda não
 // exportado, encadeia o SHA-256 ao do dia anterior (evidência de
 // adulteração) e sobe arquivo + digest para o object storage. F2.6.
 //

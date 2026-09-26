@@ -25,8 +25,7 @@ const erasureDetail = "Dados pessoais anonimizados (username, e-mail, nome, hash
 // erasureFailedDetail é o que o titular vê se a eliminação esgotar as tentativas.
 const erasureFailedDetail = "Não foi possível concluir a eliminação. Abra uma nova solicitação ou contate o encarregado (DPO)."
 
-// ErasureProcessor é um processor do worker (mesmo formato de
-// ratelimit.Cleanup): a cada 30s varre data_subject_requests pendentes do
+// ErasureProcessor é um processor do worker: a cada 30s varre data_subject_requests pendentes do
 // tipo 'erasure' e anonimiza o titular. Roda uma vez no boot também, para
 // drenar o backlog sem esperar o primeiro tick. Uma falha (ex.: banco
 // instável) deixa a solicitação pendente para a próxima rodada; só depois
