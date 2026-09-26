@@ -24,8 +24,21 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U nexus -d nexus_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      # RabbitMQ real: mensageria (confirms, retry, DLQ, reconexão) e o
+      # Relay do outbox contra o broker de verdade (TEST_RABBITMQ_URL).
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: nexus
+          RABBITMQ_DEFAULT_PASS: nexus_ci_password
+          RABBITMQ_DEFAULT_VHOST: nexus
+        ports: [ "5672:5672" ]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s --health-timeout 10s --health-retries 20
     env:
       TEST_DATABASE_URL: "postgres://nexus:nexus_ci_password@localhost:5432/nexus_test?sslmode=disable"
+      TEST_RABBITMQ_URL: "amqp://nexus:nexus_ci_password@localhost:5672/nexus"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
