@@ -4,6 +4,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,23 @@ import (
 var (
 	ErrNotFound  = errors.New("catalog: serviço não encontrado")
 	ErrSlugTaken = errors.New("catalog: slug já utilizado")
+	// ErrUnidade: a unidade responsável informada não existe.
+	ErrUnidade = errors.New("catalog: unidade responsável inexistente")
+	// ErrIncomplete: a Carta de Serviços (Lei 13.460/2017, art. 7º) exige,
+	// para publicar, ao menos a descrição resumida e um canal de atendimento.
+	ErrIncomplete = errors.New("catalog: para publicar, informe o resumo e ao menos um canal de atendimento (Lei 13.460/2017)")
+	// ErrPublished: serviço publicado não é excluído — arquive antes (os
+	// links públicos deixam de funcionar de forma controlada).
+	ErrPublished = errors.New("catalog: serviço publicado não pode ser excluído; arquive-o antes")
 )
+
+// ReadyToPublish confere o conteúdo mínimo exigido para a publicação.
+func (s Service) ReadyToPublish() error {
+	if strings.TrimSpace(s.Summary) == "" || len(s.Channels) == 0 {
+		return ErrIncomplete
+	}
+	return nil
+}
 
 const (
 	StatusDraft     = "draft"

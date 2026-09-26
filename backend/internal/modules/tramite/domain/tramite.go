@@ -22,6 +22,17 @@ var (
 	ErrInvalidState  = errors.New("tramite: operação inválida no estado atual")
 	ErrSignatureOff  = errors.New("tramite: assinatura eletrônica indisponível (Signum desativado)")
 	ErrDocumentState = errors.New("tramite: o documento não está em rascunho")
+	// ErrClosed: processo concluído/arquivado não recebe documentos nem
+	// assinaturas — é preciso reabri-lo antes.
+	ErrClosed = errors.New("tramite: processo concluído ou arquivado; reabra-o para alterar")
+	// ErrPendingSignature: não se conclui um processo com documento
+	// aguardando assinatura (o resultado ficaria fora do processo encerrado).
+	ErrPendingSignature = errors.New("tramite: há documento aguardando assinatura; aguarde ou cancele o envelope antes de concluir")
+	// ErrPublicGrant: credencial só faz sentido em processo restrito ou
+	// sigiloso (o público já é legível por qualquer autenticado).
+	ErrPublicGrant = errors.New("tramite: processo público não usa credencial de acesso")
+	// ErrInactiveTipo: tipos desativados não aceitam novos processos.
+	ErrInactiveTipo = errors.New("tramite: tipo de processo inexistente ou desativado")
 )
 
 // Níveis de sigilo.
@@ -38,6 +49,13 @@ const (
 	StatusConcluido    = "concluido"
 	StatusArquivado    = "arquivado"
 )
+
+// Aberto reporta se o processo ainda está em curso (aberto ou em
+// tramitação) — só então aceita documentos e pedidos de assinatura.
+func Aberto(status string) bool { return status == StatusAberto || status == StatusEmTramitacao }
+
+// Encerrado reporta se o processo está concluído ou arquivado.
+func Encerrado(status string) bool { return status == StatusConcluido || status == StatusArquivado }
 
 // FormatNumero monta "NNNNNN/AAAA".
 func FormatNumero(seq, ano int) string { return fmt.Sprintf("%06d/%04d", seq, ano) }
@@ -165,12 +183,15 @@ type Filter struct {
 	Query     string
 	Status    string
 	UnidadeID *uuid.UUID
-	Mine      bool
+	// Mine: só processos cuja unidade ATUAL é uma das lotações do usuário
+	// (a "caixa" da unidade — o processo sai dela ao ser tramitado).
+	Mine bool
 }
 
 // Repository é a porta de persistência.
 type Repository interface {
 	Tipos(ctx context.Context, db database.DBTX) ([]Tipo, error)
+	TipoAtivo(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
 	NextNumero(ctx context.Context, db database.DBTX, ano int) (int, error)
 	Insert(ctx context.Context, db database.DBTX, p Processo) error
 	Get(ctx context.Context, db database.DBTX, id uuid.UUID, forUpdate bool) (Processo, error)
@@ -179,6 +200,8 @@ type Repository interface {
 	ListVisible(ctx context.Context, db database.DBTX, identity auth.Identity, f Filter, p pagination.Params) ([]Processo, int64, error)
 	Update(ctx context.Context, db database.DBTX, p Processo) error
 	Grant(ctx context.Context, db database.DBTX, processoID, userID, grantedBy uuid.UUID) error
+	// Revoke remove a credencial; reporta se ela existia.
+	Revoke(ctx context.Context, db database.DBTX, processoID, userID uuid.UUID) (bool, error)
 	Grants(ctx context.Context, db database.DBTX, processoID uuid.UUID) ([]Grant, error)
 
 	Documentos(ctx context.Context, db database.DBTX, processoID uuid.UUID) ([]Documento, error)
@@ -186,6 +209,8 @@ type Repository interface {
 	InsertDocumento(ctx context.Context, db database.DBTX, d Documento) error
 	UpdateDocumento(ctx context.Context, db database.DBTX, d Documento) error
 	DocumentoByEnvelope(ctx context.Context, db database.DBTX, envelopeID uuid.UUID) (Documento, error)
+	// PendingSignatures conta documentos aguardando assinatura.
+	PendingSignatures(ctx context.Context, db database.DBTX, processoID uuid.UUID) (int, error)
 
 	AddMovimento(ctx context.Context, db database.DBTX, m Movimento) error
 	Movimentos(ctx context.Context, db database.DBTX, processoID uuid.UUID) ([]Movimento, error)

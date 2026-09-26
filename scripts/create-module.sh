@@ -63,7 +63,9 @@ rename() {
         -e "s#example_items#${NAME}_items#g" \
         -e "s#example_item#${NAME}_item#g" \
         -e "s#example\.item\.#${NAME}.item.#g" \
-        -e "s#example\.CreateItem#${NAME}.CreateItem#g" \
+        -e "s#\"example\\.\([A-Z]\)#\"${NAME}.\1#g" \
+        -e "s#\"example: #\"${NAME}: #g" \
+        -e "s#live example module#live ${NAME} module#g" \
         -e "s#Key = \"example\"#Key = \"${NAME}\"#" \
         -e "s#\"/examples\"#\"/${NAME}\"#g" \
         -e "s#v1/examples#v1/${NAME}#g" \

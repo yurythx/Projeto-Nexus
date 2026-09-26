@@ -45,6 +45,10 @@ func MapError(err error) error {
 		return apperrors.Validation("intervalo inválido: o fim precisa ser depois do início (máx. 31 dias)")
 	case errors.Is(err, domain.ErrDuplicate):
 		return apperrors.Conflict("já existe uma sala com este nome")
+	case errors.Is(err, domain.ErrInvalidValue):
+		return apperrors.Validation("valor fora do permitido (visibilidade, status ou capacidade)")
+	case errors.Is(err, domain.ErrCancelled), errors.Is(err, domain.ErrRoomInUse):
+		return apperrors.Conflict(err.Error())
 	}
 	return err
 }
@@ -99,11 +103,14 @@ type EventInput struct {
 	AllDay                                   bool
 }
 
-func (s *Service) validate(ctx context.Context, db database.DBTX, in EventInput) error {
+// validate confere o intervalo e, quando a reserva de sala é nova (ou
+// troca de sala), que a sala está ativa — editar só o título de um evento
+// numa sala desativada depois continua possível.
+func (s *Service) validate(ctx context.Context, db database.DBTX, in EventInput, currentRoom *uuid.UUID) error {
 	if err := domain.ValidateRange(in.StartsAt, in.EndsAt); err != nil {
 		return err
 	}
-	if in.RoomID != nil {
+	if in.RoomID != nil && (currentRoom == nil || *currentRoom != *in.RoomID) {
 		room, err := s.repo.GetRoom(ctx, db, *in.RoomID)
 		if err != nil {
 			return err
@@ -119,7 +126,7 @@ func (s *Service) validate(ctx context.Context, db database.DBTX, in EventInput)
 func (s *Service) CreateEvent(ctx context.Context, identity auth.Identity, in EventInput) (domain.Event, error) {
 	var out domain.Event
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
-		if err := s.validate(ctx, tx, in); err != nil {
+		if err := s.validate(ctx, tx, in, nil); err != nil {
 			return err
 		}
 		var err error
@@ -160,7 +167,10 @@ func (s *Service) UpdateEvent(ctx context.Context, identity auth.Identity, id uu
 		if err := s.ownOrManage(identity, prev); err != nil {
 			return err
 		}
-		if err := s.validate(ctx, tx, in); err != nil {
+		if prev.Status == "cancelled" {
+			return domain.ErrCancelled
+		}
+		if err := s.validate(ctx, tx, in, prev.RoomID); err != nil {
 			return err
 		}
 		next := prev
@@ -184,6 +194,9 @@ func (s *Service) CancelEvent(ctx context.Context, identity auth.Identity, id uu
 		}
 		if err := s.ownOrManage(identity, prev); err != nil {
 			return err
+		}
+		if prev.Status == "cancelled" {
+			return domain.ErrCancelled
 		}
 		next := prev
 		next.Status = "cancelled"
@@ -223,6 +236,9 @@ func (s *Service) RoomBusy(ctx context.Context, roomID uuid.UUID, from, to time.
 	if err := checkWindow(from, to); err != nil {
 		return nil, err
 	}
+	if _, err := s.repo.GetRoom(ctx, s.pool, roomID); err != nil {
+		return nil, MapError(err)
+	}
 	return s.repo.RoomBusy(ctx, s.pool, roomID, from, to)
 }
 
@@ -252,12 +268,20 @@ func (s *Service) SaveRoom(ctx context.Context, id uuid.UUID, in domain.Room) (d
 	return out, MapError(err)
 }
 
-// DeleteRoom remove uma sala (eventos ficam sem sala).
+// DeleteRoom remove uma sala sem reservas futuras (os eventos passados
+// ficam registrados, sem sala). Com reservas futuras: desativar.
 func (s *Service) DeleteRoom(ctx context.Context, id uuid.UUID) error {
 	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.GetRoom(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		upcoming, err := s.repo.RoomHasUpcoming(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if upcoming {
+			return domain.ErrRoomInUse
 		}
 		if err := s.repo.DeleteRoom(ctx, tx, id); err != nil {
 			return err

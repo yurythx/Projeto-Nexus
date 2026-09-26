@@ -73,7 +73,9 @@ type myDataPackage struct {
 	Consents    []map[string]any `json:"consents"`
 	AuditTrail  []map[string]any `json:"audit_trail"`
 	DSRRequests []map[string]any `json:"data_subject_requests"`
-	Note        string           `json:"note"`
+	// Modules traz os dados pessoais guardados por cada plugin (lgpd.PersonalData).
+	Modules map[string]any `json:"modules"`
+	Note    string         `json:"note"`
 }
 
 func (s *Service) handleExportMyData(w http.ResponseWriter, r *http.Request) {
@@ -122,21 +124,45 @@ func (s *Service) handleExportMyData(w http.ResponseWriter, r *http.Request) {
 		pkg.Account["last_seen_at"] = lastSeen.UTC().Format(time.RFC3339)
 	}
 
-	pkg.Consents = s.collectRows(ctx, `
-		SELECT term_version, COALESCE(ip_address::text,''), COALESCE(user_agent,''), accepted_at
-		FROM user_consents WHERE user_id = $1 ORDER BY accepted_at DESC`, uid,
-		"term_version", "ip_address", "user_agent", "accepted_at")
-
-	pkg.AuditTrail = s.collectRows(ctx, `
+	// O pacote sai completo ou não sai: omitir uma parte em silêncio seria
+	// entregar ao titular uma resposta incompleta ao art. 18.
+	sections := []struct {
+		dst   *[]map[string]any
+		query string
+		cols  []string
+	}{
+		{&pkg.Consents, `
+		SELECT term_version, COALESCE(host(ip_address),''), COALESCE(user_agent,''), accepted_at
+		FROM user_consents WHERE user_id = $1 ORDER BY accepted_at DESC`,
+			[]string{"term_version", "ip_address", "user_agent", "accepted_at"}},
+		{&pkg.AuditTrail, `
 		SELECT action, COALESCE(resource_type,''), COALESCE(resource_id,''),
-		       COALESCE(metadata::text,'{}'), COALESCE(ip_address::text,''), created_at
-		FROM audit_logs WHERE actor_id = $1 ORDER BY chain_pos DESC LIMIT 5000`, uid,
-		"action", "resource_type", "resource_id", "metadata", "ip_address", "created_at")
-
-	pkg.DSRRequests = s.collectRows(ctx, `
+		       COALESCE(metadata::text,'{}'), COALESCE(host(ip_address),''), created_at
+		FROM audit_logs WHERE actor_id = $1 ORDER BY chain_pos DESC LIMIT 5000`,
+			[]string{"action", "resource_type", "resource_id", "metadata", "ip_address", "created_at"}},
+		{&pkg.DSRRequests, `
 		SELECT kind, status, COALESCE(detail,''), created_at, completed_at
-		FROM data_subject_requests WHERE user_id = $1 ORDER BY created_at DESC`, uid,
-		"kind", "status", "detail", "created_at", "completed_at")
+		FROM data_subject_requests WHERE user_id = $1 ORDER BY created_at DESC`,
+			[]string{"kind", "status", "detail", "created_at", "completed_at"}},
+	}
+	for _, sec := range sections {
+		if *sec.dst, err = s.collectRows(ctx, sec.query, uid, sec.cols...); err != nil {
+			httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("lgpd: export: %w", err)))
+			return
+		}
+	}
+	pkg.Modules = map[string]any{}
+	keys, providers := s.providers()
+	for _, key := range keys {
+		data, err := providers[key].ExportPersonalData(ctx, s.db, uid)
+		if err != nil {
+			httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("lgpd: export %s: %w", key, err)))
+			return
+		}
+		if data != nil {
+			pkg.Modules[key] = data
+		}
+	}
 
 	filename := fmt.Sprintf("meus-dados-nexus-%s.json", time.Now().UTC().Format("20060102_150405"))
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -155,35 +181,28 @@ func (s *Service) handleExportMyData(w http.ResponseWriter, r *http.Request) {
 }
 
 // collectRows roda uma query de N colunas de texto/tempo e devolve
-// []map[coluna]valor — usado só para montar o pacote de exportação, onde
-// o formato de saída é JSON genérico.
-func (s *Service) collectRows(ctx context.Context, query string, arg any, cols ...string) []map[string]any {
-	out := []map[string]any{}
+// []map[coluna]valor — usado para montar o pacote de exportação e a lista
+// de solicitações, onde o formato de saída é JSON genérico.
+func (s *Service) collectRows(ctx context.Context, query string, arg any, cols ...string) ([]map[string]any, error) {
 	rows, err := s.db.Query(ctx, query, arg)
 	if err != nil {
-		s.logger.Warn("lgpd: export sub-query falhou", "error", err)
-		return out
+		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		vals, err := rows.Values()
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (map[string]any, error) {
+		vals, err := row.Values()
 		if err != nil {
-			continue
+			return nil, err
 		}
 		m := make(map[string]any, len(cols))
 		for i, c := range cols {
-			if i >= len(vals) {
-				break
-			}
 			if t, ok := vals[i].(time.Time); ok {
 				m[c] = t.UTC().Format(time.RFC3339)
 			} else {
 				m[c] = vals[i]
 			}
 		}
-		out = append(out, m)
-	}
-	return out
+		return m, nil
+	})
 }
 
 func (s *Service) handleRequestErasure(w http.ResponseWriter, r *http.Request) {
@@ -247,9 +266,13 @@ func (s *Service) handleListMyRequests(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, r, s.logger, err)
 		return
 	}
-	list := s.collectRows(r.Context(), `
+	list, err := s.collectRows(r.Context(), `
 		SELECT id::text, kind, status, COALESCE(detail,''), created_at, completed_at
 		FROM data_subject_requests WHERE user_id = $1 ORDER BY created_at DESC`, uid,
 		"id", "kind", "status", "detail", "created_at", "completed_at")
+	if err != nil {
+		httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("lgpd: list requests: %w", err)))
+		return
+	}
 	httputil.WriteOK(w, list)
 }

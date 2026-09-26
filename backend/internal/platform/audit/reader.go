@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // Record é uma linha da trilha, como devolvida pela API de consulta.
@@ -56,13 +56,17 @@ type VerifyResult struct {
 
 // Reader consulta audit_logs.
 type Reader struct {
-	pool *pgxpool.Pool
+	db database.DBTX
 }
 
-// NewReader constrói um Reader.
-func NewReader(pool *pgxpool.Pool) *Reader {
-	return &Reader{pool: pool}
+// NewReader constrói um Reader (db: o pool, em produção).
+func NewReader(db database.DBTX) *Reader {
+	return &Reader{db: db}
 }
+
+// likeEscaper escapa os curingas do LIKE: no filtro de ação só "*" é
+// curinga — "%" e "_" digitados valem como texto.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
 
 const recordColumns = `
 	a.id, a.chain_pos, a.actor_id, COALESCE(a.actor_subject,''), COALESCE(NULLIF(u.display_name,''), u.username, ''),
@@ -88,7 +92,7 @@ func (r *Reader) List(ctx context.Context, f Filter, p pagination.Params) ([]Rec
 		where = append(where, fmt.Sprintf(cond, len(args)))
 	}
 	if f.Action != "" {
-		add("a.action LIKE $%d", strings.ReplaceAll(f.Action, "*", "%"))
+		add("a.action LIKE $%d", strings.ReplaceAll(likeEscaper.Replace(f.Action), "*", "%"))
 	}
 	if f.ActorID != nil {
 		add("a.actor_id = $%d", *f.ActorID)
@@ -111,14 +115,14 @@ func (r *Reader) List(ctx context.Context, f Filter, p pagination.Params) ([]Rec
 	}
 
 	var total int64
-	if err := r.pool.QueryRow(ctx, "SELECT count(*) FROM audit_logs a "+cond, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, "SELECT count(*) FROM audit_logs a "+cond, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("audit: count: %w", err)
 	}
 
 	args = append(args, p.Limit(), p.Offset())
 	q := fmt.Sprintf(`SELECT %s FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id %s
 		ORDER BY a.chain_pos DESC LIMIT $%d OFFSET $%d`, recordColumns, cond, len(args)-1, len(args))
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("audit: list: %w", err)
 	}
@@ -137,7 +141,7 @@ func (r *Reader) List(ctx context.Context, f Filter, p pagination.Params) ([]Rec
 // Get devolve um registro pelo id.
 func (r *Reader) Get(ctx context.Context, id uuid.UUID) (Record, error) {
 	q := fmt.Sprintf(`SELECT %s FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id WHERE a.id = $1`, recordColumns)
-	return scanRecord(r.pool.QueryRow(ctx, q, id))
+	return scanRecord(r.db.QueryRow(ctx, q, id))
 }
 
 // Verify recalcula a cadeia SHA-256 a partir de from (1 = desde o início),
@@ -149,7 +153,7 @@ func (r *Reader) Verify(ctx context.Context, from, limit int64) (VerifyResult, e
 		lim = limit
 	}
 	var reason *string
-	err := r.pool.QueryRow(ctx, `SELECT checked, valid, first_invalid_pos, reason FROM audit_verify_chain($1, $2)`, from, lim).
+	err := r.db.QueryRow(ctx, `SELECT checked, valid, first_invalid_pos, reason FROM audit_verify_chain($1, $2)`, from, lim).
 		Scan(&res.Checked, &res.Valid, &res.FirstInvalidPos, &reason)
 	if err != nil {
 		return VerifyResult{}, fmt.Errorf("audit: verify chain: %w", err)

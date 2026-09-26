@@ -65,3 +65,32 @@ func TestValidSHA256(t *testing.T) {
 		}
 	}
 }
+
+func TestCanSignEdgeCasesAndSealWithoutSignature(t *testing.T) {
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	e := Envelope{Status: StatusPending, Sequential: true, Signers: []Signer{
+		{UserID: a, Status: "signed"}, {UserID: b, Status: StatusPending}, {UserID: c, Status: StatusPending},
+	}}
+	if err := e.CanSign(a); err != ErrNotSigner {
+		t.Fatalf("quem já assinou não é mais signatário pendente: %v", err)
+	}
+	if err := e.CanSign(b); err != nil {
+		t.Fatalf("o próximo pendente assina: %v", err)
+	}
+	if err := e.CanSign(c); err != ErrNotYourTurn {
+		t.Fatalf("o terceiro aguarda: %v", err)
+	}
+	e.Sequential = false
+	if err := e.CanSign(uuid.New()); err != ErrNotSigner {
+		t.Fatalf("em paralelo, estranho também não assina: %v", err)
+	}
+	if e.AllSigned() || (Envelope{}).AllSigned() {
+		t.Fatal("envelope com pendentes (ou sem signatários) não está concluído")
+	}
+	if VerifySeal([]byte("k"), uuid.New(), "x", Signer{UserID: a}) {
+		t.Fatal("sem instante e selo, não há assinatura para validar")
+	}
+	if HashNonce("abc") == HashNonce("abd") || len(HashNonce("abc")) != 64 {
+		t.Fatal("hash do nonce")
+	}
+}

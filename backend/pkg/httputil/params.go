@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -43,13 +44,15 @@ func Page(r *http.Request, maxPageSize int) pagination.Params {
 }
 
 // Query devolve um parâmetro de query sem espaços nas pontas, limitado a
-// max caracteres (defesa contra termos de busca gigantes).
+// max caracteres (defesa contra termos de busca gigantes). O corte é por
+// caractere, não por byte: cortar no meio de um "ç" geraria UTF-8
+// inválido, que o Postgres rejeita (500 em vez de uma busca).
 func Query(r *http.Request, name string, max int) string {
 	v := strings.TrimSpace(r.URL.Query().Get(name))
-	if len(v) > max {
-		v = v[:max]
+	if utf8.RuneCountInString(v) > max {
+		v = string([]rune(v)[:max])
 	}
-	return v
+	return strings.ToValidUTF8(v, "")
 }
 
 // WritePage escreve uma listagem paginada padrão.

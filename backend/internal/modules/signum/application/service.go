@@ -104,6 +104,13 @@ func (s *Service) OpenTx(ctx context.Context, tx pgx.Tx, req OpenRequest) (domai
 	if !ok {
 		return domain.Envelope{}, apperrors.Unauthorized("identidade necessária para abrir um envelope")
 	}
+	unavailable, err := s.repo.UnavailableSigners(ctx, tx, req.SignerIDs)
+	if err != nil {
+		return domain.Envelope{}, err
+	}
+	if len(unavailable) > 0 {
+		return domain.Envelope{}, apperrors.Validation("signatário inexistente ou desativado: " + unavailable[0].String())
+	}
 	seen := map[uuid.UUID]bool{}
 	e := domain.Envelope{
 		ID: uuid.New(), Title: strings.TrimSpace(req.Title), Description: req.Description, DocumentSHA256: req.DocumentSHA256,
@@ -117,9 +124,6 @@ func (s *Service) OpenTx(ctx context.Context, tx pgx.Tx, req OpenRequest) (domai
 		e.Signers = append(e.Signers, domain.Signer{UserID: id, Position: i, Status: domain.StatusPending})
 	}
 	if err := s.repo.Insert(ctx, tx, e); err != nil {
-		if database.IsForeignKeyViolation(err) {
-			return domain.Envelope{}, apperrors.Validation("signatário inexistente")
-		}
 		return domain.Envelope{}, err
 	}
 	if err := audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "signum.envelope.opened", "signum_envelope", e.ID.String(), nil,
@@ -191,9 +195,7 @@ func (s *Service) Challenge(ctx context.Context, identity auth.Identity, envelop
 		return ChallengeResponse{}, MapError(err)
 	}
 	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return ChallengeResponse{}, apperrors.Internal(err)
-	}
+	_, _ = rand.Read(raw) // crypto/rand.Read nunca falha (Go 1.24+)
 	nonce := hex.EncodeToString(raw)
 	c := domain.Challenge{ID: uuid.New(), EnvelopeID: envelopeID, UserID: identity.UserID, NonceHash: domain.HashNonce(nonce),
 		ExpiresAt: time.Now().Add(s.challengeTTL)}
@@ -212,8 +214,28 @@ type SignInput struct {
 	IP, UserAgent string
 }
 
+// precheck valida envelope, vez e documento ANTES de pedir a senha: uma
+// tentativa em envelope errado não consome tentativas de senha nem gera
+// alarme falso de reautenticação. A mesma checagem se repete sob lock.
+func (s *Service) precheck(ctx context.Context, db database.DBTX, identity auth.Identity, envelopeID uuid.UUID, confirmSHA256 string, forUpdate bool) (domain.Envelope, error) {
+	e, err := s.repo.Get(ctx, db, envelopeID, forUpdate)
+	if err != nil {
+		return e, err
+	}
+	if err := e.CanSign(identity.UserID); err != nil {
+		return e, err
+	}
+	if strings.ToLower(strings.TrimSpace(confirmSHA256)) != e.DocumentSHA256 {
+		return e, domain.ErrDocumentMismatch
+	}
+	return e, nil
+}
+
 // Sign conclui a assinatura.
 func (s *Service) Sign(ctx context.Context, identity auth.Identity, envelopeID uuid.UUID, in SignInput) (domain.Envelope, error) {
+	if _, err := s.precheck(ctx, s.pool, identity, envelopeID, in.ConfirmSHA256, false); err != nil {
+		return domain.Envelope{}, MapError(err)
+	}
 	throttleKey := "signum:" + identity.UserID.String()
 	if s.throttle != nil {
 		if left, err := s.throttle.LockedFor(ctx, throttleKey); err == nil && left > 0 {
@@ -222,8 +244,10 @@ func (s *Service) Sign(ctx context.Context, identity auth.Identity, envelopeID u
 	}
 	method, err := s.reauth.Reauthenticate(ctx, identity.UserID, identity.Username, identity.Source == auth.SourceKeycloak, in.Password)
 	if err != nil {
-		if errors.Is(err, domain.ErrReauth) && s.throttle != nil {
-			_, _ = s.throttle.RegisterFailure(ctx, throttleKey)
+		if errors.Is(err, domain.ErrReauth) {
+			if s.throttle != nil {
+				_, _ = s.throttle.RegisterFailure(ctx, throttleKey)
+			}
 			_ = audit.NewWriter(s.pool).Record(ctx, audit.Meta(ctx, "signum.reauth.failed", "signum_envelope", envelopeID.String(), nil, nil))
 		}
 		return domain.Envelope{}, MapError(err)
@@ -234,15 +258,9 @@ func (s *Service) Sign(ctx context.Context, identity auth.Identity, envelopeID u
 
 	var out domain.Envelope
 	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
-		e, err := s.repo.Get(ctx, tx, envelopeID, true)
+		e, err := s.precheck(ctx, tx, identity, envelopeID, in.ConfirmSHA256, true)
 		if err != nil {
 			return err
-		}
-		if err := e.CanSign(identity.UserID); err != nil {
-			return err
-		}
-		if strings.ToLower(strings.TrimSpace(in.ConfirmSHA256)) != e.DocumentSHA256 {
-			return domain.ErrDocumentMismatch
 		}
 		if err := s.repo.ConsumeChallenge(ctx, tx, in.ChallengeID, envelopeID, identity.UserID, domain.HashNonce(in.Nonce)); err != nil {
 			return err

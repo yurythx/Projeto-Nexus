@@ -39,3 +39,9 @@ if (typeof HTMLDialogElement !== "undefined") {
     };
   }
 }
+
+// jsdom não implementa Element.scrollIntoView (usado para rolar o chat do
+// Mercúrio até a última mensagem).
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}

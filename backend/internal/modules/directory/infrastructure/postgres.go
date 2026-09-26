@@ -50,14 +50,17 @@ func wrap(err error) error {
 	if database.IsNoRows(err) {
 		return domain.ErrNotFound
 	}
+	if database.IsForeignKeyViolation(err) {
+		return domain.ErrSector
+	}
 	return fmt.Errorf("directory: %w", err)
 }
 
 func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter, p pagination.Params) ([]domain.Person, int64, error) {
 	const where = ` WHERE u.active AND u.username NOT LIKE 'anon\_%'
 		AND ($1 OR COALESCE(dp.visible, true))
-		AND ($2 = '' OR nexus_unaccent(lower(u.display_name || ' ' || u.username || ' ' || COALESCE(dp.job_title,'')))
-		                 LIKE '%' || nexus_unaccent(lower($2)) || '%')
+		AND ($2 = '' OR strpos(nexus_unaccent(lower(u.display_name || ' ' || u.username || ' ' || COALESCE(dp.job_title,''))),
+		                        nexus_unaccent(lower($2))) > 0)
 		AND ($3::uuid IS NULL OR un.id = $3)
 		AND ($4::uuid IS NULL OR d.id = $4)`
 	args := []any{f.IncludeHidden, f.Query, f.UnidadeID, f.DepartamentoID}
@@ -100,6 +103,22 @@ func (r *Repository) SaveProfile(ctx context.Context, db database.DBTX, userID u
 		    departamento_id = CASE WHEN $9 THEN directory_profiles.departamento_id ELSE EXCLUDED.departamento_id END`,
 		userID, in.JobTitle, in.Phone, in.Extension, in.Bio, in.Visible, in.UnidadeID, in.DepartamentoID, keepLotacao)
 	return wrap(err)
+}
+
+// DeleteProfile apaga o perfil estendido — telefone, ramal, cargo e bio são
+// dados pessoais sem valor de registro legal.
+func (r *Repository) DeleteProfile(ctx context.Context, db database.DBTX, userID uuid.UUID) error {
+	_, err := db.Exec(ctx, `DELETE FROM directory_profiles WHERE user_id = $1`, userID)
+	return wrap(err)
+}
+
+func (r *Repository) DepartamentoUnidade(ctx context.Context, db database.DBTX, departamentoID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := db.QueryRow(ctx, `SELECT unidade_id FROM departamentos WHERE id = $1`, departamentoID).Scan(&id)
+	if database.IsNoRows(err) {
+		return uuid.Nil, domain.ErrSector
+	}
+	return id, wrap(err)
 }
 
 func (r *Repository) Sectors(ctx context.Context, db database.DBTX, query string) ([]domain.Sector, error) {

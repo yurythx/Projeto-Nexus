@@ -49,6 +49,8 @@ func wrap(err error) error {
 		return domain.ErrNotFound
 	case database.IsUniqueViolation(err):
 		return domain.ErrSlugTaken
+	case database.IsForeignKeyViolation(err):
+		return domain.ErrUnidade
 	}
 	return fmt.Errorf("catalog: %w", err)
 }

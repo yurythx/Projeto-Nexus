@@ -3,10 +3,14 @@ package audit
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/database/dbtest"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {
@@ -152,11 +156,51 @@ func TestAuditChain_VerifiesAndDetectsTampering(t *testing.T) {
 	if _, err := tx.Exec(ctx, `UPDATE audit_logs SET action = 'adulterado' WHERE chain_pos = (SELECT max(chain_pos) FROM audit_logs)`); err != nil {
 		t.Fatal(err)
 	}
-	var valid bool
-	if err := tx.QueryRow(ctx, `SELECT valid FROM audit_verify_chain(1, NULL)`).Scan(&valid); err != nil {
+	tampered, err := NewReader(tx).Verify(ctx, 1, 0)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if valid {
-		t.Fatal("adulteração não foi detectada pela verificação da cadeia")
+	if tampered.Valid || tampered.FirstInvalidPos == nil || tampered.Reason == "" {
+		t.Fatalf("adulteração não foi detectada (ou veio sem posição/motivo): %+v", tampered)
+	}
+}
+
+func TestWriter_RecordRejectsUnserializableAndSanitizesInput(t *testing.T) {
+	ctx := context.Background()
+	w := NewWriter(dbtest.Fail{})
+	bad := map[string]any{"c": make(chan int)}
+	for name, e := range map[string]Entry{
+		"metadata":       {Metadata: bad},
+		"entity_context": {EntityContext: bad},
+		"diff_before":    {Before: make(chan int)},
+		"diff_after":     {After: make(chan int)},
+	} {
+		if err := w.Record(ctx, e); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s não serializável: %v", name, err)
+		}
+	}
+	for raw, want := range map[string]string{"": "", "10.1.2.3": "10.1.2.3", "[::1]:8080": "::1", "10.0.0.1:443": "10.0.0.1", "lixo": "", "lixo:80": ""} {
+		if got := sanitizeIP(raw); got != want {
+			t.Errorf("sanitizeIP(%q) = %q, want %q", raw, got, want)
+		}
+	}
+
+	// User-Agent vem do cliente: UTF-8 inválido, NUL e corte no meio de
+	// um caractere não podem derrubar a transação auditada.
+	pool := testPool(t)
+	corr := uuid.New()
+	ua := strings.Repeat("a", 511) + "é\xff\x00fim"
+	if err := NewWriter(pool).Record(ctx, Entry{Action: "test.ua", UserAgent: ua, CorrelationID: &corr}); err != nil {
+		t.Fatalf("User-Agent hostil derrubou a gravação: %v", err)
+	}
+	var stored string
+	if err := pool.QueryRow(ctx, `SELECT user_agent FROM audit_logs WHERE correlation_id = $1`, corr).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 511 || !utf8.ValidString(stored) {
+		t.Fatalf("UA cortado em fronteira de caractere (511 bytes), veio %d", len(stored))
+	}
+	if got := truncate("ok\x00\xff", 512); got != "ok�" {
+		t.Fatalf("truncate curto: %q", got)
 	}
 }

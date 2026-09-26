@@ -32,12 +32,12 @@ test.describe("Login local", () => {
     await page.getByLabel("Senha", { exact: true }).fill(ADMIN_PASSWORD!);
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
 
-    await expect(page).toHaveURL(/\/dashboard$/);
-    // Sidebar (nav aria-label="Principal", ver Sidebar.tsx — não o
-    // atalho "Ver integrações" que /dashboard também tem) — prova que a
-    // sessão foi de fato estabelecida, não só que a URL mudou.
+    await expect(page).toHaveURL(/\/dashboard(\?.*)?$/);
+    // Menu lateral montado pelo Kernel (GET /system/modules) — prova que a
+    // sessão foi de fato estabelecida e que /me respondeu, não só que a
+    // URL mudou.
     await expect(
-      page.getByRole("navigation", { name: "Principal" }).getByRole("link", { name: "Integrações" }),
+      page.getByRole("navigation", { name: "Menu principal" }).getByRole("link", { name: "Configurações" }),
     ).toBeVisible();
 
     // UserMenu → Sair (RP-Initiated Logout, §30) — mesmo fluxo real que

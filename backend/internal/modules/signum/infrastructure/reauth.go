@@ -2,7 +2,6 @@ package infrastructure
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/modules/signum/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
 )
@@ -58,7 +58,7 @@ func (r *Reauthenticator) Reauthenticate(ctx context.Context, userID uuid.UUID, 
 
 	issuer, clientID, secret := r.creds(ctx)
 	if issuer == "" || clientID == "" {
-		return "", fmt.Errorf("signum: Keycloak não configurado para reautenticação")
+		return "", apperrors.DependencyUnavailable("reautenticação federada indisponível: Keycloak não configurado")
 	}
 	form := url.Values{
 		"grant_type": {"password"},
@@ -78,7 +78,7 @@ func (r *Reauthenticator) Reauthenticate(ctx context.Context, userID uuid.UUID, 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("signum: Keycloak indisponível: %w", err)
+		return "", apperrors.DependencyUnavailable("Keycloak indisponível para a reautenticação").WithCause(err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
@@ -88,6 +88,7 @@ func (r *Reauthenticator) Reauthenticate(ctx context.Context, userID uuid.UUID, 
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest:
 		return "", domain.ErrReauth
 	default:
-		return "", errors.New("signum: resposta inesperada do Keycloak na reautenticação")
+		return "", apperrors.DependencyUnavailable("resposta inesperada do Keycloak na reautenticação").
+			WithCause(fmt.Errorf("HTTP %d", resp.StatusCode))
 	}
 }

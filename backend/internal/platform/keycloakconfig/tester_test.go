@@ -1,6 +1,7 @@
 package keycloakconfig
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -103,5 +104,29 @@ func TestTestConnection_CredentialsFail_IsWarningNotFailure(t *testing.T) {
 	// tester.go); não pode virar StatusFailed nem bloquear o Save.
 	if result.Status != StatusWarning {
 		t.Errorf("Status deveria ser StatusWarning (não bloqueante), got %q", result.Status)
+	}
+}
+
+func TestTestConnectionEdgeCases(t *testing.T) {
+	ctx := context.Background()
+	if r := TestConnection(ctx, "sso.orgao.gov.br/realms/x", "c", "s", ""); r.Status != StatusFailed {
+		t.Fatalf("URL relativa: %+v", r)
+	}
+	for name, tokenEndpoint := range map[string]string{"sem token_endpoint": "", "token_endpoint inválido": "http://[::1", "token_endpoint inacessível": "http://127.0.0.1:1/token"} {
+		var srv *httptest.Server
+		mux := http.NewServeMux()
+		mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+			doc := map[string]string{"issuer": srv.URL, "authorization_endpoint": srv.URL + "/auth", "jwks_uri": srv.URL + "/jwks"}
+			if tokenEndpoint != "" {
+				doc["token_endpoint"] = tokenEndpoint
+			}
+			_ = json.NewEncoder(w).Encode(doc)
+		})
+		srv = httptest.NewServer(mux)
+		r := TestConnection(ctx, srv.URL, "c", "s", "")
+		srv.Close()
+		if !r.DiscoveryOK || r.Status != StatusWarning || r.CredentialsOK || r.CredentialsMessage == "" {
+			t.Errorf("%s: %+v", name, r)
+		}
 	}
 }

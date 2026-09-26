@@ -23,6 +23,9 @@ import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { useConnectionState } from "@/components/layout/ConnectionStateContext";
 import { CONNECTION_LABEL, CONNECTION_TONE } from "@/lib/websocket/connectionCopy";
 import { apiClient } from "@/lib/api/client";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+
+import { OutboxRequeueButton } from "./OutboxRequeueButton";
 import type { IntegrationStatus } from "@/types/api";
 
 // GET /api/v1/monitoring/outbox-stats (ver docs/openapi.yaml) — essa,
@@ -82,7 +85,8 @@ export function PlatformMonitoringDashboard() {
     }
   );
 
-  const { data: outboxStats } = useSWR<OutboxStatsResponse>(
+  const { can } = useNexus();
+  const { data: outboxStats, mutate: refreshOutbox } = useSWR<OutboxStatsResponse>(
     "v1/monitoring/outbox-stats",
     (path: string) => apiClient.get<OutboxStatsResponse>(path).then((res) => res.data),
     { refreshInterval: 10000, revalidateOnFocus: true },
@@ -245,6 +249,9 @@ export function PlatformMonitoringDashboard() {
                     ? `${outboxStats.failed} com falha (Dead Letter)`
                     : "EventBus processado sem atraso"}
               </span>
+              {outboxStats && outboxStats.failed > 0 && can("monitoring:manage") && (
+                <OutboxRequeueButton failed={outboxStats.failed} onDone={() => void refreshOutbox()} />
+              )}
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Zap size={20} />

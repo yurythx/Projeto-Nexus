@@ -13,6 +13,8 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -57,18 +59,6 @@ var (
 		Help: "Messages routed to a dead-letter queue after exhausting retries, by queue.",
 	}, []string{"queue"})
 
-	// --- Jobs ---
-	JobsProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_jobs_processed_total",
-		Help: "Jobs that reached a terminal state, by type and outcome (completed/failed/dead_letter).",
-	}, []string{"type", "status"})
-
-	JobsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "nexus_jobs_duration_seconds",
-		Help:    "Time from job creation to reaching a terminal state, by type.",
-		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12), // 100ms .. ~200s
-	}, []string{"type"})
-
 	// --- WebSocket ---
 	WebSocketConnections = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "nexus_websocket_connections",
@@ -80,68 +70,46 @@ var (
 		Help: "WebSocket upgrade failures and dropped (slow/stuck) clients.",
 	})
 
-	// --- Integrations ---
-	IntegrationRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_integration_requests_total",
-		Help: "Outbound requests to an external integration, by provider.",
-	}, []string{"provider"})
-
-	IntegrationDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "nexus_integration_request_duration_seconds",
-		Help:    "Outbound integration request duration in seconds, by provider.",
-		Buckets: prometheus.DefBuckets,
-	}, []string{"provider"})
-
-	IntegrationFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_integration_failures_total",
-		Help: "Failed outbound integration requests, by provider.",
-	}, []string{"provider"})
-
-	// --- Circuit Breaker (internal/platform/resilience) ---
-	CircuitBreakerState = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "nexus_circuit_breaker_state",
-		Help: "Current circuit breaker state, by name (0=closed, 1=half-open, 2=open).",
-	}, []string{"name"})
-
-	CircuitBreakerTransitionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_circuit_breaker_transitions_total",
-		Help: "Circuit breaker state transitions, by name, origin state and destination state.",
-	}, []string{"name", "from", "to"})
-
 	// --- Idempotency (internal/platform/idempotency) ---
 	IdempotencyOutcomesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "nexus_idempotency_outcomes_total",
 		Help: "Outcomes of idempotency-key-guarded requests, by outcome (new/replayed/conflict/reused_key).",
 	}, []string{"outcome"})
-
-	// --- Feature flags (internal/platform/configflags) ---
-	FeatureFlagChecksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_feature_flag_checks_total",
-		Help: "Feature flag evaluations, by flag key and result (enabled/disabled).",
-	}, []string{"flag", "result"})
 )
 
-// RegisterPostgresPoolMetrics registra os gauges
-// nexus_postgres_connections{state=...} baseados nas estatísticas ao vivo do
-// pool (acquired/idle/max — §53). Valores de GaugeFunc são calculados de
-// forma preguiçosa no momento do scrape, então isso não adiciona nenhuma
-// goroutine em segundo plano própria. Chamar exatamente uma vez por pool.
+// poolStats é o pool observado pelos gauges nexus_postgres_connections.
+var (
+	poolMu       sync.RWMutex
+	observedPool *pgxpool.Pool
+	registerOnce sync.Once
+)
+
+// RegisterPostgresPoolMetrics expõe os gauges
+// nexus_postgres_connections{state=acquired|idle|max} com as estatísticas
+// ao vivo do pool (§53). Os valores são calculados no scrape (GaugeFunc),
+// sem goroutine própria. Os gauges são registrados uma única vez; chamar
+// de novo (ex.: um segundo NewDependencies no mesmo processo, nos testes)
+// só troca o pool observado, em vez de entrar em pânico com o registro
+// duplicado.
 func RegisterPostgresPoolMetrics(pool *pgxpool.Pool) {
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "acquired"},
-	}, func() float64 { return float64(pool.Stat().AcquiredConns()) })
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "idle"},
-	}, func() float64 { return float64(pool.Stat().IdleConns()) })
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "max"},
-	}, func() float64 { return float64(pool.Stat().MaxConns()) })
+	poolMu.Lock()
+	observedPool = pool
+	poolMu.Unlock()
+	registerOnce.Do(func() {
+		for state, value := range map[string]func(*pgxpool.Stat) float64{
+			"acquired": func(s *pgxpool.Stat) float64 { return float64(s.AcquiredConns()) },
+			"idle":     func(s *pgxpool.Stat) float64 { return float64(s.IdleConns()) },
+			"max":      func(s *pgxpool.Stat) float64 { return float64(s.MaxConns()) },
+		} {
+			promauto.NewGaugeFunc(prometheus.GaugeOpts{
+				Name:        "nexus_postgres_connections",
+				Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
+				ConstLabels: prometheus.Labels{"state": state},
+			}, func() float64 {
+				poolMu.RLock()
+				defer poolMu.RUnlock()
+				return value(observedPool.Stat())
+			})
+		}
+	})
 }

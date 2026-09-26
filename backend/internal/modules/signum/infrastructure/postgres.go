@@ -45,6 +45,24 @@ func (r *Repository) Insert(ctx context.Context, db database.DBTX, e domain.Enve
 	return nil
 }
 
+func (r *Repository) UnavailableSigners(ctx context.Context, db database.DBTX, ids []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `SELECT t.sid FROM unnest($1::uuid[]) AS t(sid)
+		WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = t.sid AND u.active)`, ids)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	defer rows.Close()
+	out := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, wrap(err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 const envelopeCols = `e.id, e.title, e.description, e.document_sha256, e.source_module, e.source_ref, e.sequential, e.status,
 	e.created_by, COALESCE(NULLIF(u.display_name,''), u.username, ''), e.created_at, e.completed_at`
 

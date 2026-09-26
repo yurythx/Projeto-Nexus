@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Archive, ArrowLeft, CheckCheck, Download, FilePen, Forward, Paperclip, PenTool, RotateCcw, UserPlus } from "lucide-react";
+import { Archive, ArrowLeft, CheckCheck, Download, FilePen, Forward, Paperclip, PenTool, RotateCcw, UserMinus, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { UserPicker, type PickedUser } from "@/components/iam/UserPicker";
+import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { Markdown } from "@/components/nexus/Markdown";
 import { fmtBytes, fmtDateTime, useAction } from "@/components/nexus/useAction";
@@ -325,8 +326,23 @@ export default function ProcessoPage() {
                       <ul className="flex flex-col gap-1">
                         {p.acessos.length === 0 && <li className="text-muted">Somente as unidades envolvidas.</li>}
                         {p.acessos.map((a) => (
-                          <li key={a.user_id}>
-                            {a.name} <span className="text-xs text-muted">· {fmtDateTime(a.granted_at)}</span>
+                          <li key={a.user_id} className="flex items-center justify-between gap-2">
+                            <span>
+                              {a.name} <span className="text-xs text-muted">· {fmtDateTime(a.granted_at)}</span>
+                            </span>
+                            {p.can_act && (
+                              <ConfirmButton
+                                title={`Revogar o acesso de ${a.name}?`}
+                                description="A pessoa deixa de ver o processo. A revogação fica registrada no histórico."
+                                confirmLabel="Revogar"
+                                aria-label={`Revogar acesso de ${a.name}`}
+                                onConfirm={() =>
+                                  run(() => apiClient.delete(`v1/tramite/processos/${p.id}/acessos/${a.user_id}`), `Acesso de ${a.name} revogado`).then(refresh)
+                                }
+                              >
+                                <UserMinus size={14} aria-hidden="true" />
+                              </ConfirmButton>
+                            )}
                           </li>
                         ))}
                       </ul>

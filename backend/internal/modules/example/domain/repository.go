@@ -4,22 +4,19 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+
+	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
-// Repository define a interface de persistência para o módulo de exemplo.
+// Repository é a porta de persistência do módulo. Como em todos os
+// plugins, cada método recebe o executor (database.DBTX): o pool numa
+// leitura, a transação de negócio numa escrita — o repositório nunca abre
+// transação própria, para que o INSERT, o outbox.Write do evento
+// "example.item.created" e a auditoria (ver application.Service.CreateItem)
+// commitem ou revertam juntos (Transactional Outbox, §16).
 type Repository interface {
-	// CreateTx grava item na transação de negócio de quem chama — nunca
-	// abre a sua própria — para que o INSERT e o outbox.Write do evento
-	// "example.item.created" (ver application.Service.CreateItem) sejam
-	// atômicos: os dois commitam juntos, ou os dois revertem juntos. Este
-	// é o blueprint de referência do Transactional Outbox (§16) que todo
-	// módulo novo deveria seguir — os módulos anteriores a este só
-	// mantinham a INTERFACE pronta, sem nenhum caso de uso de fato
-	// chamando outbox.Write (achado de auditoria).
-	CreateTx(ctx context.Context, tx pgx.Tx, item *Item) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Item, error)
-	List(ctx context.Context, limit, offset int) ([]*Item, int, error)
-	Update(ctx context.Context, item *Item) error
-	Delete(ctx context.Context, id uuid.UUID) error
+	Insert(ctx context.Context, db database.DBTX, item Item) error
+	Get(ctx context.Context, db database.DBTX, id uuid.UUID) (Item, error)
+	List(ctx context.Context, db database.DBTX, p pagination.Params) ([]Item, int64, error)
 }

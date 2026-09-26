@@ -41,9 +41,14 @@ type Penalizer interface {
 
 // Handlers expõe o login local (fallback RS256 — contingência quando o
 // Keycloak está indisponível ou em ambiente isolado).
+// tokenIssuer emite o token do login (implementado por *auth.LocalSigner).
+type tokenIssuer interface {
+	IssueToken(account auth.LocalAccount) (string, time.Time, error)
+}
+
 type Handlers struct {
 	store     Store
-	signer    *auth.LocalSigner
+	signer    tokenIssuer // nil = login local desligado
 	audit     *audit.Writer
 	throttle  Throttle
 	penalizer Penalizer
@@ -52,7 +57,11 @@ type Handlers struct {
 
 // NewHandlers monta os handlers. signer nil = login local desligado (404).
 func NewHandlers(store Store, signer *auth.LocalSigner, auditWriter *audit.Writer, throttle Throttle, penalizer Penalizer, logger *slog.Logger) *Handlers {
-	return &Handlers{store: store, signer: signer, audit: auditWriter, throttle: throttle, penalizer: penalizer, logger: logger}
+	h := &Handlers{store: store, audit: auditWriter, throttle: throttle, penalizer: penalizer, logger: logger}
+	if signer != nil { // um *LocalSigner nil dentro da interface não seria nil
+		h.signer = signer
+	}
+	return h
 }
 
 type loginRequest struct {

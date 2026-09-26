@@ -32,6 +32,8 @@ const (
 	PermKeycloakManage Permission = "keycloak:manage"
 	PermBrandingManage Permission = "branding:manage"
 	PermMonitoringRead Permission = "monitoring:read"
+	// PermMonitoringManage: ações operacionais do painel (reprocessar o outbox).
+	PermMonitoringManage Permission = "monitoring:manage"
 
 	PermMercurioManage  Permission = "mercurio:manage"
 	PermEgressManage    Permission = "egress:manage"

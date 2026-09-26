@@ -559,7 +559,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 	})
 
 	t.Run("kernel_store", func(t *testing.T) {
-		st := kernel.NewPostgresStore(e.pool)
+		st := kernel.NewPostgresStore(e.pool, slog.New(slog.NewTextHandler(io.Discard, nil)))
 		key := "test_" + strings.ReplaceAll(uuid.NewString()[:8], "-", "")
 		must(t, st.Ensure(ctx, key, true))
 		must(t, st.Set(ctx, key, false, "tester", audit.Meta(ctx, audit.ActionModuleToggled, "module", key, nil, nil)))

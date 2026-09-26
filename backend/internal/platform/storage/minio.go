@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -85,12 +86,19 @@ func (p *MinioProvider) EnsureBucket(ctx context.Context, bucketName string) err
 
 var _ WORMWriter = (*MinioProvider)(nil)
 
+// errInvalidRetention: retenção zero ou negativa não protege nada (e um
+// int negativo viraria um uint enorme na configuração do bucket).
+var errInvalidRetention = errors.New("storage: retenção WORM precisa ser de pelo menos 1 dia")
+
 // EnsureImmutableBucket cria bucket COM object-lock (se ainda não existe) e
 // define uma retenção padrão em modo Compliance de retentionDays dias.
 // Object-lock só pode ser habilitado na criação do bucket — um bucket
 // pré-existente sem lock não pode ser convertido, então retornamos erro
 // nesse caso para o operador criar o bucket dedicado correto.
 func (p *MinioProvider) EnsureImmutableBucket(ctx context.Context, bucket string, retentionDays int) error {
+	if retentionDays <= 0 {
+		return errInvalidRetention
+	}
 	exists, err := p.client.BucketExists(ctx, bucket)
 	if err != nil {
 		return fmt.Errorf("storage: check worm bucket: %w", err)
@@ -106,7 +114,7 @@ func (p *MinioProvider) EnsureImmutableBucket(ctx context.Context, bucket string
 	}
 
 	mode := minio.Compliance
-	validity := uint(retentionDays)
+	validity := uint(retentionDays) // #nosec G115 -- positivo, conferido acima
 	unit := minio.Days
 	if err := p.client.SetObjectLockConfig(ctx, bucket, &mode, &validity, &unit); err != nil {
 		return fmt.Errorf("storage: set worm retention: %w", err)
@@ -116,6 +124,9 @@ func (p *MinioProvider) EnsureImmutableBucket(ctx context.Context, bucket string
 
 // PutImmutable grava um objeto com retenção Compliance até now+retentionDays.
 func (p *MinioProvider) PutImmutable(ctx context.Context, bucket, object string, reader io.Reader, size int64, contentType string, retentionDays int) error {
+	if retentionDays <= 0 {
+		return errInvalidRetention
+	}
 	_, err := p.client.PutObject(ctx, bucket, object, reader, size, minio.PutObjectOptions{
 		ContentType:     contentType,
 		Mode:            minio.Compliance,
@@ -138,13 +149,29 @@ func (p *MinioProvider) Put(ctx context.Context, bucketName, objectName string, 
 	return nil
 }
 
-// Get retorna um leitor para um objeto.
+// Get retorna um leitor para um objeto (ErrObjectNotFound se não existir).
+// O GetObject do minio-go é preguiçoso: sem o Stat, um objeto inexistente
+// só apareceria como erro no meio da leitura. O Stat dispara a própria
+// requisição GET (a resposta fica guardada para as leituras), então não
+// custa uma ida extra ao servidor.
 func (p *MinioProvider) Get(ctx context.Context, bucketName, objectName string) (io.ReadCloser, error) {
 	obj, err := p.client.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("storage: get object: %w", err)
 	}
+	if _, err := obj.Stat(); err != nil {
+		_ = obj.Close()
+		return nil, mapObjectErr("get", bucketName, objectName, err)
+	}
 	return obj, nil
+}
+
+// mapObjectErr traduz "objeto não existe" para ErrObjectNotFound.
+func mapObjectErr(op, bucket, object string, err error) error {
+	if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+		return ErrObjectNotFound
+	}
+	return fmt.Errorf("storage: %s %s/%s: %w", op, bucket, object, err)
 }
 
 // Delete remove um objeto do bucket.
@@ -178,10 +205,7 @@ func (p *MinioProvider) PresignedGetURL(ctx context.Context, bucketName, objectN
 func (p *MinioProvider) Stat(ctx context.Context, bucketName, objectName string) (ObjectInfo, error) {
 	info, err := p.client.StatObject(ctx, bucketName, objectName, minio.StatObjectOptions{})
 	if err != nil {
-		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
-			return ObjectInfo{}, ErrObjectNotFound
-		}
-		return ObjectInfo{}, fmt.Errorf("minio stat %s/%s: %w", bucketName, objectName, err)
+		return ObjectInfo{}, mapObjectErr("stat", bucketName, objectName, err)
 	}
 	return ObjectInfo{Size: info.Size, ContentType: info.ContentType, ETag: info.ETag}, nil
 }

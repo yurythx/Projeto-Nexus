@@ -9,9 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/modules/iam/application"
 	"github.com/yurythx/projeto-nexus/internal/modules/iam/domain"
-	"github.com/yurythx/projeto-nexus/internal/modules/iam/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
@@ -457,11 +457,14 @@ func (h *Handlers) DeleteMapping(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	p := httputil.Page(r, h.maxPageSize)
-	f := infrastructure.UserFilter{Query: httputil.Query(r, "q", 100)}
+	f := domain.UserFilter{Query: httputil.Query(r, "q", 100)}
 	if v := r.URL.Query().Get("active"); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
-			f.Active = &b
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			h.fail(w, r, apperrors.BadRequest("o filtro active aceita true ou false"))
+			return
 		}
+		f.Active = &b
 	}
 	users, total, err := h.svc.ListUsers(r.Context(), f, p)
 	if err != nil {

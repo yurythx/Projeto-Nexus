@@ -19,7 +19,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 )
 
 // KeySize é o tamanho exigido, em bytes, da chave decodificada de
@@ -55,14 +54,10 @@ func NewFromBase64Key(keyBase64 string) (*Cipher, error) {
 		return nil, fmt.Errorf("secretcrypto: CONFIG_ENCRYPTION_KEY deve decodificar para %d bytes, tem %d", KeySize, len(raw))
 	}
 
-	block, err := aes.NewCipher(raw)
-	if err != nil {
-		return nil, fmt.Errorf("secretcrypto: construir cipher AES: %w", err)
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("secretcrypto: construir AEAD GCM: %w", err)
-	}
+	// Não falham: a chave tem exatamente KeySize (32) bytes, e GCM sobre AES
+	// é sempre suportado.
+	block, _ := aes.NewCipher(raw)
+	aead, _ := cipher.NewGCM(block)
 	return &Cipher{aead: aead}, nil
 }
 
@@ -71,22 +66,20 @@ func NewFromBase64Key(keyBase64 string) (*Cipher, error) {
 // dentro de uma coluna TEXT do Postgres, nunca numa URL). Um nonce
 // aleatório novo é gerado a cada chamada — GCM nunca deve reusar
 // nonce com a mesma chave.
-func (c *Cipher) Encrypt(plaintext string) (string, error) {
+func (c *Cipher) Encrypt(plaintext string) string {
 	if plaintext == "" {
 		// String vazia é o sentinel de "sem segredo" usado por todo o
 		// resto do pacote (Store.Set trata "" como "manter o valor
 		// atual" — ver keycloakconfig/store.go) — cifrar e decifrar uma
 		// string vazia deixaria essa checagem ambígua.
-		return "", nil
+		return ""
 	}
 
 	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("secretcrypto: gerar nonce: %w", err)
-	}
+	_, _ = rand.Read(nonce) // não falha (Go 1.24+)
 
 	ciphertext := c.aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return base64.StdEncoding.EncodeToString(ciphertext)
 }
 
 // Decrypt reverte Encrypt. Uma string vazia decifra para uma string

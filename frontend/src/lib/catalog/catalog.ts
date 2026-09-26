@@ -1,21 +1,14 @@
 import "server-only";
 
 import { PublicApiError, publicGet } from "@/lib/api/publicServer";
-import type { CatalogCategory, CatalogService } from "@/lib/nexus/types";
+import type { CatalogService } from "@/lib/nexus/types";
 
 // Leitura do Catálogo de Serviços (plugin "catalog") para o site público.
 // Rotas anônimas do backend; um 404 significa módulo desativado no Kernel
 // (MODULE_DISABLED) ou serviço inexistente/não publicado.
 
-export async function listPublishedServices(category?: string, q?: string): Promise<CatalogService[]> {
-  const params = new URLSearchParams({ page_size: "100" });
-  if (category) params.set("category", category);
-  if (q) params.set("q", q);
-  return (await publicGet<CatalogService[]>(`catalog/services?${params}`, 60)).data;
-}
-
-export async function listCategories(): Promise<CatalogCategory[]> {
-  return (await publicGet<CatalogCategory[]>("catalog/categories", 60)).data;
+export async function listPublishedServices(): Promise<CatalogService[]> {
+  return (await publicGet<CatalogService[]>("catalog/services?page_size=100", 60)).data;
 }
 
 /** Serviço publicado pelo slug; null quando não existe (ou módulo inativo). */

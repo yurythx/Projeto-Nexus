@@ -159,7 +159,22 @@ A suíte cobre três níveis, todos rodando no CI (job de backend com Postgres 1
 | Unidade | `*_test.go` junto do código; `frontend/src/**/*.test.ts(x)` | Regras de domínio, Kernel (grafo, cascata, réplicas), mascaramento PII, componentes e acessibilidade |
 | Sistema (API real) | `backend/internal/app/*_http_test.go` | Cada módulo pela API completa (autenticação, IAM, Guard, auditoria, outbox): permissões (403), validação (422), fluxos felizes e de erro |
 | Ativação de módulos | `internal/app/modules_toggle_test.go` | Para **cada** plug-in, todas as rotas descobertas automaticamente respondem `404 MODULE_DISABLED` quando desligado e voltam ao religar; dependências aplicadas nos dois sentidos |
-| Contrato | `internal/app/openapi_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas |
+| Contrato | `internal/app/openapi_test.go`, `openapi_schemas_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas, e os schemas de corpo, resposta e query batem com os tipos Go de cada handler |
+| Matriz de falhas | `internal/modules/<m>/application/faults_test.go` | Cada chamada ao repositório de cada caso de uso falha, ou envenena a transação logo depois, e o erro chega a quem chamou: nada é engolido, nada fica gravado pela metade |
+| Repositório | `internal/modules/<m>/infrastructure/*_test.go` | Toda falha do banco (consulta, leitura de linha, `rows.Err`) é propagada, usando os fakes de `database/dbtest` |
+
+**Meta: 100% de cobertura por pacote.** O CI roda `scripts/coverage-gate.sh` sobre o perfil do `go test`. Precisam estar em 100%: cada plug-in de `internal/modules/*`, cada pacote de `internal/platform/*` (menos os dublês `dbtest` e `storagetest`), `internal/app` e `pkg/*`. Quando algum não está, o script lista as linhas descobertas (ver ADRs 009 e 010).
+
+Os testes de mensageria, armazenamento e composição rodam contra RabbitMQ e MinIO reais quando `TEST_RABBITMQ_URL` e `TEST_MINIO_ENDPOINT`/`TEST_MINIO_ACCESS_KEY`/`TEST_MINIO_SECRET_KEY` estão definidas; sem elas, são pulados. Para subir os dois localmente:
+
+```bash
+docker run -d --name nx-rabbit -p 5672:5672 -e RABBITMQ_DEFAULT_USER=nexus -e RABBITMQ_DEFAULT_PASS=nexus \
+  -e RABBITMQ_DEFAULT_VHOST=nexus rabbitmq:3.13-management-alpine
+docker run -d --name nx-minio -p 9000:9000 -e MINIO_ROOT_USER=nexusadmin -e MINIO_ROOT_PASSWORD=nexussecret123 \
+  pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+export TEST_RABBITMQ_URL=amqp://nexus:nexus@localhost:5672/nexus \
+  TEST_MINIO_ENDPOINT=localhost:9000 TEST_MINIO_ACCESS_KEY=nexusadmin TEST_MINIO_SECRET_KEY=nexussecret123
+```
 
 Rodando localmente (os testes de integração pulam sem banco):
 
@@ -172,10 +187,23 @@ cd backend
 TEST_DATABASE_URL="postgres://nexus:...@localhost:5432/nexus_test?sslmode=disable" \
   go test -race -p 1 -coverpkg=./internal/... ./...
 
-# Novo endpoint? Regenere o contrato (preserva o que já foi descrito à mão):
+# Meta de cobertura por pacote (a mesma do CI):
+TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/...,./pkg/... -coverprofile=coverage.out ./...
+../scripts/coverage-gate.sh coverage.out
+
+# Mudou a interface Repository de um plug-in? Regenere o decorador de falhas:
+#   scripts/genfault.py (uso no cabeçalho do script)
+
+# Novo endpoint ou DTO alterado? Regenere o contrato. As respostas de handlers
+# que devolvem struct saem dos tipos Go (a description à mão é mantida); texto à
+# mão só prevalece onde o handler devolve map ou negocia CSV/XML (ADR 010 §10.5):
 UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter
 
 cd ../frontend && npm test
+
+# Depois de regenerar o OpenAPI, atualize os tipos do contrato no frontend.
+# O tsc confere cada tipo de src/lib/nexus/types.ts contra o que o backend envia:
+npm run gen:api && npx tsc --noEmit
 ```
 
 Convenções: todo endpoint novo ganha teste do caminho negativo (403 sem a permissão) e, se for mutação, confere a auditoria/outbox; todo plug-in novo entra automaticamente no teste de ativação.

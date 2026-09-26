@@ -41,4 +41,17 @@ func (h *StatsHandlers) Get(w http.ResponseWriter, r *http.Request) {
 func RegisterStatsRoutes(r chi.Router, h *StatsHandlers, logger *slog.Logger) {
 	r.With(auth.RequirePermission(logger, auth.PermMonitoringRead)).
 		Get("/monitoring/outbox-stats", h.Get)
+	r.With(auth.RequirePermission(logger, auth.PermMonitoringManage)).
+		Post("/monitoring/outbox/requeue", h.Requeue)
+}
+
+// Requeue trata POST /api/v1/monitoring/outbox/requeue: devolve à fila os
+// eventos que esgotaram as tentativas (ex.: depois de o RabbitMQ voltar).
+func (h *StatsHandlers) Requeue(w http.ResponseWriter, r *http.Request) {
+	n, err := h.stats.Requeue(r.Context())
+	if err != nil {
+		httputil.WriteError(w, r, h.logger, err)
+		return
+	}
+	httputil.WriteOK(w, map[string]int64{"requeued": n})
 }

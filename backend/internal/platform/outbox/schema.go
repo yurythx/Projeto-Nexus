@@ -2,7 +2,7 @@ package outbox
 
 import (
 	"bytes"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -12,13 +12,13 @@ import (
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 )
 
-// schemaFS embute o JSON Schema do envelope de evento no próprio binário
+// schemaJSON embute o JSON Schema do envelope de evento no próprio binário
 // — não há leitura de disco em produção, e o schema viaja versionado
 // junto do código que o usa, sem risco de arquivo ausente/desatualizado
 // num deploy.
 //
 //go:embed envelope.schema.json
-var schemaFS embed.FS
+var schemaJSON []byte
 
 const schemaResourceID = "https://projeto-nexus.internal/schemas/event-envelope.json"
 
@@ -31,28 +31,22 @@ var (
 // envelopeSchema compila o JSON Schema embutido exatamente uma vez (é
 // imutável em tempo de execução — vem do binário, não de configuração) e
 // reutiliza o *jsonschema.Schema resultante em toda chamada a Validate.
-// Compilação é razoavelmente cara (parsing + resolução de referências);
-// fazer isso uma vez só e depois só validar é o mesmo raciocínio por trás
-// de pkg/httputil.getValidator para o validador de struct-tag.
-func envelopeSchema() (*jsonschema.Schema, error) {
-	compileOnce.Do(func() {
-		raw, err := schemaFS.ReadFile("envelope.schema.json")
-		if err != nil {
-			compileErr = fmt.Errorf("outbox: read embedded schema: %w", err)
-			return
-		}
-
-		compiler := jsonschema.NewCompiler()
-		if err := compiler.AddResource(schemaResourceID, bytes.NewReader(raw)); err != nil {
-			compileErr = fmt.Errorf("outbox: load embedded schema: %w", err)
-			return
-		}
-		compiledSchema, compileErr = compiler.Compile(schemaResourceID)
-		if compileErr != nil {
-			compileErr = fmt.Errorf("outbox: compile embedded schema: %w", compileErr)
-		}
-	})
+// É uma variável para os testes simularem um schema que não compila.
+var envelopeSchema = func() (*jsonschema.Schema, error) {
+	compileOnce.Do(func() { compiledSchema, compileErr = compileSchema(schemaJSON) })
 	return compiledSchema, compileErr
+}
+
+func compileSchema(raw []byte) (*jsonschema.Schema, error) {
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(schemaResourceID, bytes.NewReader(raw)); err != nil {
+		return nil, fmt.Errorf("outbox: load embedded schema: %w", err)
+	}
+	schema, err := compiler.Compile(schemaResourceID)
+	if err != nil {
+		return nil, fmt.Errorf("outbox: compile embedded schema: %w", err)
+	}
+	return schema, nil
 }
 
 // validateEnvelope confere envelope (o JSON já serializado de um

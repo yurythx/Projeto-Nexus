@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -100,5 +101,76 @@ func TestLockoutLifecycle(t *testing.T) {
 	}
 	if left, _ := lo.LockedFor(ctx, "user:ana"); left != 0 {
 		t.Fatal("reset deveria liberar a conta")
+	}
+}
+
+// failOn faz o comando de nome cmd falhar (os demais seguem para o Redis).
+type failOn struct{ cmd string }
+
+func (f failOn) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (f failOn) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, c redis.Cmder) error {
+		if c.Name() == f.cmd {
+			c.SetErr(errors.New("falha injetada"))
+			return c.Err()
+		}
+		return next(ctx, c)
+	}
+}
+func (f failOn) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func TestRedisFailuresArePropagated(t *testing.T) {
+	ctx := context.Background()
+	client, mr := newTestRedis(t)
+	l := NewRedisLimiter(client, 0, 0, "b") // padrões: 60s e 1 requisição
+	if l.window != time.Minute || l.maxRequests != 1 {
+		t.Fatalf("padrões: %v %d", l.window, l.maxRequests)
+	}
+	lock := NewLockout(client, 1, time.Minute, time.Hour)
+
+	// SET falha depois do INCR: o bloqueio calculado não é aplicado e o erro sobe.
+	withHook := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	withHook.AddHook(failOn{cmd: "set"})
+	if _, err := NewLockout(withHook, 1, time.Minute, time.Hour).RegisterFailure(ctx, "ana"); err == nil {
+		t.Fatal("falha ao gravar o bloqueio")
+	}
+	evalFails := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	evalFails.AddHook(failOn{cmd: "evalsha"})
+	evalFails.AddHook(failOn{cmd: "eval"})
+	if _, err := NewRedisLimiter(evalFails, 60, 5, "b").Allow(ctx, "k"); err == nil {
+		t.Fatal("falha no script da janela")
+	}
+
+	mr.Close() // Redis fora
+	if _, err := l.Allow(ctx, "k"); err == nil {
+		t.Error("Allow com o Redis fora")
+	}
+	if _, err := lock.LockedFor(ctx, "ana"); err == nil {
+		t.Error("LockedFor com o Redis fora")
+	}
+	if _, err := lock.RegisterFailure(ctx, "ana"); err == nil {
+		t.Error("RegisterFailure com o Redis fora")
+	}
+}
+
+func TestForgiveClearsPenalty(t *testing.T) {
+	ctx := context.Background()
+	client, _ := newTestRedis(t)
+	l := NewRedisLimiter(client, 60, 8, "login")
+	for i := 0; i < 6; i++ {
+		if err := l.Penalize(ctx, "ip"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, _ := l.penalty(ctx, "ip"); p != 6 {
+		t.Fatalf("penalidade acumulada: %d", p)
+	}
+	if err := l.Forgive(ctx, "ip"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := l.penalty(ctx, "ip"); p != 0 {
+		t.Fatalf("login bem-sucedido zera a penalidade: %d", p)
 	}
 }

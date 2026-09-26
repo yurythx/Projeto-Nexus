@@ -28,10 +28,20 @@ function read(): SystemBrandingConfig {
   return cached;
 }
 
+// Assinatura da última identidade vinda do servidor que já foi aplicada.
+let primedSignature: string | null = null;
+
 /** Semeia o store com o branding que o servidor renderizou (identidade da
- * organização + preferências do cookie) — idempotente. */
+ * organização + preferências do cookie). Roda a cada render do provider,
+ * mas só aplica uma identidade de servidor NOVA: comparar com o store
+ * (como antes) desfazia na hora qualquer atualização local — salvar o
+ * branding mudava o nome e o render seguinte o trocava de volta pelo que o
+ * layout tinha lido antes. */
 export function primeBrandingStore(server: SystemBrandingConfig): void {
-  if (cached && cached.appName === server.appName && cached.tokens === server.tokens) return;
+  // Sem as preferências do visitante (undefined some do JSON).
+  const signature = JSON.stringify({ ...server, highContrast: undefined, fontSizeScale: undefined });
+  if (signature === primedSignature) return;
+  primedSignature = signature;
   cached = { ...server, ...prefsFromCookie() };
 }
 

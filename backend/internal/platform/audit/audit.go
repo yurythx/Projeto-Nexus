@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -28,9 +30,6 @@ const (
 	ActionLogout           = "logout"
 	ActionUserCreated      = "user.created"
 	ActionUserUpdated      = "user.updated"
-	ActionJobCreated       = "job.created"
-	ActionJobCompleted     = "job.completed"
-	ActionJobFailed        = "job.failed"
 	ActionModuleToggled    = "kernel.module.toggled"
 	ActionLGPDConsentGiven = "lgpd_consent_given"
 )
@@ -127,9 +126,17 @@ func marshalOptional(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// truncate limita s a max bytes sem partir um caractere UTF-8 e troca
+// bytes inválidos/NUL — o User-Agent vem do cliente, e um texto que o
+// Postgres recuse (UTF-8 inválido, \x00) derrubaria a transação de negócio
+// que está sendo auditada.
 func truncate(s string, max int) string {
+	s = strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", "")
 	if len(s) <= max {
 		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
 	}
 	return s[:max]
 }

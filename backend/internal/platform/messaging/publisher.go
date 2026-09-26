@@ -54,14 +54,7 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 	}
 	defer ch.Close()
 
-	if err := ch.Confirm(false); err != nil {
-		return traceErr(span, fmt.Errorf("messaging: enable publisher confirms: %w", err))
-	}
-
-	body, err := json.Marshal(event)
-	if err != nil {
-		return traceErr(span, fmt.Errorf("messaging: marshal event envelope: %w", err))
-	}
+	body, _ := json.Marshal(event) // não falha: o Payload já é JSON válido (events.New)
 
 	// Toda mensagem nasce com o contador de tentativa em zero — só o
 	// consumer o incrementa, ao republicar como retry (ver consumer.go).
@@ -70,7 +63,7 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 	headers := amqp.Table{RetryHeader: int32(0)}
 	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
 
-	confirmation, err := ch.PublishWithDeferredConfirmWithContext(ctx, ExchangeEvents, event.Type, false, false, amqp.Publishing{
+	if err := publishConfirmed(ctx, amqpConfirmer{ch}, ExchangeEvents, event.Type, amqp.Publishing{
 		ContentType:   "application/json",
 		DeliveryMode:  amqp.Persistent,
 		MessageId:     event.ID.String(),
@@ -79,17 +72,8 @@ func (p *Publisher) Publish(ctx context.Context, event events.Event) error {
 		Type:          event.Type,
 		Body:          body,
 		Headers:       headers,
-	})
-	if err != nil {
-		return traceErr(span, fmt.Errorf("messaging: publish %s: %w", event.Type, err))
-	}
-
-	ok, err := confirmation.WaitContext(ctx)
-	if err != nil {
-		return traceErr(span, fmt.Errorf("messaging: wait for publisher confirm on %s: %w", event.Type, err))
-	}
-	if !ok {
-		return traceErr(span, fmt.Errorf("messaging: broker nacked publish of %s (id=%s)", event.Type, event.ID))
+	}); err != nil {
+		return traceErr(span, fmt.Errorf("messaging: %s (id=%s): %w", event.Type, event.ID, err))
 	}
 
 	metrics.RabbitMQPublishedTotal.WithLabelValues(event.Type).Inc()

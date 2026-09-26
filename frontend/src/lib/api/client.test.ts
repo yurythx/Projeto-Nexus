@@ -115,6 +115,30 @@ describe("apiClient", () => {
     expect(replaced).toContain("callbackUrl=%2Fdashboard");
   });
 
+  it("401 com código próprio (senha errada no Signum) NÃO derruba a sessão", async () => {
+    mockFetchOnce(401, { data: null, error: { code: "SIGNUM_REAUTH_FAILED", message: "senha incorreta — a assinatura não foi realizada" } });
+    // @ts-expect-error jsdom não implementa navegação real
+    delete window.location;
+    // @ts-expect-error objeto simples o bastante
+    window.location = { pathname: "/signum/1", search: "", origin: "http://localhost:3000", replace: vi.fn() };
+
+    const err = await apiClient.post("v1/signum/envelopes/1/sign", {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe("SIGNUM_REAUTH_FAILED");
+    expect(window.location.replace).not.toHaveBeenCalled();
+  });
+
+  it("401 com corpo ilegível ainda é tratado como sessão expirada", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => { throw new Error("html"); } }));
+    // @ts-expect-error jsdom não implementa navegação real
+    delete window.location;
+    // @ts-expect-error objeto simples o bastante
+    window.location = { pathname: "/dashboard", search: "", origin: "http://localhost:3000", replace: vi.fn() };
+
+    await expect(apiClient.get("v1/me")).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    expect(window.location.replace).toHaveBeenCalled();
+  });
+
   it("post() (JSON body) keeps setting Content-Type: application/json, unaffected by postForm's exception", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

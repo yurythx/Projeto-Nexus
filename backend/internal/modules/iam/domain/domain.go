@@ -4,11 +4,15 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 var (
@@ -143,3 +147,55 @@ var permissionPattern = regexp.MustCompile(`^(\*|[a-z_]+:(\*|[a-z_]+))$`)
 
 // ValidPermission reporta se p segue o formato "recurso:ação".
 func ValidPermission(p string) bool { return permissionPattern.MatchString(p) }
+
+// UserFilter restringe a listagem de usuários.
+type UserFilter struct {
+	Query  string
+	Active *bool
+}
+
+// Repository é a porta de persistência do IAM. Todo método recebe o DBTX
+// para rodar dentro da transação que também grava a auditoria.
+type Repository interface {
+	ListEntidades(ctx context.Context, db database.DBTX) ([]Entidade, error)
+	GetEntidade(ctx context.Context, db database.DBTX, id uuid.UUID) (Entidade, error)
+	UpsertEntidade(ctx context.Context, db database.DBTX, e Entidade) (Entidade, error)
+	DeleteEntidade(ctx context.Context, db database.DBTX, id uuid.UUID) error
+
+	ListUnidades(ctx context.Context, db database.DBTX, entidadeID *uuid.UUID) ([]Unidade, error)
+	GetUnidade(ctx context.Context, db database.DBTX, id uuid.UUID) (Unidade, error)
+	UpsertUnidade(ctx context.Context, db database.DBTX, u Unidade) (Unidade, error)
+	UnidadeCreatesCycle(ctx context.Context, db database.DBTX, id, parentID uuid.UUID) (bool, error)
+	DeleteUnidade(ctx context.Context, db database.DBTX, id uuid.UUID) error
+
+	ListDepartamentos(ctx context.Context, db database.DBTX, unidadeID *uuid.UUID) ([]Departamento, error)
+	GetDepartamento(ctx context.Context, db database.DBTX, id uuid.UUID) (Departamento, error)
+	UpsertDepartamento(ctx context.Context, db database.DBTX, d Departamento) (Departamento, error)
+	DeleteDepartamento(ctx context.Context, db database.DBTX, id uuid.UUID) error
+
+	ListPerfis(ctx context.Context, db database.DBTX) ([]Perfil, error)
+	GetPerfil(ctx context.Context, db database.DBTX, id uuid.UUID) (Perfil, error)
+	UpsertPerfil(ctx context.Context, db database.DBTX, p Perfil) (Perfil, error)
+	DeletePerfil(ctx context.Context, db database.DBTX, id uuid.UUID) error
+
+	ListMappings(ctx context.Context, db database.DBTX) ([]ADMapping, error)
+	GetMapping(ctx context.Context, db database.DBTX, id uuid.UUID) (ADMapping, error)
+	CreateMapping(ctx context.Context, db database.DBTX, m ADMapping) (uuid.UUID, error)
+	DeleteMapping(ctx context.Context, db database.DBTX, id uuid.UUID) error
+
+	ListLotacoes(ctx context.Context, db database.DBTX, userID uuid.UUID) ([]Lotacao, error)
+	GetLotacao(ctx context.Context, db database.DBTX, userID, id uuid.UUID) (Lotacao, error)
+	CreateLotacao(ctx context.Context, db database.DBTX, l Lotacao) (uuid.UUID, error)
+	DeleteLotacao(ctx context.Context, db database.DBTX, userID, id uuid.UUID) error
+	ScopeConsistent(ctx context.Context, db database.DBTX, s Scope) (Scope, error)
+
+	ListUsers(ctx context.Context, db database.DBTX, f UserFilter, p pagination.Params) ([]User, int64, error)
+	GetUser(ctx context.Context, db database.DBTX, id uuid.UUID) (User, error)
+	// UserPermissions devolve as permissões efetivas de uma conta (lotações,
+	// grupos do AD mapeados e o papel nexus-admin), como o resolvedor faz.
+	UserPermissions(ctx context.Context, db database.DBTX, id uuid.UUID) ([]string, error)
+	UpdateUser(ctx context.Context, db database.DBTX, id uuid.UUID, displayName string, active bool, roles []string) error
+	CreateLocalUser(ctx context.Context, db database.DBTX, username, email, displayName, hash string, roles []string) (uuid.UUID, error)
+	SetPassword(ctx context.Context, db database.DBTX, id uuid.UUID, hash string) error
+	Unlock(ctx context.Context, db database.DBTX, id uuid.UUID) error
+}

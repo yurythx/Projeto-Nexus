@@ -38,8 +38,11 @@ func NewService(pool *pgxpool.Pool, repo domain.Repository, ob *outbox.Writer) *
 
 // MapError traduz erros de domínio.
 func MapError(err error) error {
-	if errors.Is(err, domain.ErrNotFound) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
 		return apperrors.NotFound("mensagem não encontrada")
+	case errors.Is(err, domain.ErrAssignee):
+		return apperrors.Validation(err.Error())
 	}
 	return err
 }
@@ -100,6 +103,15 @@ func (s *Service) Triage(ctx context.Context, id uuid.UUID, status, notes string
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if assignedTo != nil {
+			ok, err := s.repo.ActiveUser(ctx, tx, *assignedTo)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return domain.ErrAssignee
+			}
 		}
 		if err := s.repo.UpdateTriage(ctx, tx, id, status, notes, assignedTo); err != nil {
 			return err

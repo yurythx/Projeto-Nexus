@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -77,9 +78,7 @@ func (c *Consumer) Consume(ctx context.Context, handler events.MessageHandler) e
 		ackMu.Unlock()
 	}()
 
-	if err := ch.Qos(c.prefetch, 0, false); err != nil {
-		return fmt.Errorf("messaging: set QoS for queue %s: %w", c.queueName, err)
-	}
+	qosErr := ch.Qos(c.prefetch, 0, false)
 
 	// Deliberadamente Consume (não ConsumeWithContext): a variante com
 	// contexto cria uma goroutine interna que chama ch.Cancel quando
@@ -88,7 +87,9 @@ func (c *Consumer) Consume(ctx context.Context, handler events.MessageHandler) e
 	// controlar o shutdown por conta própria abaixo — assim que ctx
 	// termina, paramos de ler entregas e fechamos ch sob ackMu.
 	deliveries, err := ch.Consume(c.queueName, "", false, false, false, false, nil)
-	if err != nil {
+	// Um Qos recusado fecha o canal (erro AMQP), então o Consume falha junto;
+	// os dois erros saem num só.
+	if err = errors.Join(qosErr, err); err != nil {
 		return fmt.Errorf("messaging: consume queue %s: %w", c.queueName, err)
 	}
 
@@ -114,18 +115,19 @@ func (c *Consumer) Consume(ctx context.Context, handler events.MessageHandler) e
 }
 
 func (c *Consumer) handleDelivery(ctx context.Context, ackMu *sync.Mutex, d amqp.Delivery, handler events.MessageHandler) {
-	logger := c.logger.With(slog.String("queue", c.queueName), slog.String("routing_key", d.RoutingKey), slog.String("message_id", d.MessageId))
+	routingKey := originalRoutingKey(d)
+	logger := c.logger.With(slog.String("queue", c.queueName), slog.String("routing_key", routingKey), slog.String("message_id", d.MessageId))
 
 	// Extrai o contexto de trace propagado nos headers AMQP (injetado pelo
 	// publisher) para que o span de consumo continue o mesmo trace da
 	// requisição HTTP que originou o evento (§51).
 	ctx = otel.GetTextMapPropagator().Extract(ctx, amqpHeaderCarrier(d.Headers))
-	ctx, span := tracer.Start(ctx, "consume "+d.RoutingKey,
+	ctx, span := tracer.Start(ctx, "consume "+routingKey,
 		trace.WithSpanKind(trace.SpanKindConsumer),
 		trace.WithAttributes(
 			attribute.String("messaging.system", "rabbitmq"),
 			attribute.String("messaging.destination.name", c.queueName),
-			attribute.String("messaging.rabbitmq.routing_key", d.RoutingKey),
+			attribute.String("messaging.rabbitmq.routing_key", routingKey),
 			attribute.String("messaging.message.id", d.MessageId),
 		),
 	)
@@ -193,7 +195,7 @@ func (c *Consumer) handleDelivery(ctx context.Context, ackMu *sync.Mutex, d amqp
 	// entrega a mensagem em duplicidade. Um timeout limitado ainda protege
 	// contra um broker genuinamente travado.
 	retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	err := c.republish(retryCtx, d, event, attempt)
+	err := c.republish(retryCtx, d, event, attempt, routingKey)
 	cancel()
 	if err != nil {
 		logger.Error("retry republish failed, falling back to native requeue", slog.Any("error", err))
@@ -209,20 +211,19 @@ func (c *Consumer) handleDelivery(ctx context.Context, ackMu *sync.Mutex, d amqp
 }
 
 // republish envia uma cópia atualizada da mensagem (com o header de
-// tentativa incrementado) de volta pelo exchange, usando um canal novo e
-// publisher confirms — independente do canal de consumo compartilhado `ch`,
-// para que o retry não dispute o mesmo canal usado para ack/nack das
-// entregas.
-func (c *Consumer) republish(ctx context.Context, d amqp.Delivery, event events.Event, attempt int) error {
+// tentativa incrementado) de volta SÓ para a fila deste consumidor — pelo
+// exchange padrão, com routing key = nome da fila. Antes a cópia voltava
+// pelo exchange de eventos com a routing key original e era roteada de
+// novo a TODAS as filas daquele evento: a falha de um consumidor (ex.:
+// Egress, que escuta "#") reentregava a notificação a todos os usuários.
+// Usa um canal novo com publisher confirms — independente do canal de
+// consumo `ch`, para não disputar o ack/nack das entregas.
+func (c *Consumer) republish(ctx context.Context, d amqp.Delivery, event events.Event, attempt int, routingKey string) error {
 	ch, err := c.conn.Channel()
 	if err != nil {
 		return err
 	}
 	defer ch.Close()
-
-	if err := ch.Confirm(false); err != nil {
-		return err
-	}
 
 	headers := amqp.Table{}
 	for k, v := range d.Headers {
@@ -231,8 +232,9 @@ func (c *Consumer) republish(ctx context.Context, d amqp.Delivery, event events.
 	// #nosec G115 -- attempt é o contador de tentativas de retry, limitado
 	// por MaxRetries (unidades); nunca se aproxima de math.MaxInt32.
 	headers[RetryHeader] = int32(attempt)
+	headers[RoutingKeyHeader] = routingKey
 
-	confirmation, err := ch.PublishWithDeferredConfirmWithContext(ctx, ExchangeEvents, d.RoutingKey, false, false, amqp.Publishing{
+	return publishConfirmed(ctx, amqpConfirmer{ch}, "", c.queueName, amqp.Publishing{
 		ContentType:   d.ContentType,
 		DeliveryMode:  amqp.Persistent,
 		MessageId:     event.ID.String(),
@@ -242,18 +244,6 @@ func (c *Consumer) republish(ctx context.Context, d amqp.Delivery, event events.
 		Body:          d.Body,
 		Headers:       headers,
 	})
-	if err != nil {
-		return err
-	}
-
-	ok, err := confirmation.WaitContext(ctx)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("messaging: broker nacked retry republish of %s", event.Type)
-	}
-	return nil
 }
 
 // attemptFromHeaders lê o número da tentativa atual gravado em RetryHeader
@@ -290,4 +280,13 @@ func computeBackoff(attempt int, base, maxDur time.Duration) time.Duration {
 		}
 	}
 	return d
+}
+
+// originalRoutingKey devolve o tipo do evento com que a mensagem entrou no
+// barramento (na cópia de retry, a routing key é o nome da fila).
+func originalRoutingKey(d amqp.Delivery) string {
+	if rk, ok := d.Headers[RoutingKeyHeader].(string); ok && rk != "" {
+		return rk
+	}
+	return d.RoutingKey
 }

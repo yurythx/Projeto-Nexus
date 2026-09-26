@@ -58,6 +58,8 @@ func MapError(err error) error {
 		return apperrors.Conflict("já existe uma publicação com este endereço (slug)")
 	case errors.Is(err, domain.ErrInvalidState):
 		return apperrors.Conflict("transição de estado não permitida")
+	case errors.Is(err, domain.ErrEmptyBody):
+		return apperrors.Validation("escreva o texto antes de publicar")
 	}
 	return err
 }
@@ -166,10 +168,17 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Po
 		return domain.Post{}, err
 	}
 	var out domain.Post
+	var oldCover string
 	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if prev.Status == domain.StatusPublished && strings.TrimSpace(in.Body) == "" {
+			return domain.ErrEmptyBody
+		}
+		if prev.CoverObjectKey != in.CoverObjectKey {
+			oldCover = prev.CoverObjectKey
 		}
 		next := prev
 		next.Slug, next.Title, next.Summary, next.Body = in.Slug, in.Title, in.Summary, in.Body
@@ -179,6 +188,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Po
 		}
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "blog.post.updated", "blog_post", id.String(), summary(prev), summary(out)))
 	})
+	if err == nil && oldCover != "" {
+		s.removeCover(ctx, oldCover)
+	}
 	return s.withCover(ctx, out), MapError(err)
 }
 
@@ -192,6 +204,9 @@ func (s *Service) Transition(ctx context.Context, id uuid.UUID, to string) (doma
 		}
 		if !domain.CanTransition(prev.Status, to) {
 			return domain.ErrInvalidState
+		}
+		if to == domain.StatusPublished && strings.TrimSpace(prev.Body) == "" {
+			return domain.ErrEmptyBody
 		}
 		next := prev
 		next.Status = to
@@ -231,11 +246,17 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "blog.post.deleted", "blog_post", id.String(), summary(prev), nil))
 	})
 	if err == nil && coverKey != "" {
-		if derr := s.store.Delete(ctx, s.bucket, coverKey); derr != nil {
-			s.logger.Warn("blog: capa órfã não removida", slog.Any("error", derr))
-		}
+		s.removeCover(ctx, coverKey)
 	}
 	return MapError(err)
+}
+
+// removeCover apaga do armazenamento uma capa que deixou de ser usada
+// (depois do commit: se falhar, só fica um objeto órfão, logado).
+func (s *Service) removeCover(ctx context.Context, key string) {
+	if err := s.store.Delete(ctx, s.bucket, key); err != nil {
+		s.logger.Warn("blog: capa órfã não removida", slog.String("key", key), slog.Any("error", err))
+	}
 }
 
 // CoverUpload emite a URL de upload direto da capa.

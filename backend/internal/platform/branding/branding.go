@@ -10,8 +10,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -47,8 +50,18 @@ var (
 		"success": {}, "warning": {}, "danger": {}, "info": {},
 	}
 	hexColor = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
-	safeURL  = regexp.MustCompile(`^(https://|/)[^\s"'<>]*$`)
+	// https:// ou caminho LOCAL ("/..."). "//host" e "/\host" são URLs
+	// externas para o navegador e ficam de fora.
+	safeURL = regexp.MustCompile(`^(https://|/[^/\\])[^\s"'<>\\]*$`)
+
+	// contrastPairs são as combinações texto/fundo que a interface usa: com
+	// as duas cores definidas, o contraste precisa atender o WCAG 2.1 AA
+	// (4,5:1) exigido pelo e-MAG.
+	contrastPairs = [][2]string{{"primary-foreground", "primary"}, {"footer-foreground", "footer-bg"}}
 )
+
+// minContrast é o contraste mínimo do WCAG 2.1 AA para texto normal.
+const minContrast = 4.5
 
 // Validate confere tokens e URLs (a URL de logo vai parar num <img src>:
 // só https ou caminho relativo, nunca javascript:/data:).
@@ -64,6 +77,16 @@ func (s Settings) Validate() error {
 			return apperrors.Validation(fmt.Sprintf("token %q precisa ser uma cor hexadecimal (#RRGGBB)", k))
 		}
 	}
+	for _, pair := range contrastPairs {
+		fg, okFg := s.Tokens[pair[0]]
+		bg, okBg := s.Tokens[pair[1]]
+		if okFg && okBg {
+			if ratio := contrast(fg, bg); ratio < minContrast {
+				return apperrors.Validation(fmt.Sprintf(
+					"contraste entre %q e %q é %.2f:1 — o e-MAG exige pelo menos 4,5:1", pair[0], pair[1], ratio))
+			}
+		}
+	}
 	for field, v := range map[string]string{"logo_url": s.LogoURL, "favicon_url": s.FaviconURL} {
 		if v != "" && !safeURL.MatchString(v) {
 			return apperrors.Validation(field + " precisa ser https:// ou um caminho relativo")
@@ -72,17 +95,46 @@ func (s Settings) Validate() error {
 	return nil
 }
 
+// contrast é a razão de contraste WCAG entre duas cores #RGB/#RRGGBB.
+func contrast(a, b string) float64 {
+	la, lb := luminance(a), luminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+// luminance é a luminância relativa (WCAG 2.1) de uma cor já validada.
+func luminance(hex string) float64 {
+	h := strings.TrimPrefix(hex, "#")
+	if len(h) == 3 {
+		h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
+	}
+	var rgb [3]float64
+	for i := range rgb {
+		v, _ := strconv.ParseUint(h[i*2:i*2+2], 16, 8) // já passou pelo hexColor
+		c := float64(v) / 255
+		if c <= 0.03928 {
+			rgb[i] = c / 12.92
+		} else {
+			rgb[i] = math.Pow((c+0.055)/1.055, 2.4)
+		}
+	}
+	return 0.2126*rgb[0] + 0.7152*rgb[1] + 0.0722*rgb[2]
+}
+
 // Store lê/grava branding_settings.
 type Store struct {
 	pool *pgxpool.Pool
+	db   database.DBTX // leituras avulsas (o pool, em produção)
 }
 
 // NewStore cria o Store.
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, db: pool} }
 
 // Get lê a configuração atual.
 func (s *Store) Get(ctx context.Context) (Settings, error) {
-	return s.get(ctx, s.pool)
+	return s.get(ctx, s.db)
 }
 
 func (s *Store) get(ctx context.Context, q interface {
@@ -108,26 +160,33 @@ func (s *Store) get(ctx context.Context, q interface {
 func (s *Store) Save(ctx context.Context, in Settings, actor string) (Settings, error) {
 	var saved Settings
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
-		before, err := s.get(ctx, tx)
-		if err != nil {
-			return err
-		}
-		tokens, _ := json.Marshal(in.Tokens)
-		if _, err := tx.Exec(ctx, `
-			UPDATE branding_settings SET app_name=$1, app_description=$2, org_name=$3, logo_url=$4,
-			       favicon_url=$5, support_email=$6, support_phone=$7, support_hours=$8, tokens=$9,
-			       updated_at=now(), updated_by=$10
-			WHERE id = 'default'`,
-			in.AppName, in.AppDescription, in.OrgName, in.LogoURL, in.FaviconURL,
-			in.SupportEmail, in.SupportPhone, in.SupportHours, tokens, actor); err != nil {
-			return fmt.Errorf("branding: save: %w", err)
-		}
-		if saved, err = s.get(ctx, tx); err != nil {
-			return err
-		}
-		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "branding.updated", "branding", "default", before, saved))
+		var err error
+		saved, err = s.save(ctx, tx, in, actor)
+		return err
 	})
 	return saved, err
+}
+
+func (s *Store) save(ctx context.Context, tx database.DBTX, in Settings, actor string) (Settings, error) {
+	before, err := s.get(ctx, tx)
+	if err != nil {
+		return Settings{}, err
+	}
+	tokens, _ := json.Marshal(in.Tokens) // map[string]string sempre serializa
+	if _, err := tx.Exec(ctx, `
+		UPDATE branding_settings SET app_name=$1, app_description=$2, org_name=$3, logo_url=$4,
+		       favicon_url=$5, support_email=$6, support_phone=$7, support_hours=$8, tokens=$9,
+		       updated_at=now(), updated_by=$10
+		WHERE id = 'default'`,
+		in.AppName, in.AppDescription, in.OrgName, in.LogoURL, in.FaviconURL,
+		in.SupportEmail, in.SupportPhone, in.SupportHours, tokens, actor); err != nil {
+		return Settings{}, fmt.Errorf("branding: save: %w", err)
+	}
+	saved, err := s.get(ctx, tx)
+	if err != nil {
+		return Settings{}, err
+	}
+	return saved, audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "branding.updated", "branding", "default", before, saved))
 }
 
 // Handlers expõe o branding.

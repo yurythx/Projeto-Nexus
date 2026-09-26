@@ -1,15 +1,22 @@
-package application
+package application_test
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+
+	"github.com/yurythx/projeto-nexus/internal/modules/example/application"
+	"github.com/yurythx/projeto-nexus/internal/modules/example/domain"
 	"github.com/yurythx/projeto-nexus/internal/modules/example/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
@@ -42,9 +49,9 @@ func testLogger() *slog.Logger {
 func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	repo := infrastructure.NewPostgresRepository(pool)
+	repo := infrastructure.NewPostgresRepository()
 	writer := outbox.NewWriter("nexus.example")
-	svc := NewService(pool, repo, writer, testLogger())
+	svc := application.NewService(pool, repo, writer, testLogger())
 
 	item, err := svc.CreateItem(ctx, "Item de teste", "descrição de teste")
 	if err != nil {
@@ -127,11 +134,46 @@ func TestCreateItem_PersistsItemAndWritesOutboxEventInSameTransaction(t *testing
 
 func TestCreateItem_RejectsEmptyTitleWithoutTouchingTheDatabase(t *testing.T) {
 	pool := testPool(t)
-	repo := infrastructure.NewPostgresRepository(pool)
+	repo := infrastructure.NewPostgresRepository()
 	writer := outbox.NewWriter("nexus.example")
-	svc := NewService(pool, repo, writer, testLogger())
+	svc := application.NewService(pool, repo, writer, testLogger())
 
 	if _, err := svc.CreateItem(context.Background(), "", "sem título"); err == nil {
 		t.Fatal("expected an error for an empty title")
+	}
+}
+
+func TestCreateItem_TrimsAndValidatesTitle(t *testing.T) {
+	pool := testPool(t)
+	svc := application.NewService(pool, infrastructure.NewPostgresRepository(), outbox.NewWriter("nexus.example"), testLogger())
+	ctx := context.Background()
+	for _, bad := range []string{"   ", strings.Repeat("á", 201)} {
+		if _, err := svc.CreateItem(ctx, bad, ""); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("título %q deveria ser recusado pelo domínio: %v", bad[:3], err)
+		}
+	}
+	item, err := svc.CreateItem(ctx, "  Aparado  ", "  desc  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Title != "Aparado" || item.Description != "desc" || item.Status != domain.StatusActive {
+		t.Fatalf("título/descrição deveriam ser aparados: %+v", item)
+	}
+	if _, err := svc.CreateItem(ctx, strings.Repeat("á", 200), ""); err != nil {
+		t.Fatalf("200 caracteres (multibyte) cabem: %v", err)
+	}
+	if _, err := svc.GetItem(ctx, uuid.New()); !errors.Is(err, domain.ErrExampleNotFound) {
+		t.Fatalf("item inexistente: %v", err)
+	}
+	if err := application.MapError(domain.ErrExampleNotFound); !strings.Contains(err.Error(), "não encontrado") {
+		t.Errorf("MapError(not found) = %v", err)
+	}
+	items, total, err := svc.ListItems(ctx, pagination.New(1, 1, 100))
+	if err != nil || len(items) != 1 || total < 3 {
+		t.Fatalf("página de 1 item: %d/%d %v", len(items), total, err)
+	}
+	empty, _, err := svc.ListItems(ctx, pagination.New(1_000_000, 100, 100))
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("página além do fim deve ser [] (não nil): %v %v", empty, err)
 	}
 }

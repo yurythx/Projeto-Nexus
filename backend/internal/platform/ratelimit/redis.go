@@ -1,3 +1,6 @@
+// Package ratelimit implementa a limitação de taxa compartilhada entre as
+// réplicas da API (janela fixa no Redis, adaptativa por penalidade) e o
+// bloqueio progressivo de credenciais (A07).
 package ratelimit
 
 import (

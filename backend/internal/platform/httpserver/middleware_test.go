@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bufio"
+	"context"
 	"log/slog"
 	"net"
 	"net/http"
@@ -227,7 +228,7 @@ func TestClientIP_OnlyTrustsXFFFromTrustedProxy(t *testing.T) {
 }
 
 func TestRateLimit_AllowsWithinBurstThenRejects(t *testing.T) {
-	handler := RateLimit(testLogger(), NewInMemoryLimiter(0, 2), func(r *http.Request) string { return "same-key" })(
+	handler := RateLimit(testLogger(), newCountLimiter(2), func(r *http.Request) string { return "same-key" })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }),
 	)
 
@@ -250,7 +251,7 @@ func TestRateLimit_AllowsWithinBurstThenRejects(t *testing.T) {
 
 func TestRateLimit_DifferentKeysAreIndependent(t *testing.T) {
 	callCount := map[string]int{}
-	handler := RateLimit(testLogger(), NewInMemoryLimiter(0, 1), func(r *http.Request) string { return r.Header.Get("X-User") })(
+	handler := RateLimit(testLogger(), newCountLimiter(1), func(r *http.Request) string { return r.Header.Get("X-User") })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			callCount[r.Header.Get("X-User")]++
 			w.WriteHeader(http.StatusOK)
@@ -305,4 +306,21 @@ func TestStatusRecorder_HijackErrorsWhenUnderlyingDoesNotSupportIt(t *testing.T)
 	if _, _, err := rec.Hijack(); err == nil {
 		t.Fatal("expected an error when the underlying ResponseWriter does not implement http.Hijacker")
 	}
+}
+
+// countLimiter permite n requisições por chave (dublê simples do Limiter).
+type countLimiter struct {
+	max  int
+	seen map[string]int
+	err  error
+}
+
+func newCountLimiter(n int) *countLimiter { return &countLimiter{max: n, seen: map[string]int{}} }
+
+func (c *countLimiter) Allow(_ context.Context, key string) (bool, error) {
+	if c.err != nil {
+		return false, c.err
+	}
+	c.seen[key]++
+	return c.seen[key] <= c.max, nil
 }

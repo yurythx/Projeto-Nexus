@@ -30,6 +30,8 @@ function RoomView({ room, onRead }: { room: ChatRoom; onRead: () => void }) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({});
+  // O servidor derrubou a assinatura (sala arquivada ou acesso removido).
+  const [dropped, setDropped] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const lastTypingSent = useRef(0);
 
@@ -82,6 +84,8 @@ function RoomView({ room, onRead }: { room: ChatRoom; onRead: () => void }) {
     } else if (f.type === "mercurio.message.deleted") {
       const { id } = f.data as { id: string };
       setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, deleted: true, body: "" } : x)));
+    } else if (f.type === "topic.dropped") {
+      setDropped(true);
     } else if (f.type === "mercurio.typing") {
       const t = f.data as { user_id: string; username: string };
       if (t.user_id !== me?.id) setTyping((prev) => ({ ...prev, [t.user_id]: { name: t.username, at: Date.now() } }));
@@ -143,6 +147,11 @@ function RoomView({ room, onRead }: { room: ChatRoom; onRead: () => void }) {
         {room.description && <p className="hidden truncate text-xs text-muted md:block">· {room.description}</p>}
         {connection !== "open" && <Badge tone="warning" className="ml-auto">Tempo real {connection === "connecting" ? "conectando…" : "offline"}</Badge>}
       </header>
+      {dropped && (
+        <p role="status" className="border-b border-surface-border bg-warning/10 px-4 py-2 text-sm">
+          Esta sala não recebe mais mensagens em tempo real para você: ela foi arquivada ou seu acesso foi removido.
+        </p>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" aria-live="polite" aria-relevant="additions">
         {hasMore && (

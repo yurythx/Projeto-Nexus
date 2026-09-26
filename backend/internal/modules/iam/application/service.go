@@ -18,7 +18,6 @@ import (
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/iam/domain"
-	"github.com/yurythx/projeto-nexus/internal/modules/iam/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
@@ -29,17 +28,18 @@ import (
 // Service implementa os casos de uso do IAM.
 type Service struct {
 	pool         *pgxpool.Pool
-	repo         *infrastructure.Repository
+	repo         domain.Repository
 	invalidate   func(ctx context.Context)
 	resetLockout func(ctx context.Context, username string) error
+	hash         func(password string) (string, error)
 }
 
 // NewService cria o serviço.
-func NewService(pool *pgxpool.Pool, repo *infrastructure.Repository, invalidate func(context.Context)) *Service {
+func NewService(pool *pgxpool.Pool, repo domain.Repository, invalidate func(context.Context)) *Service {
 	if invalidate == nil {
 		invalidate = func(context.Context) {}
 	}
-	return &Service{pool: pool, repo: repo, invalidate: invalidate}
+	return &Service{pool: pool, repo: repo, invalidate: invalidate, hash: passwords.Hash}
 }
 
 // WithLoginLockoutReset conecta a limpeza do bloqueio progressivo de login
@@ -49,18 +49,41 @@ func (s *Service) WithLoginLockoutReset(fn func(ctx context.Context, username st
 	return s
 }
 
-// guardGrant aplica "ninguém concede o que não tem" (A01): cada permissão
-// nova (ausente em before) precisa estar coberta pelas permissões efetivas
-// de quem está concedendo — senão um detentor de iam:manage criaria um
-// perfil "*" e se lotaria nele.
+// guardGrant aplica "ninguém concede nem retira o que não tem" (A01): cada
+// permissão que muda (adicionada ou removida) precisa estar coberta pelas
+// permissões efetivas de quem altera — senão um detentor de iam:manage
+// criaria um perfil "*" e se lotaria nele, ou tiraria o "*" de quem o tem.
 func guardGrant(ctx context.Context, before, after []string) error {
 	identity, _ := auth.IdentityFromContext(ctx)
-	for _, p := range after {
-		if slices.Contains(before, p) {
-			continue
+	check := func(list, other []string, verb string) error {
+		for _, p := range list {
+			if slices.Contains(other, p) {
+				continue
+			}
+			if !auth.HasPermission(identity, auth.Permission(p)) {
+				return apperrors.Forbidden("você não pode " + verb + " a permissão " + p + ", que não possui")
+			}
 		}
+		return nil
+	}
+	if err := check(after, before, "conceder"); err != nil {
+		return err
+	}
+	return check(before, after, "retirar")
+}
+
+// guardTarget: só administra uma conta (edita, desativa, redefine a senha)
+// quem cobre todas as permissões efetivas dela — senão quem tem apenas
+// users:manage redefiniria a senha de um administrador e entraria como ele.
+func (s *Service) guardTarget(ctx context.Context, db database.DBTX, targetID uuid.UUID) error {
+	perms, err := s.repo.UserPermissions(ctx, db, targetID)
+	if err != nil {
+		return err
+	}
+	identity, _ := auth.IdentityFromContext(ctx)
+	for _, p := range perms {
 		if !auth.HasPermission(identity, auth.Permission(p)) {
-			return apperrors.Forbidden("você não pode conceder a permissão " + p + ", que não possui")
+			return apperrors.Forbidden("esta conta tem a permissão " + p + ", que você não possui; só quem a cobre pode administrá-la")
 		}
 	}
 	return nil
@@ -206,16 +229,31 @@ func (s *Service) SaveUnidade(ctx context.Context, in domain.Unidade) (domain.Un
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
 		} else if prev, err := s.repo.GetUnidade(ctx, tx, in.ID); err == nil {
+			// Lotações e mapeamentos gravam a entidade da unidade: mudar a
+			// unidade de entidade deixaria esses escopos inconsistentes.
+			if prev.EntidadeID != in.EntidadeID {
+				return audit.Entry{}, fmt.Errorf("%w: a unidade não pode mudar de entidade", domain.ErrInvalidScope)
+			}
 			before = prev
 		} else {
 			return audit.Entry{}, err
 		}
 		if in.ParentID != nil {
 			parent, err := s.repo.GetUnidade(ctx, tx, *in.ParentID)
-			if err != nil || parent.EntidadeID != in.EntidadeID {
-				return audit.Entry{}, domain.ErrInvalidScope
+			if errors.Is(err, domain.ErrNotFound) {
+				return audit.Entry{}, fmt.Errorf("%w: unidade-mãe inexistente", domain.ErrInvalidScope)
 			}
-			if cycle, err := s.repo.UnidadeCreatesCycle(ctx, tx, in.ID, *in.ParentID); err != nil || cycle {
+			if err != nil {
+				return audit.Entry{}, err
+			}
+			if parent.EntidadeID != in.EntidadeID {
+				return audit.Entry{}, fmt.Errorf("%w: a unidade-mãe pertence a outra entidade", domain.ErrInvalidScope)
+			}
+			cycle, err := s.repo.UnidadeCreatesCycle(ctx, tx, in.ID, *in.ParentID)
+			if err != nil {
+				return audit.Entry{}, err
+			}
+			if cycle {
 				return audit.Entry{}, fmt.Errorf("%w: hierarquia circular", domain.ErrInvalidScope)
 			}
 		}
@@ -250,6 +288,9 @@ func (s *Service) SaveDepartamento(ctx context.Context, in domain.Departamento) 
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
 		} else if prev, err := s.repo.GetDepartamento(ctx, tx, in.ID); err == nil {
+			if prev.UnidadeID != in.UnidadeID {
+				return audit.Entry{}, fmt.Errorf("%w: o departamento não pode mudar de unidade", domain.ErrInvalidScope)
+			}
 			before = prev
 		} else {
 			return audit.Entry{}, err
@@ -328,6 +369,13 @@ func (s *Service) SavePerfil(ctx context.Context, in domain.Perfil) (domain.Perf
 			}
 			before = prev
 			prevPerms = prev.Permissoes
+			// Desativar (ou reativar) um perfil retira (ou devolve) todas
+			// as permissões dele de quem o tem.
+			if prev.Ativo != in.Ativo {
+				if err := guardGrant(ctx, nil, prev.Permissoes); err != nil {
+					return audit.Entry{}, err
+				}
+			}
 		}
 		if err := guardGrant(ctx, prevPerms, in.Permissoes); err != nil {
 			return audit.Entry{}, err
@@ -383,14 +431,20 @@ func (s *Service) CreateMapping(ctx context.Context, in domain.ADMapping) (uuid.
 
 func (s *Service) DeleteMapping(ctx context.Context, id uuid.UUID) error {
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
-		prev, err := s.repo.DeleteMapping(ctx, tx, id)
-		return audit.Meta(ctx, "iam.ad_mapping.deleted", "ad_group_mapping", id.String(), prev, nil), err
+		prev, err := s.repo.GetMapping(ctx, tx, id)
+		if err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardPerfilGrant(ctx, tx, prev.PerfilID); err != nil {
+			return audit.Entry{}, err
+		}
+		return audit.Meta(ctx, "iam.ad_mapping.deleted", "ad_group_mapping", id.String(), prev, nil), s.repo.DeleteMapping(ctx, tx, id)
 	})
 }
 
 // ---------------------------------------------------------------- usuários
 
-func (s *Service) ListUsers(ctx context.Context, f infrastructure.UserFilter, p pagination.Params) ([]domain.User, int64, error) {
+func (s *Service) ListUsers(ctx context.Context, f domain.UserFilter, p pagination.Params) ([]domain.User, int64, error) {
 	return s.repo.ListUsers(ctx, s.pool, f, p)
 }
 
@@ -418,6 +472,9 @@ func (s *Service) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUserInp
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetUser(ctx, tx, id)
 		if err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardTarget(ctx, tx, id); err != nil {
 			return audit.Entry{}, err
 		}
 		if err := guardAdminRole(ctx, prev.Roles, in.Roles); err != nil {
@@ -453,7 +510,7 @@ func (s *Service) CreateLocalUser(ctx context.Context, in CreateLocalUserInput) 
 	if err := guardAdminRole(ctx, nil, in.Roles); err != nil {
 		return domain.User{}, err
 	}
-	hash, err := passwords.Hash(in.Password)
+	hash, err := s.hash(in.Password)
 	if err != nil {
 		return domain.User{}, apperrors.Internal(err)
 	}
@@ -478,11 +535,23 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, password stri
 	if err := ValidatePasswordStrength(password); err != nil {
 		return err
 	}
-	hash, err := passwords.Hash(password)
+	hash, err := s.hash(password)
 	if err != nil {
 		return apperrors.Internal(err)
 	}
 	return s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		u, err := s.repo.GetUser(ctx, tx, id)
+		if err != nil {
+			return audit.Entry{}, err
+		}
+		// Conta do AD autentica no AD: uma senha local abriria uma porta
+		// de entrada que ignora a política (e a desativação) do diretório.
+		if u.Federated {
+			return audit.Entry{}, apperrors.Validation("conta federada (Keycloak/AD) não tem senha local; a senha é trocada no AD")
+		}
+		if err := s.guardTarget(ctx, tx, id); err != nil {
+			return audit.Entry{}, err
+		}
 		// Nunca a senha nem o hash vão para a auditoria.
 		return audit.Meta(ctx, "user.password.reset", "user", id.String(), nil, nil), s.repo.SetPassword(ctx, tx, id, hash)
 	})
@@ -563,6 +632,9 @@ func (s *Service) CreateLotacao(ctx context.Context, in domain.Lotacao) (uuid.UU
 	in.CreatedBy = identity.Username
 	var id uuid.UUID
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		if _, err := s.repo.GetUser(ctx, tx, in.UserID); err != nil {
+			return audit.Entry{}, err
+		}
 		if err := s.guardPerfilGrant(ctx, tx, in.PerfilID); err != nil {
 			return audit.Entry{}, err
 		}
@@ -580,9 +652,18 @@ func (s *Service) CreateLotacao(ctx context.Context, in domain.Lotacao) (uuid.UU
 	return id, err
 }
 
+// DeleteLotacao remove a lotação; retirar um perfil exige cobrir as
+// permissões dele (mesma regra da concessão). A auditoria guarda o que foi
+// retirado (perfil e escopo), não só o id.
 func (s *Service) DeleteLotacao(ctx context.Context, userID, id uuid.UUID) error {
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
-		return audit.Meta(ctx, "iam.lotacao.deleted", "user", userID.String(), map[string]string{"lotacao_id": id.String()}, nil),
-			s.repo.DeleteLotacao(ctx, tx, userID, id)
+		prev, err := s.repo.GetLotacao(ctx, tx, userID, id)
+		if err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardPerfilGrant(ctx, tx, prev.PerfilID); err != nil {
+			return audit.Entry{}, err
+		}
+		return audit.Meta(ctx, "iam.lotacao.deleted", "user", userID.String(), prev, nil), s.repo.DeleteLotacao(ctx, tx, userID, id)
 	})
 }

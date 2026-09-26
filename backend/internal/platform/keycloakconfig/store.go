@@ -16,6 +16,7 @@ package keycloakconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-nexus/internal/platform/config"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/secretcrypto"
 )
 
@@ -84,12 +86,12 @@ type Store interface {
 // (migration 000004), cifrando/decifrando os campos de segredo com
 // cipher (ver internal/platform/secretcrypto).
 type PostgresStore struct {
-	pool   *pgxpool.Pool
+	db     database.DBTX // o pool, em produção
 	cipher *secretcrypto.Cipher
 }
 
 func NewPostgresStore(pool *pgxpool.Pool, cipher *secretcrypto.Cipher) *PostgresStore {
-	return &PostgresStore{pool: pool, cipher: cipher}
+	return &PostgresStore{db: pool, cipher: cipher}
 }
 
 var _ Store = (*PostgresStore)(nil)
@@ -104,14 +106,14 @@ func (s *PostgresStore) Get(ctx context.Context) (Settings, error) {
 		out                                Settings
 		clientSecretEnc, frontendSecretEnc string
 	)
-	err := s.pool.QueryRow(ctx, q).Scan(
+	err := s.db.QueryRow(ctx, q).Scan(
 		&out.IssuerURL, &out.Realm, &out.ClientID, &clientSecretEnc, &out.Audience,
 		&out.FrontendClientID, &frontendSecretEnc, &out.UpdatedAt, &out.UpdatedBy,
 	)
 	switch {
 	case err == nil:
 		// segue abaixo
-	case err == pgx.ErrNoRows:
+	case errors.Is(err, pgx.ErrNoRows):
 		return Settings{Configured: false}, nil
 	default:
 		return Settings{}, fmt.Errorf("keycloakconfig: get: %w", err)
@@ -129,14 +131,8 @@ func (s *PostgresStore) Get(ctx context.Context) (Settings, error) {
 }
 
 func (s *PostgresStore) Set(ctx context.Context, incoming Settings, updatedBy string) (Settings, error) {
-	clientSecretEnc, err := s.cipher.Encrypt(incoming.ClientSecret)
-	if err != nil {
-		return Settings{}, fmt.Errorf("keycloakconfig: encrypt client_secret: %w", err)
-	}
-	frontendSecretEnc, err := s.cipher.Encrypt(incoming.FrontendClientSecret)
-	if err != nil {
-		return Settings{}, fmt.Errorf("keycloakconfig: encrypt frontend_client_secret: %w", err)
-	}
+	clientSecretEnc := s.cipher.Encrypt(incoming.ClientSecret)
+	frontendSecretEnc := s.cipher.Encrypt(incoming.FrontendClientSecret)
 
 	// client_secret_encrypted = CASE WHEN EXCLUDED... = '' THEN <valor já
 	// salvo> ELSE EXCLUDED... END: um secret vazio recebido aqui significa
@@ -168,7 +164,7 @@ func (s *PostgresStore) Set(ctx context.Context, incoming Settings, updatedBy st
 		out                                Settings
 		outClientSecretEnc, outFrontendEnc string
 	)
-	err = s.pool.QueryRow(ctx, q,
+	err := s.db.QueryRow(ctx, q,
 		incoming.IssuerURL, incoming.Realm, incoming.ClientID, clientSecretEnc, incoming.Audience,
 		incoming.FrontendClientID, frontendSecretEnc, updatedBy,
 	).Scan(

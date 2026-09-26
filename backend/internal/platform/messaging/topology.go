@@ -20,6 +20,11 @@ type QueueSpec struct {
 // RetryHeader carrega o número da tentativa numa republicação com atraso.
 const RetryHeader = "x-nexus-attempt"
 
+// RoutingKeyHeader preserva a routing key original (o tipo do evento) na
+// cópia de retry, que volta direto para a fila de origem pelo exchange
+// padrão (routing key = nome da fila).
+const RoutingKeyHeader = "x-nexus-routing-key"
+
 // QueueNotificationWebsocket alimenta o Hub de WebSocket (processo API)
 // com eventos SEGUROS para difusão geral — nunca eventos que carreguem
 // metadados sigilosos (ex.: Trâmite restrito/sigiloso).

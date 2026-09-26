@@ -65,14 +65,25 @@ async function request<T>(
     },
   });
 
-  // 401 do proxy BFF = sessão morta/expirada (ver lib/auth/tokenState.ts).
+  let json: Envelope<T> | null = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+
+  // 401 de SESSÃO (proxy BFF ou middleware do backend, código
+  // UNAUTHORIZED) = sessão morta/expirada (ver lib/auth/tokenState.ts).
   // Sem isto, uma tela com polling SWR só acumulava erros silenciosos e o
-  // usuário nunca era levado de volta ao login. RBAC negado usa 403, não
-  // 401, então redirecionar aqui é seguro. Navegação DURA de propósito
-  // (location.replace, não router.push): descarta todo o estado de cliente
-  // da tela expirada e reexecuta o middleware; replace() não deixa a tela
-  // morta no histórico do back.
-  if (res.status === 401 && typeof window !== "undefined" && window.location.pathname !== "/login") {
+  // usuário nunca era levado de volta ao login. Um 401 com código PRÓPRIO
+  // é recusa de negócio com a sessão viva — ex.: senha errada na
+  // cerimônia de assinatura do Signum (SIGNUM_REAUTH_FAILED): redirecionar
+  // derrubava a sessão por um erro de digitação. RBAC negado usa 403.
+  // Navegação DURA de propósito (location.replace, não router.push):
+  // descarta todo o estado de cliente da tela expirada e reexecuta o
+  // middleware; replace() não deixa a tela morta no histórico do back.
+  const sessionExpired = res.status === 401 && (!json?.error || json.error.code === "UNAUTHORIZED");
+  if (sessionExpired && typeof window !== "undefined" && window.location.pathname !== "/login") {
     const target = new URL("/login", window.location.origin);
     target.searchParams.set("callbackUrl", window.location.pathname + window.location.search);
     // Este 401 só acontece pra quem já tinha uma sessão (o proxy BFF exige
@@ -82,10 +93,7 @@ async function request<T>(
     window.location.replace(target.toString());
   }
 
-  let json: Envelope<T>;
-  try {
-    json = await res.json();
-  } catch {
+  if (json === null) {
     throw new ApiError(
       res.status,
       "INVALID_RESPONSE",

@@ -81,6 +81,35 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | F6.7 | Testes de integração no CI (Postgres real), cobertura 46,5% → 70% | ✅ |
 | F6.8 | OpenAPI sincronizado com o roteador (teste de contrato) | ✅ `internal/app/openapi_test.go` |
 
+## Fase 7 — Revisão das regras de negócio dos plug-ins (ADR 009)
+
+| # | Item | Estado |
+|---|---|---|
+| F7.1 | Cada plug-in revisado contra o fluxo de trabalho para o qual foi criado; regras não aplicadas corrigidas (ver ADR 009 §9.1) | ✅ |
+| F7.2 | A01 — IAM: só administra uma conta quem cobre as permissões efetivas dela; conta federada sem senha local | ✅ |
+| F7.3 | Estados finais imutáveis (processo concluído, evento cancelado, sala arquivada) e transição idempotente sem nova auditoria | ✅ |
+| F7.4 | Erro de banco nunca mascarado como regra de negócio; curingas do LIKE digitados tratados como texto | ✅ |
+| F7.5 | Auditoria: User-Agent não derruba a transação; exportação LAI nunca incompleta; cópia WORM retoma da marca d'água sem quebrar a cadeia | ✅ |
+| F7.6 | Matriz de falhas (falha e transação envenenada em cada chamada do repositório) em todos os plug-ins | ✅ `scripts/genfault.py`, `database/dbtest` |
+| F7.7 | Meta de 100% de cobertura por plug-in no CI (cobertura total 70% → 84,7%) | ✅ `scripts/coverage-gate.sh` |
+
+## Fase 8 — Revisão da plataforma (ADR 010)
+
+| # | Item | Estado |
+|---|---|---|
+| F8.1 | Cada pacote de `internal/platform` e a composição (`internal/app`) revisados; correções em ADR 010 §10.1 | ✅ |
+| F8.2 | Outbox com backoff por evento e reprocessamento auditado (`POST /monitoring/outbox/requeue`, `monitoring:manage`) | ✅ migration 000123 |
+| F8.3 | LGPD art. 18: dados pessoais dos plug-ins (`PersonalData`) no pacote de exportação e na eliminação, com retentativas | ✅ migration 000124 |
+| F8.4 | Anti-SSRF: formas IPv6 que embutem IPv4 bloqueadas | ✅ |
+| F8.5 | e-MAG: contraste AA exigido nos tokens de cor do branding | ✅ |
+| F8.6 | RabbitMQ e MinIO reais no CI; meta de 100% por pacote (plug-ins, plataforma, app, pkg) | ✅ `scripts/coverage-gate.sh` |
+| F8.7 | Cópia WORM com uma única réplica exportando cada dia (advisory lock no Postgres) | ✅ |
+| F8.8 | OpenAPI com schemas de corpo, resposta e query gerados dos tipos Go, verificados no CI | ✅ `internal/app/openapi_schemas_test.go` |
+| F8.9 | Grafo visual de dependências na tela de Módulos | ✅ |
+| F8.10 | Testes E2E (Playwright) dos fluxos críticos contra a stack completa, no CI | ✅ `frontend/e2e`, `docs/e2e.md` |
+| F8.11 | Contrato frontend × backend verificado pelo compilador (tipos gerados do OpenAPI) | ✅ `frontend/src/lib/nexus/contract.types.ts` |
+| F8.12 | `npm audit` bloqueante no CI; Next 16.3.6 (RCE crítica GHSA-2xp9-vwfh-vxw4) | ✅ |
+
 ---
 
 ## Parâmetros novos e como são usados

@@ -13,9 +13,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/internal/platform/idempotency"
-	"github.com/yurythx/projeto-nexus/internal/platform/jobs"
 	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
-	"github.com/yurythx/projeto-nexus/internal/platform/lgpd"
 	"github.com/yurythx/projeto-nexus/internal/platform/messaging"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
@@ -40,9 +38,8 @@ func NewWorker(d *Dependencies) *Worker {
 			supervised("outbox_relay", d.Logger, relay.Run),
 			supervised("idempotency_cleanup", d.Logger, idempotency.Cleanup(d.DB)),
 			supervised("processed_events_cleanup", d.Logger, kernel.CleanupProcessedEvents(d.DB, d.Logger)),
-			supervised("jobs_stale_sweeper", d.Logger, jobs.SweepStale(d.DB, map[string]jobs.StaleJobHandler{}, d.Config.Jobs.StaleAfter, d.Logger)),
 			// LGPD art. 18, VI — anonimização a pedido do titular.
-			supervised("lgpd_erasure", d.Logger, lgpd.ErasureProcessor(d.DB, d.Logger)),
+			supervised("lgpd_erasure", d.Logger, d.LGPD.ErasureProcessor()),
 			// Cópia WORM diária da trilha (com os hashes da cadeia).
 			supervised("audit_worm_export", d.Logger, audit.WORMExporter(d.DB, d.Storage, d.Config.AuditWORM.Bucket, d.Config.AuditWORM.RetentionDays, d.Logger)),
 			// Estado dos módulos: LISTEN/NOTIFY + polling.
@@ -61,11 +58,18 @@ func (d *Dependencies) consume(ctx context.Context, queue string, handler events
 	return c.Consume(ctx, handler)
 }
 
+// Backoff do supervised (variáveis só para os testes encurtarem; lidas na
+// criação do processor).
+var (
+	supervisedMinBackoff = time.Second
+	supervisedMaxBackoff = 30 * time.Second
+)
+
 // supervised reinicia fn com backoff exponencial até ctx acabar.
 func supervised(name string, logger *slog.Logger, fn processor) processor {
+	minBackoff, maxBackoff := supervisedMinBackoff, supervisedMaxBackoff
 	return func(ctx context.Context) error {
-		backoff := time.Second
-		const maxBackoff = 30 * time.Second
+		backoff := minBackoff
 		for {
 			err := fn(ctx)
 			if ctx.Err() != nil {
@@ -81,9 +85,7 @@ func supervised(name string, logger *slog.Logger, fn processor) processor {
 				return nil
 			case <-time.After(backoff):
 			}
-			if backoff < maxBackoff {
-				backoff *= 2
-			}
+			backoff = min(backoff*2, maxBackoff)
 		}
 	}
 }
@@ -132,5 +134,7 @@ func (w *Worker) RunMetricsServer(ctx context.Context) error {
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return server.Shutdown(shutdownCtx)
+	err := server.Shutdown(shutdownCtx)
+	<-errCh // Shutdown fecha o listener: o ListenAndServe já voltou
+	return err
 }

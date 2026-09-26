@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/events"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // ConsumeFunc conecta um handler a uma fila e bloqueia até ctx acabar
@@ -77,9 +79,9 @@ func (k *Kernel) Supervise(ctx context.Context, process Process, consume Consume
 
 func (k *Kernel) superviseUnit(ctx context.Context, u unit) {
 	changes := k.subscribe()
+	defer k.unsubscribe(changes)
 	log := k.logger.With(slog.String("module", u.module), slog.String("unit", u.name))
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
+	backoff := k.minBackoff
 
 	for {
 		if ctx.Err() != nil {
@@ -95,6 +97,7 @@ func (k *Kernel) superviseUnit(ctx context.Context, u unit) {
 		}
 
 		runCtx, cancel := context.WithCancel(ctx)
+		started := time.Now()
 		done := make(chan error, 1)
 		go func() {
 			defer func() {
@@ -127,20 +130,25 @@ func (k *Kernel) superviseUnit(ctx context.Context, u unit) {
 				if ctx.Err() != nil {
 					return
 				}
+				// Uma unidade que rodou bem por mais que o backoff máximo
+				// antes de cair recomeça do backoff mínimo.
+				if time.Since(started) > k.maxBackoff {
+					backoff = k.minBackoff
+				}
 				log.Error("kernel: unidade terminou inesperadamente, reiniciando", slog.Any("error", err), slog.Duration("retry_in", backoff))
 				select {
 				case <-ctx.Done():
 					return
 				case <-time.After(backoff):
 				}
-				if backoff < maxBackoff {
-					backoff *= 2
+				if backoff < k.maxBackoff {
+					backoff = min(backoff*2, k.maxBackoff)
 				}
 				break watch
 			}
 		}
 		if stoppedByToggle {
-			backoff = time.Second
+			backoff = k.minBackoff
 		}
 	}
 }
@@ -161,7 +169,7 @@ func Idempotent(pool *pgxpool.Pool, consumer string, handler events.MessageHandl
 		err = tx.QueryRow(ctx, `
 			INSERT INTO processed_events (consumer, event_id) VALUES ($1, $2)
 			ON CONFLICT DO NOTHING RETURNING true`, consumer, event.ID).Scan(&inserted)
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // já processado
 		}
 		if err != nil {
@@ -177,11 +185,15 @@ func Idempotent(pool *pgxpool.Pool, consumer string, handler events.MessageHandl
 // CleanupProcessedEvents apaga marcadores de deduplicação antigos (a
 // janela de reentrega do RabbitMQ é de minutos; 14 dias é folga ampla).
 func CleanupProcessedEvents(pool *pgxpool.Pool, logger *slog.Logger) func(ctx context.Context) error {
+	return cleanupProcessedEvents(pool, logger, time.Hour)
+}
+
+func cleanupProcessedEvents(db database.DBTX, logger *slog.Logger, every time.Duration) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		t := time.NewTicker(time.Hour)
+		t := time.NewTicker(every)
 		defer t.Stop()
 		for {
-			if _, err := pool.Exec(ctx, `DELETE FROM processed_events WHERE processed_at < now() - interval '14 days'`); err != nil && ctx.Err() == nil {
+			if _, err := db.Exec(ctx, `DELETE FROM processed_events WHERE processed_at < now() - interval '14 days'`); err != nil && ctx.Err() == nil {
 				logger.Warn("kernel: limpeza de processed_events falhou", slog.Any("error", err))
 			}
 			select {

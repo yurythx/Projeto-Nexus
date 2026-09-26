@@ -25,6 +25,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/modules/tramite"
 	tramiteDomain "github.com/yurythx/projeto-nexus/internal/modules/tramite/domain"
 	"github.com/yurythx/projeto-nexus/internal/modules/wiki"
+	"github.com/yurythx/projeto-nexus/internal/platform/lgpd"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
 )
 
@@ -43,9 +44,6 @@ func registerPlugins(d *Dependencies) {
 		ContactLimiter:        d.RateLimiters.Contact,
 		InvalidatePermissions: d.IAM.Invalidate,
 		ResetLoginLockout: func(ctx context.Context, username string) error {
-			if d.RateLimiters == nil || d.RateLimiters.Lockout == nil {
-				return nil
-			}
 			return d.RateLimiters.Lockout.Reset(ctx, "user:"+strings.ToLower(username))
 		},
 	}
@@ -71,6 +69,19 @@ func registerPlugins(d *Dependencies) {
 		tramite.New(deps, &signaturePort{svc: signumModule.Service(), enabled: func() bool { return d.Kernel.Enabled(signum.Key) }}),
 		example.New(deps),
 	)
+	d.LGPD.SetPersonalDataSource(d.personalData)
+}
+
+// personalData lista os plugins que guardam dados pessoais do titular
+// (LGPD art. 18) — todos os registrados, ativos ou não.
+func (d *Dependencies) personalData() map[string]lgpd.PersonalData {
+	out := map[string]lgpd.PersonalData{}
+	for _, p := range d.Kernel.Plugins() {
+		if pd, ok := p.(lgpd.PersonalData); ok {
+			out[p.Manifest().Key] = pd
+		}
+	}
+	return out
 }
 
 // permissionCatalog agrupa as permissões declaradas nos manifestos (tela

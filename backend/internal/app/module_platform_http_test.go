@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -106,6 +107,30 @@ func TestEgressHTTP(t *testing.T) {
 		`{"name":"n8n","kind":"n8n","url":"https://8.8.8.8/webhook","event_patterns":["blog.*","tramite.*"],"active":false}`)
 	h.expect(http.StatusOK, http.MethodGet, "/api/v1/egress/deliveries?status=dead", admin, "")
 	h.expect(http.StatusNotFound, http.MethodPost, "/api/v1/egress/deliveries/"+uuid.NewString()+"/redeliver", admin, "")
+	// Teste de conectividade: o 8.8.8.8 não é um webhook — responde com
+	// falha, mas o teste em si é 200 com o resultado.
+	if res := h.expect(http.StatusOK, http.MethodPost, "/api/v1/egress/targets/"+target.ID+"/test", admin, "").Body.String(); !strings.Contains(res, `"ok":`) {
+		t.Fatalf("resultado do teste: %s", res)
+	}
+	// Reentrega de uma entrega morta.
+	var delID string
+	if err := h.d.DB.QueryRow(context.Background(), `INSERT INTO egress_deliveries (target_id, event_id, event_type, payload, status)
+		VALUES ($1, gen_random_uuid(), 'blog.post.published', '{}', 'dead') RETURNING id`, target.ID).Scan(&delID); err != nil {
+		t.Fatal(err)
+	}
+	h.expect(http.StatusNoContent, http.MethodPost, "/api/v1/egress/deliveries/"+delID+"/redeliver", admin, "")
+	for _, c := range []struct{ method, path, body string }{
+		{http.MethodPut, "/api/v1/egress/targets/x", `{"name":"x","kind":"webhook","url":"https://8.8.8.8/x"}`},
+		{http.MethodDelete, "/api/v1/egress/targets/x", ""},
+		{http.MethodPost, "/api/v1/egress/targets/x/test", ""},
+		{http.MethodPost, "/api/v1/egress/deliveries/x/redeliver", ""},
+		{http.MethodGet, "/api/v1/egress/deliveries?target_id=x", ""},
+		{http.MethodPost, "/api/v1/egress/targets", `{`},
+	} {
+		h.expect(http.StatusBadRequest, c.method, c.path, admin, c.body)
+	}
+	h.expect(http.StatusNotFound, http.MethodPost, "/api/v1/egress/targets/"+uuid.NewString()+"/test", admin, "")
+	h.expect(http.StatusNotFound, http.MethodDelete, "/api/v1/egress/targets/"+uuid.NewString(), admin, "")
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/egress/targets/"+target.ID, admin, "")
 }
 
@@ -115,7 +140,7 @@ func TestSearchHTTP(t *testing.T) {
 	_, reader := h.user("nexus-user")
 	term := "Zircônio" + strings.ReplaceAll(uuid.NewString()[:6], "-", "")
 
-	post := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"Notícia `+term+`","summary":"s"}`))
+	post := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"Notícia `+term+`","summary":"s","body":"Texto da notícia"}`))
 	h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+post.ID+"/publish", admin, "")
 	page := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", reader, `{"title":"Página `+term+`","body":"corpo"}`))
 
@@ -233,6 +258,7 @@ func TestExampleBlueprintHTTP(t *testing.T) {
 
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/examples", plain, `{"title":"x"}`)
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/examples", admin, `{"title":""}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/examples", admin, `{"title":"   "}`) // passa no validate, o domínio recusa
 	h.expect(http.StatusBadRequest, http.MethodPost, "/api/v1/examples", admin, `{"title":"x","campo_desconhecido":1}`)
 	item := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/examples", admin, `{"title":"Blueprint","description":"d"}`))
 	h.expect(http.StatusOK, http.MethodGet, "/api/v1/examples/"+item.ID, plain, "")
@@ -243,5 +269,19 @@ func TestExampleBlueprintHTTP(t *testing.T) {
 	}
 	if outboxCount(t, h, "example.item.created", item.ID) != 1 {
 		t.Fatal("blueprint grava o evento no outbox na mesma transação")
+	}
+}
+
+func TestOutboxMonitoringHTTP(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	_, plain := h.user("nexus-user")
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/monitoring/outbox-stats", plain, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/monitoring/outbox/requeue", plain, "")
+	if body := h.expect(http.StatusOK, http.MethodGet, "/api/v1/monitoring/outbox-stats", admin, "").Body.String(); !strings.Contains(body, `"pending"`) {
+		t.Fatalf("estatísticas do outbox: %s", body)
+	}
+	if body := h.expect(http.StatusOK, http.MethodPost, "/api/v1/monitoring/outbox/requeue", admin, "").Body.String(); !strings.Contains(body, `"requeued"`) {
+		t.Fatalf("reprocessamento: %s", body)
 	}
 }

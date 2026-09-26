@@ -12,3 +12,5 @@ Toda mudança de contrato de API, RBAC, auditoria ou middleware exige um ADR
 | [006](006-rfc7807-problem-details.md) | Erros RFC 7807 por negociação de conteúdo | Aceito |
 | [007](007-excecao-csp-style-src-vlibras.md) | Exceção de CSP `style-src` (VLibras) | Aceito, revisão trimestral |
 | [008](008-kernel-grafo-de-modulos-e-estrategia-de-testes.md) | Grafo de módulos, invariantes do IAM, proveniência da auditoria, LGPD federado e estratégia de testes | Aceito |
+| [009](009-revisao-dos-plugins-e-meta-de-cobertura.md) | Revisão das regras de negócio de cada plug-in e meta de 100% de cobertura por módulo no CI | Aceito |
+| [010](010-revisao-da-plataforma-e-cobertura-por-pacote.md) | Revisão de cada pacote da plataforma e da composição; RabbitMQ e MinIO reais no CI; meta de 100% por pacote | Aceito |

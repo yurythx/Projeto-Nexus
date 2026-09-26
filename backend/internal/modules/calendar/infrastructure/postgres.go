@@ -3,10 +3,12 @@ package infrastructure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/yurythx/projeto-nexus/internal/modules/calendar/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
@@ -31,7 +33,11 @@ func wrap(err error) error {
 	case database.IsUniqueViolation(err):
 		return domain.ErrDuplicate
 	case database.IsCheckViolation(err):
-		return domain.ErrInvalidRange
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "calendar_events_range_check" {
+			return domain.ErrInvalidRange
+		}
+		return domain.ErrInvalidValue
 	}
 	return fmt.Errorf("calendar: %w", err)
 }
@@ -81,6 +87,12 @@ func (r *Repository) DeleteRoom(ctx context.Context, db database.DBTX, id uuid.U
 		return domain.ErrNotFound
 	}
 	return wrap(err)
+}
+
+func (r *Repository) RoomHasUpcoming(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM calendar_events WHERE room_id = $1 AND status = 'confirmed' AND ends_at > now())`, id).Scan(&ok)
+	return ok, wrap(err)
 }
 
 func (r *Repository) RoomBusy(ctx context.Context, db database.DBTX, roomID uuid.UUID, from, to time.Time) ([]domain.Busy, error) {

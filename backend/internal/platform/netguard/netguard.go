@@ -49,9 +49,11 @@ var blockedPrefixes = mustPrefixes(
 	"203.0.113.0/24",  // TEST-NET-3
 	"224.0.0.0/4",     // multicast
 	"240.0.0.0/4",     // reservado + broadcast
-	"::/128",          // unspecified
-	"::1/128",         // loopback
+	"::/96",           // unspecified, loopback e IPv4-compatível obsoleto (::127.0.0.1)
 	"64:ff9b::/96",    // NAT64 (pode mapear para IPv4 interno)
+	"64:ff9b:1::/48",  // NAT64 de uso local (RFC 8215)
+	"2001::/32",       // Teredo (embute um IPv4)
+	"2002::/16",       // 6to4 (embute um IPv4: 2002:7f00:1:: -> 127.0.0.1)
 	"100::/64",        // discard
 	"2001:db8::/32",   // documentação
 	"fc00::/7",        // ULA
@@ -235,6 +237,9 @@ func NewClient(timeout time.Duration, policy Policy) *http.Client {
 	}
 }
 
+// lookupNetIP é o resolvedor de DNS (substituível em teste).
+var lookupNetIP = net.DefaultResolver.LookupNetIP
+
 // ResolveAndCheck resolve host e confere todos os IPs — útil para dar um
 // erro claro no cadastro (a proteção efetiva continua sendo o Dialer).
 func ResolveAndCheck(ctx context.Context, host string, policy Policy) error {
@@ -247,7 +252,7 @@ func ResolveAndCheck(ctx context.Context, host string, policy Policy) error {
 		}
 		return nil
 	}
-	addrs, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	addrs, err := lookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return fmt.Errorf("netguard: resolver %q: %w", host, err)
 	}

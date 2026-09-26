@@ -1,92 +1,81 @@
+// Package transport expõe o módulo-modelo via HTTP.
 package transport
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/modules/example/application"
-	"github.com/yurythx/projeto-nexus/internal/modules/example/domain"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
+// CreateItemRequest — as tags validate:"..." são conferidas por
+// httputil.Validate (blueprint: todo módulo valida a entrada por
+// struct-tag, e o domínio revalida as invariantes).
+type CreateItemRequest struct {
+	Title       string `json:"title" validate:"required,max=200"`
+	Description string `json:"description" validate:"max=2000"`
+}
+
+// Handlers agrupa os handlers HTTP.
 type Handlers struct {
-	service *application.Service
-	logger  *slog.Logger
+	service     *application.Service
+	logger      *slog.Logger
+	maxPageSize int
 }
 
+// NewHandlers cria os handlers.
 func NewHandlers(service *application.Service, logger *slog.Logger) *Handlers {
-	return &Handlers{
-		service: service,
-		logger:  logger,
-	}
+	return &Handlers{service: service, logger: logger, maxPageSize: 100}
 }
 
+func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
+	httputil.WriteError(w, r, h.logger, application.MapError(err))
+}
+
+// Create cria um item (exige example:manage — ver routes.go).
 func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateItemRequest
-	// Blueprint (gap G-06): DecodeJSON aplica MaxBytesReader (1 MiB) +
-	// DisallowUnknownFields; Validate confere as struct-tags. Nenhum
-	// módulo deve usar json.NewDecoder cru como este handler fazia.
-	if err := httputil.DecodeJSON(w, r, &req); err != nil {
-		httputil.WriteError(w, r, h.logger, err)
+	// Bind = DecodeJSON (MaxBytesReader de 1 MiB + DisallowUnknownFields)
+	// + Validate (struct-tags).
+	if err := httputil.Bind(w, r, &req); err != nil {
+		h.fail(w, r, err)
 		return
 	}
-	if err := httputil.Validate(req); err != nil {
-		httputil.WriteError(w, r, h.logger, err)
-		return
-	}
-
 	item, err := h.service.CreateItem(r.Context(), req.Title, req.Description)
 	if err != nil {
-		if errors.Is(err, domain.ErrInvalidInput) {
-			httputil.WriteError(w, r, h.logger, apperrors.BadRequest(err.Error()))
-			return
-		}
-		httputil.WriteError(w, r, h.logger, err)
+		h.fail(w, r, err)
 		return
 	}
-
 	httputil.WriteCreated(w, item)
 }
 
+// Get devolve um item.
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("ID inválido"))
+		h.fail(w, r, apperrors.BadRequest("ID inválido"))
 		return
 	}
-
 	item, err := h.service.GetItem(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, domain.ErrExampleNotFound) {
-			httputil.WriteError(w, r, h.logger, apperrors.NotFound("Item não encontrado"))
-			return
-		}
-		httputil.WriteError(w, r, h.logger, err)
+		h.fail(w, r, err)
 		return
 	}
-
 	httputil.WriteOK(w, item)
 }
 
+// List pagina os itens (?page=&page_size=, meta de paginação padrão).
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
-
-	items, total, err := h.service.ListItems(r.Context(), page, pageSize)
+	p := httputil.Page(r, h.maxPageSize)
+	items, total, err := h.service.ListItems(r.Context(), p)
 	if err != nil {
-		httputil.WriteError(w, r, h.logger, err)
+		h.fail(w, r, err)
 		return
 	}
-
-	httputil.WriteOKWithMeta(w, items, map[string]interface{}{
-		"total": total,
-		"page":  page,
-	})
+	httputil.WritePage(w, items, p, total)
 }

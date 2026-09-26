@@ -58,3 +58,19 @@ func TestSigiloRules(t *testing.T) {
 		t.Error("o autor sempre acessa o próprio processo")
 	}
 }
+
+func TestCanActRequiresReadAndStates(t *testing.T) {
+	unidade := uuid.New()
+	lotado := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{UnidadeID: &unidade}, {Perfil: "sem-unidade"}}}
+	sig := AccessInfo{Sigilo: SigiloSigiloso, CreatedBy: uuid.New(), UnidadeOrigemID: unidade, UnidadeAtualID: unidade}
+	if CanAct(lotado, sig) {
+		t.Error("estar na unidade atual não basta para agir em sigiloso sem credencial")
+	}
+	for status, want := range map[string][2]bool{
+		StatusAberto: {true, false}, StatusEmTramitacao: {true, false}, StatusConcluido: {false, true}, StatusArquivado: {false, true},
+	} {
+		if Aberto(status) != want[0] || Encerrado(status) != want[1] {
+			t.Errorf("%s: aberto=%v encerrado=%v", status, Aberto(status), Encerrado(status))
+		}
+	}
+}

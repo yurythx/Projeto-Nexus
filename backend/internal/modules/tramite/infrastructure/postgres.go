@@ -48,6 +48,13 @@ func (r *Repository) Tipos(ctx context.Context, db database.DBTX) ([]domain.Tipo
 	return out, rows.Err()
 }
 
+// TipoAtivo reporta se o tipo existe e aceita novos processos.
+func (r *Repository) TipoAtivo(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tramite_tipos WHERE id = $1 AND ativo)`, id).Scan(&ok)
+	return ok, wrap(err)
+}
+
 // NextNumero reserva o próximo sequencial do ano sem lacunas (a linha do
 // ano fica travada até o fim da transação de abertura).
 func (r *Repository) NextNumero(ctx context.Context, db database.DBTX, ano int) (int, error) {
@@ -119,8 +126,8 @@ func (r *Repository) ListVisible(ctx context.Context, db database.DBTX, identity
 		)
 		AND ($4 = '' OR p.status = $4)
 		AND ($5::uuid IS NULL OR p.unidade_atual_id = $5)
-		AND (NOT $6 OR p.created_by = $1 OR p.unidade_atual_id = ANY($3::uuid[]))
-		AND ($7 = '' OR p.search @@ websearch_to_tsquery('portuguese', nexus_unaccent($7)) OR p.numero LIKE $7 || '%')`
+		AND (NOT $6 OR p.unidade_atual_id = ANY($3::uuid[]))
+		AND ($7 = '' OR p.search @@ websearch_to_tsquery('portuguese', nexus_unaccent($7)) OR starts_with(p.numero, $7))`
 	args := []any{identity.UserID, auth.HasPermission(identity, auth.PermTramiteManage), unidadesOf(identity),
 		f.Status, f.UnidadeID, f.Mine, f.Query}
 	var total int64
@@ -158,6 +165,14 @@ func (r *Repository) Grant(ctx context.Context, db database.DBTX, processoID, us
 	_, err := db.Exec(ctx, `INSERT INTO tramite_acessos (processo_id, user_id, granted_by) VALUES ($1,$2,$3)
 		ON CONFLICT DO NOTHING`, processoID, userID, grantedBy)
 	return wrap(err)
+}
+
+func (r *Repository) Revoke(ctx context.Context, db database.DBTX, processoID, userID uuid.UUID) (bool, error) {
+	tag, err := db.Exec(ctx, `DELETE FROM tramite_acessos WHERE processo_id = $1 AND user_id = $2`, processoID, userID)
+	if err != nil {
+		return false, wrap(err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *Repository) Grants(ctx context.Context, db database.DBTX, processoID uuid.UUID) ([]domain.Grant, error) {
@@ -214,6 +229,13 @@ func (r *Repository) GetDocumento(ctx context.Context, db database.DBTX, id uuid
 func (r *Repository) DocumentoByEnvelope(ctx context.Context, db database.DBTX, envelopeID uuid.UUID) (domain.Documento, error) {
 	d, err := scanDoc(db.QueryRow(ctx, `SELECT `+docCols+` FROM tramite_documentos WHERE envelope_id = $1`, envelopeID))
 	return d, wrap(err)
+}
+
+func (r *Repository) PendingSignatures(ctx context.Context, db database.DBTX, processoID uuid.UUID) (int, error) {
+	var n int
+	err := db.QueryRow(ctx, `SELECT count(*) FROM tramite_documentos WHERE processo_id = $1 AND status = 'aguardando_assinatura'`,
+		processoID).Scan(&n)
+	return n, wrap(err)
 }
 
 func (r *Repository) InsertDocumento(ctx context.Context, db database.DBTX, d domain.Documento) error {

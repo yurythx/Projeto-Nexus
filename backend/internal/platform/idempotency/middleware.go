@@ -75,7 +75,7 @@ func Middleware(store Store, logger *slog.Logger) func(http.Handler) http.Handle
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 
-			requestHash := hashRequest(r.Method, r.URL.Path, body)
+			requestHash := hashRequest(r.Method, r.URL.RequestURI(), body)
 
 			existing, claimed, err := store.Claim(r.Context(), key, requestHash)
 			if err != nil {
@@ -168,10 +168,10 @@ func finalizeClaim(ctx context.Context, store Store, logger *slog.Logger, key st
 }
 
 // hashRequest identifica de forma estável "qual requisição" uma chave de
-// idempotência foi usada para — método, caminho e corpo. Não inclui
-// headers (o Authorization muda a cada renovação de token sem representar
-// uma requisição logicamente diferente) nem query string (nenhum endpoint
-// protegido por este middleware hoje usa parâmetros de query).
+// idempotência foi usada para — método, caminho COM a query string (ex.:
+// DELETE .../pastas/{id}?recursive=true não é a mesma operação que sem ela)
+// e corpo. Não inclui headers (o Authorization muda a cada renovação de
+// token sem representar uma requisição logicamente diferente).
 func hashRequest(method, path string, body []byte) string {
 	h := sha256.New()
 	h.Write([]byte(method))

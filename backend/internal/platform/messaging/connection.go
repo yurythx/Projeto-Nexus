@@ -28,7 +28,11 @@ type Connection struct {
 	mu   sync.RWMutex
 	conn *amqp.Connection
 
-	done chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
+
+	// backoff da reconexão, fixado na criação (lido pelo supervisor).
+	reconnectMin, reconnectMax time.Duration
 }
 
 // initialConnectBudget limita quanto tempo Connect insiste na primeira
@@ -37,19 +41,31 @@ type Connection struct {
 // no `ping` do nó Erlang antes do listener AMQP na 5672 estar aceitando)
 // sem transformar uma RABBITMQ_URL de fato errada num processo que fica
 // tentando para sempre — passado o orçamento, ainda falha o startup.
-const initialConnectBudget = 45 * time.Second
+var initialConnectBudget = 45 * time.Second
+
+// Intervalos de nova tentativa (variáveis só para os testes encurtarem).
+var (
+	dialBackoffMax      = 5 * time.Second
+	reconnectBackoffMin = time.Second
+	reconnectBackoffMax = 30 * time.Second
+)
 
 // Connect disca o RabbitMQ, tolerando um broker que ainda não terminou de
 // subir (retry com backoff até initialConnectBudget), e então inicia um
 // supervisor em background que redisca com backoff exponencial em
 // qualquer desconexão subsequente. Uma URL de fato inválida ou um broker
-// ausente após o orçamento ainda param o startup (erro retornado).
+// ausente após o orçamento ainda param o startup (erro retornado); uma URL
+// malformada falha na hora.
 func Connect(ctx context.Context, url string, logger *slog.Logger) (*Connection, error) {
+	// URL malformada não melhora esperando: falha na hora.
+	if _, err := amqp.ParseURI(url); err != nil {
+		return nil, fmt.Errorf("messaging: RABBITMQ_URL inválida: %w", err)
+	}
 	dialCtx, cancel := context.WithTimeout(ctx, initialConnectBudget)
 	defer cancel()
 
-	backoff := time.Second
-	const maxBackoff = 5 * time.Second
+	backoff := min(time.Second, dialBackoffMax)
+	maxBackoff := dialBackoffMax
 	var conn *amqp.Connection
 	var err error
 	for attempt := 1; ; attempt++ {
@@ -69,12 +85,7 @@ func Connect(ctx context.Context, url string, logger *slog.Logger) (*Connection,
 			return nil, fmt.Errorf("messaging: initial connect failed after %s: %w", initialConnectBudget, err)
 		case <-time.After(backoff):
 		}
-		if backoff < maxBackoff {
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
-		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 
 	c := &Connection{
@@ -82,6 +93,9 @@ func Connect(ctx context.Context, url string, logger *slog.Logger) (*Connection,
 		logger: logger,
 		conn:   conn,
 		done:   make(chan struct{}),
+
+		reconnectMin: reconnectBackoffMin,
+		reconnectMax: reconnectBackoffMax,
 	}
 
 	go c.superviseReconnect()
@@ -97,19 +111,17 @@ func (c *Connection) superviseReconnect() {
 		c.mu.RLock()
 		conn := c.conn
 		c.mu.RUnlock()
-		if conn == nil {
+
+		// Close() também fecha a conexão, então basta esperar o fim dela.
+		amqpErr := <-conn.NotifyClose(make(chan *amqp.Error, 1))
+		// Sem erro pode ser o Close() proposital — ou uma conexão que caiu
+		// antes do NotifyClose ser registrado (a biblioteca devolve o canal
+		// já fechado). Só o done distingue os dois.
+		if amqpErr == nil && c.closing() {
 			return
 		}
-
-		closeCh := conn.NotifyClose(make(chan *amqp.Error, 1))
-
-		select {
-		case <-c.done:
-			return
-		case amqpErr := <-closeCh:
-			c.logger.Error("rabbitmq connection lost, reconnecting", slog.Any("error", amqpErr))
-			c.reconnectWithBackoff()
-		}
+		c.logger.Error("rabbitmq connection lost, reconnecting", slog.Any("error", amqpErr))
+		c.reconnectWithBackoff()
 	}
 }
 
@@ -118,8 +130,8 @@ func (c *Connection) superviseReconnect() {
 // martelar o broker com tentativas imediatas enquanto ele está
 // reiniciando ou a rede está instável.
 func (c *Connection) reconnectWithBackoff() {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
+	backoff := c.reconnectMin
+	maxBackoff := c.reconnectMax
 
 	for {
 		select {
@@ -136,12 +148,7 @@ func (c *Connection) reconnectWithBackoff() {
 				return
 			case <-time.After(backoff):
 			}
-			if backoff < maxBackoff {
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
+			backoff = min(backoff*2, maxBackoff)
 			continue
 		}
 
@@ -181,14 +188,25 @@ func (c *Connection) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Close para o supervisor de reconexão e fecha a conexão subjacente.
-// Seguro de chamar uma vez durante o graceful shutdown.
-func (c *Connection) Close() error {
-	close(c.done)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != nil {
-		return c.conn.Close()
+// closing informa se Close já foi chamado.
+func (c *Connection) closing() bool {
+	select {
+	case <-c.done:
+		return true
+	default:
+		return false
 	}
-	return nil
+}
+
+// Close para o supervisor de reconexão e fecha a conexão subjacente.
+// Idempotente: chamadas repetidas não fazem nada.
+func (c *Connection) Close() error {
+	var err error
+	c.closeOnce.Do(func() {
+		close(c.done)
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		err = c.conn.Close()
+	})
+	return err
 }

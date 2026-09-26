@@ -21,6 +21,8 @@ type Repository struct{}
 // NewRepository cria o repositório.
 func NewRepository() *Repository { return &Repository{} }
 
+var _ domain.Repository = (*Repository)(nil)
+
 func wrap(op string, err error) error {
 	switch {
 	case err == nil:
@@ -276,25 +278,37 @@ const scopeJoins = `
 // ----------------------------------------------------------- mapeamentos AD
 
 func (r *Repository) ListMappings(ctx context.Context, db database.DBTX) ([]domain.ADMapping, error) {
-	rows, err := db.Query(ctx, `
-		SELECT t.id, t.ad_group, t.perfil_id, p.nome, t.entidade_id, t.unidade_id, t.departamento_id,
-		       `+scopeLabelSQL+`, t.descricao, t.created_at, t.created_by
-		FROM ad_group_mappings t JOIN perfis p ON p.id = t.perfil_id `+scopeJoins+`
-		ORDER BY lower(t.ad_group), p.nome`)
+	rows, err := db.Query(ctx, mappingSelect+` ORDER BY lower(t.ad_group), p.nome`)
 	if err != nil {
 		return nil, wrap("list mappings", err)
 	}
 	defer rows.Close()
 	out := []domain.ADMapping{}
 	for rows.Next() {
-		var m domain.ADMapping
-		if err := rows.Scan(&m.ID, &m.ADGroup, &m.PerfilID, &m.PerfilNome, &m.EntidadeID, &m.UnidadeID, &m.DepartamentoID,
-			&m.ScopeLabel, &m.Descricao, &m.CreatedAt, &m.CreatedBy); err != nil {
+		m, err := scanMapping(rows)
+		if err != nil {
 			return nil, wrap("scan mapping", err)
 		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+const mappingSelect = `
+		SELECT t.id, t.ad_group, t.perfil_id, p.nome, t.entidade_id, t.unidade_id, t.departamento_id,
+		       ` + scopeLabelSQL + `, t.descricao, t.created_at, t.created_by
+		FROM ad_group_mappings t JOIN perfis p ON p.id = t.perfil_id ` + scopeJoins
+
+func scanMapping(row interface{ Scan(...any) error }) (domain.ADMapping, error) {
+	var m domain.ADMapping
+	err := row.Scan(&m.ID, &m.ADGroup, &m.PerfilID, &m.PerfilNome, &m.EntidadeID, &m.UnidadeID, &m.DepartamentoID,
+		&m.ScopeLabel, &m.Descricao, &m.CreatedAt, &m.CreatedBy)
+	return m, err
+}
+
+func (r *Repository) GetMapping(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.ADMapping, error) {
+	m, err := scanMapping(db.QueryRow(ctx, mappingSelect+` WHERE t.id = $1`, id))
+	return m, wrap("get mapping", err)
 }
 
 func (r *Repository) CreateMapping(ctx context.Context, db database.DBTX, m domain.ADMapping) (uuid.UUID, error) {
@@ -306,36 +320,48 @@ func (r *Repository) CreateMapping(ctx context.Context, db database.DBTX, m doma
 	return id, wrap("create mapping", err)
 }
 
-func (r *Repository) DeleteMapping(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.ADMapping, error) {
-	var m domain.ADMapping
-	err := db.QueryRow(ctx, `DELETE FROM ad_group_mappings WHERE id = $1
-		RETURNING id, ad_group, perfil_id, entidade_id, unidade_id, departamento_id`, id).
-		Scan(&m.ID, &m.ADGroup, &m.PerfilID, &m.EntidadeID, &m.UnidadeID, &m.DepartamentoID)
-	return m, wrap("delete mapping", err)
+func (r *Repository) DeleteMapping(ctx context.Context, db database.DBTX, id uuid.UUID) error {
+	tag, err := db.Exec(ctx, `DELETE FROM ad_group_mappings WHERE id = $1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return wrap("delete mapping", err)
 }
 
 // ---------------------------------------------------------------- lotações
 
-func (r *Repository) ListLotacoes(ctx context.Context, db database.DBTX, userID uuid.UUID) ([]domain.Lotacao, error) {
-	rows, err := db.Query(ctx, `
+const lotacaoSelect = `
 		SELECT t.id, t.user_id, t.perfil_id, p.nome, t.entidade_id, t.unidade_id, t.departamento_id,
-		       `+scopeLabelSQL+`, t.principal, t.created_at, t.created_by
-		FROM user_scopes t JOIN perfis p ON p.id = t.perfil_id `+scopeJoins+`
-		WHERE t.user_id = $1 ORDER BY t.principal DESC, p.nome`, userID)
+		       ` + scopeLabelSQL + `, t.principal, t.created_at, t.created_by
+		FROM user_scopes t JOIN perfis p ON p.id = t.perfil_id ` + scopeJoins
+
+func scanLotacao(row interface{ Scan(...any) error }) (domain.Lotacao, error) {
+	var l domain.Lotacao
+	err := row.Scan(&l.ID, &l.UserID, &l.PerfilID, &l.PerfilNome, &l.EntidadeID, &l.UnidadeID, &l.DepartamentoID,
+		&l.ScopeLabel, &l.Principal, &l.CreatedAt, &l.CreatedBy)
+	return l, err
+}
+
+func (r *Repository) ListLotacoes(ctx context.Context, db database.DBTX, userID uuid.UUID) ([]domain.Lotacao, error) {
+	rows, err := db.Query(ctx, lotacaoSelect+` WHERE t.user_id = $1 ORDER BY t.principal DESC, p.nome`, userID)
 	if err != nil {
 		return nil, wrap("list lotacoes", err)
 	}
 	defer rows.Close()
 	out := []domain.Lotacao{}
 	for rows.Next() {
-		var l domain.Lotacao
-		if err := rows.Scan(&l.ID, &l.UserID, &l.PerfilID, &l.PerfilNome, &l.EntidadeID, &l.UnidadeID, &l.DepartamentoID,
-			&l.ScopeLabel, &l.Principal, &l.CreatedAt, &l.CreatedBy); err != nil {
+		l, err := scanLotacao(rows)
+		if err != nil {
 			return nil, wrap("scan lotacao", err)
 		}
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+func (r *Repository) GetLotacao(ctx context.Context, db database.DBTX, userID, id uuid.UUID) (domain.Lotacao, error) {
+	l, err := scanLotacao(db.QueryRow(ctx, lotacaoSelect+` WHERE t.id = $1 AND t.user_id = $2`, id, userID))
+	return l, wrap("get lotacao", err)
 }
 
 func (r *Repository) CreateLotacao(ctx context.Context, db database.DBTX, l domain.Lotacao) (uuid.UUID, error) {
@@ -399,13 +425,7 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 	return u, err
 }
 
-// UserFilter restringe a listagem de usuários.
-type UserFilter struct {
-	Query  string
-	Active *bool
-}
-
-func (r *Repository) ListUsers(ctx context.Context, db database.DBTX, f UserFilter, p pagination.Params) ([]domain.User, int64, error) {
+func (r *Repository) ListUsers(ctx context.Context, db database.DBTX, f domain.UserFilter, p pagination.Params) ([]domain.User, int64, error) {
 	q := "%" + strings.ToLower(f.Query) + "%"
 	const where = `WHERE ($1 = '%%' OR nexus_unaccent(lower(display_name || ' ' || username || ' ' || email)) LIKE nexus_unaccent($1))
 		AND ($2::boolean IS NULL OR active = $2)`
@@ -433,6 +453,25 @@ func (r *Repository) ListUsers(ctx context.Context, db database.DBTX, f UserFilt
 func (r *Repository) GetUser(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.User, error) {
 	u, err := scanUser(db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id))
 	return u, wrap("get user", err)
+}
+
+// UserPermissions aplica a mesma regra do resolvedor (platform/iam): perfis
+// ativos das lotações, perfis ativos dos grupos do AD da conta e "*" para
+// o papel nexus-admin.
+func (r *Repository) UserPermissions(ctx context.Context, db database.DBTX, id uuid.UUID) ([]string, error) {
+	var perms []string
+	err := db.QueryRow(ctx, `
+		WITH u AS (SELECT roles, groups FROM users WHERE id = $1),
+		grants AS (
+			SELECT unnest(p.permissoes) AS perm FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo WHERE s.user_id = $1
+			UNION
+			SELECT unnest(p.permissoes) FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo, u
+			 WHERE lower(m.ad_group) = ANY (SELECT lower(g) FROM unnest(u.groups) g)
+			UNION
+			SELECT '*' FROM u WHERE $2 = ANY (u.roles)
+		)
+		SELECT COALESCE(array_agg(perm ORDER BY perm), '{}') FROM grants`, id, "nexus-admin").Scan(&perms)
+	return perms, wrap("user permissions", err)
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, db database.DBTX, id uuid.UUID, displayName string, active bool, roles []string) error {

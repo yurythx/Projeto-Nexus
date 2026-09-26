@@ -34,6 +34,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
 	"github.com/yurythx/projeto-nexus/internal/platform/ratelimit"
 	"github.com/yurythx/projeto-nexus/internal/platform/secretcrypto"
+	"github.com/yurythx/projeto-nexus/internal/platform/storage/storagetest"
 	"github.com/yurythx/projeto-nexus/internal/platform/transparency"
 	"github.com/yurythx/projeto-nexus/internal/platform/ws"
 )
@@ -80,7 +81,7 @@ func testDeps(t *testing.T) *Dependencies {
 	d := &Dependencies{
 		Config: cfg, Logger: logger, DB: pool, Redis: rdb, Verifier: verifier, LocalSigner: signer,
 		IAM: iam.NewResolver(pool, rdb, logger), Outbox: outbox.NewWriter("nexus.test"), OutboxStats: outbox.NewStats(pool),
-		Storage: newMemStorage(), Hub: ws.NewHub(logger, rdb), Tickets: ws.NewTicketStore(rdb, ws.TicketTTL), Cipher: cipher,
+		Storage: storagetest.New(), Hub: ws.NewHub(logger, rdb), Tickets: ws.NewTicketStore(rdb, ws.TicketTTL), Cipher: cipher,
 		Idempotency: idempotency.NewPostgresStore(pool), KeycloakCfg: keycloakconfig.NewPostgresStore(pool, cipher),
 		Branding: branding.NewStore(pool), LGPD: lgpd.NewService(pool, logger, nil),
 		RateLimiters: &RateLimiters{
@@ -89,7 +90,7 @@ func testDeps(t *testing.T) *Dependencies {
 			Contact: ratelimit.NewRedisLimiter(rdb, 60, 100, "contact"), Lockout: ratelimit.NewLockout(rdb, 5, time.Minute, time.Hour),
 		},
 	}
-	d.Kernel = kernel.New(kernel.NewPostgresStore(pool), logger)
+	d.Kernel = kernel.New(kernel.NewPostgresStore(pool, logger), logger)
 	registerPlugins(d)
 	if err := d.Kernel.Start(context.Background()); err != nil {
 		t.Fatal(err)

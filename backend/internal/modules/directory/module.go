@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/directory/application"
@@ -13,6 +14,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/modules/directory/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/modules/directory/transport"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
@@ -82,4 +84,14 @@ func (p provider) Search(ctx context.Context, identity auth.Identity, q string, 
 		})
 	}
 	return out, nil
+}
+
+// ExportPersonalData implementa lgpd.PersonalData.
+func (m *Module) ExportPersonalData(ctx context.Context, db database.DBTX, userID uuid.UUID) (any, error) {
+	return m.svc.ExportPersonalData(ctx, db, userID)
+}
+
+// ErasePersonalData implementa lgpd.PersonalData.
+func (m *Module) ErasePersonalData(ctx context.Context, tx database.DBTX, userID uuid.UUID) error {
+	return m.svc.ErasePersonalData(ctx, tx, userID)
 }

@@ -116,7 +116,7 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 	entry.Action = "audit.chain.verified"
 	entry.ResourceType = "audit_logs"
 	entry.Metadata = map[string]any{"from": from, "limit": limit, "checked": res.Checked, "valid": res.Valid}
-	if err := NewWriter(h.reader.pool).Record(r.Context(), entry); err != nil {
+	if err := NewWriter(h.reader.db).Record(r.Context(), entry); err != nil {
 		h.logger.Warn("audit: falha ao registrar a verificação da cadeia", slog.Any("error", err))
 	}
 	httputil.WriteOK(w, res)

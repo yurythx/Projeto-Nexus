@@ -83,9 +83,9 @@ func (c *Client) run(ctx context.Context) {
 func (c *Client) readPump(ctx context.Context) {
 	defer c.hub.unregister(c)
 	c.conn.SetReadLimit(maxMessage)
-	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = c.conn.SetReadDeadline(time.Now().Add(c.hub.pongWait))
 	c.conn.SetPongHandler(func(string) error {
-		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return c.conn.SetReadDeadline(time.Now().Add(c.hub.pongWait))
 	})
 	for {
 		_, raw, err := c.conn.ReadMessage()
@@ -127,7 +127,7 @@ func (c *Client) reply(frameType, topic string, data any) {
 }
 
 func (c *Client) writePump() {
-	ticker := time.NewTicker(pingPeriod)
+	ticker := time.NewTicker(c.hub.pingPeriod)
 	defer func() {
 		ticker.Stop()
 		_ = c.conn.Close()
