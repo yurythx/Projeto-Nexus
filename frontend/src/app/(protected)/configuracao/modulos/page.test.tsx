@@ -114,4 +114,23 @@ describe("Configurações > Módulos", () => {
     expect(await screen.findByText("kernel: há módulos ativos que dependem deste")).toBeInTheDocument();
     expect(refreshModules).toHaveBeenCalled();
   });
+
+  it("a visão em grafo opera o mesmo fluxo, com a mesma confirmação de cascata", async () => {
+    renderPage();
+    const cards = screen.getByRole("button", { name: "Cartões" });
+    expect(cards).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Grafo de dependências" }));
+    expect(screen.queryByRole("heading", { name: "Trâmite" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /4 módulos, 1 dependência\./ })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Signum; Ativo/ }));
+    await userEvent.click(screen.getByRole("switch", { name: "Desativar Signum" }));
+    const dialog = await screen.findByRole("dialog", { name: "Desativar Signum?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Desativar todos" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+    expect(patch.mock.calls.map((c) => c[0])).toEqual(["v1/admin/modules/tramite", "v1/admin/modules/signum"]);
+
+    await userEvent.click(cards);
+    expect(screen.getByRole("heading", { name: "Trâmite" })).toBeInTheDocument();
+  });
 });

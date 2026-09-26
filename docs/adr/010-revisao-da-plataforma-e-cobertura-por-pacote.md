@@ -121,7 +121,22 @@ mudar um DTO sem regenerar quebra o CI. De passagem, três respostas escritas
 à mão estavam sem `description`, o que tornava o documento inválido. Foram
 corrigidas, e o teste passou a exigir o campo.
 
-**Grafo visual dos módulos.** Ver a tela de Módulos (seção 10.6).
+**Grafo visual dos módulos.** A tela Configurações > Módulos ganhou a visão
+"Grafo de dependências", ao lado dos cartões. O desenho funciona assim:
+
+- é feito em camadas (`src/lib/modules/graph.ts`): cada módulo fica uma coluna à direita da sua dependência mais profunda;
+- a ordem dentro de cada coluna segue o baricentro das dependências, o que reduz os cruzamentos;
+- as setas vão da dependência ao dependente, e a ligação é tracejada quando uma das pontas está inativa;
+- os módulos sem ligação nenhuma ficam numa grade à parte, para não esconder as cadeias.
+
+Cada nó é um botão acessível (clique, Enter ou espaço; Esc limpa a seleção)
+com o estado e as ligações no rótulo. Selecionar um nó faz duas coisas:
+
+- destaca as dependências e os dependentes transitivos;
+- abre um painel com o interruptor do módulo.
+
+O interruptor usa o mesmo plano de cascata e a mesma confirmação da visão em
+cartões.
 
 ## Consequências
 

@@ -103,6 +103,10 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | F8.4 | Anti-SSRF: formas IPv6 que embutem IPv4 bloqueadas | ✅ |
 | F8.5 | e-MAG: contraste AA exigido nos tokens de cor do branding | ✅ |
 | F8.6 | RabbitMQ e MinIO reais no CI; meta de 100% por pacote (plug-ins, plataforma, app, pkg) | ✅ `scripts/coverage-gate.sh` |
+| F8.7 | Cópia WORM com uma única réplica exportando cada dia (advisory lock no Postgres) | ✅ |
+| F8.8 | OpenAPI com schemas de corpo, resposta e query gerados dos tipos Go, verificados no CI | ✅ `internal/app/openapi_schemas_test.go` |
+| F8.9 | Grafo visual de dependências na tela de Módulos | ✅ |
+| F8.10 | Testes E2E (Playwright) dos fluxos críticos contra a stack completa, no CI | ✅ `frontend/e2e`, `docs/e2e.md` |
 
 ---
 
