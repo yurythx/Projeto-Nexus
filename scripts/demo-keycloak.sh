@@ -18,7 +18,7 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
-env_val() { grep "^$1=" .env | tail -1 | cut -d= -f2-; }
+env_val() { grep "^$1=" .env | tail -1 | cut -d= -f2- || true; }  # chave ausente = vazio (grep sem match não pode derrubar o set -e)
 set_if_missing() {
   if [ -z "$(env_val "$1")" ]; then
     if grep -q "^$1=" .env; then

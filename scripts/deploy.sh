@@ -99,7 +99,7 @@ if [ -n "${unhealthy:-}" ]; then
   exit 1
 fi
 
-env_val() { grep "^$1=" .env | cut -d= -f2-; }
+env_val() { grep "^$1=" .env | cut -d= -f2- || true; }
 log "Pronto"
 echo "  Frontend: $(env_val FRONTEND_URL)"
 echo "  API:      $(env_val API_PUBLIC_URL)/health"
