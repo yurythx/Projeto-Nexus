@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/Button";
 
 export default function ProtectedError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  /** Refaz a busca dos dados do servidor e re-renderiza (Next 16.3). */
+  retry: () => void;
 }) {
   useEffect(() => {
     // Log do erro no cliente/telemetria
@@ -27,7 +28,7 @@ export default function ProtectedError({
           {error.message || "Não foi possível carregar as informações desta seção. Tente recarregar."}
         </p>
       </div>
-      <Button onClick={() => reset()} variant="primary" size="sm">
+      <Button onClick={() => retry()} variant="primary" size="sm">
         <RotateCcw className="mr-2 h-4 w-4" />
         Tentar Novamente
       </Button>

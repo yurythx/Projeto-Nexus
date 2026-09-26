@@ -1,21 +1,13 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 
 import { PublicShell } from "@/components/layout/PublicShell";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
+import { verificar } from "./actions";
+
 export const metadata: Metadata = { title: "Verificar assinatura", description: "Confira a autenticidade de um documento assinado eletronicamente." };
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function verificar(formData: FormData) {
-  "use server";
-  const codigo = String(formData.get("codigo") ?? "").trim();
-  if (UUID_RE.test(codigo)) redirect(`/verificar/${codigo.toLowerCase()}`);
-  redirect("/verificar?erro=1");
-}
 
 export default async function VerificarIndex({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
   const { erro } = await searchParams;

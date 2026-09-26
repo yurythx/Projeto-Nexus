@@ -196,8 +196,10 @@ jobs:
       - name: TypeScript Type Check
         run: cd frontend && npx tsc --noEmit
 
-      - name: Frontend Component Unit Tests
-        run: cd frontend && npm test -- --run
+      - name: Frontend Unit Tests + meta de cobertura (vitest.config.ts)
+        # Telas testadas contra um backend falso no fetch com os providers
+        # reais (src/test/backend.tsx); falha abaixo dos pisos de cobertura.
+        run: cd frontend && npm run test:coverage
 
       - name: Build Next.js Production Bundle
         run: cd frontend && npm run build

@@ -13,6 +13,15 @@ export default defineConfig({
     // o Vitest tenta rodar esses arquivos como se fossem seus e falha
     // com um erro de import, achado real adicionando o Playwright.
     exclude: ["node_modules", ".next", "e2e"],
+    // Meta de cobertura do frontend (ADR 010): o CI roda com --coverage e
+    // falha se cair abaixo destes pisos. Suba-os junto com novos testes.
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/test/**", "src/**/*.test.{ts,tsx}", "src/**/*.d.ts", "src/types/**"],
+      reporter: ["text-summary", "json-summary"],
+      thresholds: { statements: 95, branches: 88, functions: 94, lines: 96 },
+    },
   },
   resolve: {
     alias: {
