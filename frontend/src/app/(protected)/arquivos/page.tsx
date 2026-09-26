@@ -259,9 +259,9 @@ function Arquivos() {
                     <ConfirmButton
                       aria-label={`Excluir ${f.name}`}
                       title={`Excluir a pasta "${f.name}"?`}
-                      description="Somente pastas vazias podem ser excluídas."
-                      confirmLabel="Excluir"
-                      onConfirm={() => run(() => apiClient.delete(`v1/files/folders/${f.id}`), "Pasta excluída").then(refresh)}
+                      description="A pasta, todas as subpastas e todos os arquivos dentro dela serão apagados definitivamente (inclusive do armazenamento). A exclusão fica registrada na auditoria."
+                      confirmLabel="Excluir tudo"
+                      onConfirm={() => run(() => apiClient.delete(`v1/files/folders/${f.id}?recursive=true`), "Pasta excluída").then(refresh)}
                     >
                       <Trash2 size={14} aria-hidden="true" />
                     </ConfirmButton>

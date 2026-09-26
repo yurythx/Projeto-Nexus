@@ -98,6 +98,9 @@ func setup(t *testing.T) *env {
 
 	iamSvc := iamApp.NewService(pool, iamInfra.NewRepository(), nil)
 	suffix := uuid.NewString()[:8]
+	// A montagem da estrutura é feita por um administrador (o IAM recusa
+	// conceder permissões que o ator não possui).
+	e.ctx = auth.WithIdentity(e.ctx, auth.Identity{Username: "bootstrap", Roles: []string{auth.RoleAdmin}})
 
 	ent, err := iamSvc.SaveEntidade(e.ctx, iamDomain.Entidade{Nome: "Entidade " + suffix, Sigla: "ENT", Ativo: true})
 	must(t, err)
@@ -332,7 +335,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if len(res) != 1 {
 			t.Fatalf("busca deveria respeitar a ACL e achar 1 arquivo, veio %d", len(res))
 		}
-		must(t, svc.DeleteFolder(ctx, e.identity, root.ID))
+		must(t, svc.DeleteFolder(ctx, e.identity, root.ID, true))
 		if _, err := e.store.Stat(ctx, bucket, up.Upload.ObjectKey); err == nil {
 			t.Fatal("objeto deveria ter saído do storage junto com a pasta")
 		}

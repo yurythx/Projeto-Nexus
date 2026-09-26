@@ -24,11 +24,11 @@ func TestIAMOrganizationalStructureHTTP(t *testing.T) {
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/entidades", plain, `{"nome":"X"}`)
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/iam/entidades", admin, `{"nome":""}`)
 
-	ent := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/entidades", admin,
+	ent := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", admin,
 		`{"nome":"Secretaria `+sfx+`","sigla":"S`+sfx+`"}`))
-	un := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/unidades", admin,
+	un := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin,
 		`{"entidade_id":"`+ent.ID+`","nome":"Unidade `+sfx+`","ad_group":"GRP_UN_`+sfx+`","email":"un@org.gov.br"}`))
-	dep := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/departamentos", admin,
+	dep := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/departamentos", admin,
 		`{"unidade_id":"`+un.ID+`","nome":"Depto `+sfx+`"}`))
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/iam/unidades", admin,
 		`{"entidade_id":"`+ent.ID+`","nome":"X","email":"não-é-email"}`)
@@ -60,7 +60,7 @@ func TestIAMProfilesAndLotacoesGrantAtRuntime(t *testing.T) {
 	sfx := uuid.NewString()[:6]
 
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/iam/perfis", admin, `{"nome":"Ruim","permissoes":["sem formato"]}`)
-	perfil := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/perfis", admin,
+	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
 		`{"nome":"Auditor `+sfx+`","permissoes":["audit:read","AUDIT:read"]}`))
 	perms := h.expect(http.StatusOK, http.MethodGet, "/api/v1/iam/perfis", admin, "").Body.String()
 	if !strings.Contains(perms, `"permissoes":["audit:read"]`) {
@@ -96,7 +96,7 @@ func TestIAMADMappingsHTTP(t *testing.T) {
 	h := newHarness(t)
 	admin := h.admin()
 	sfx := uuid.NewString()[:6]
-	perfil := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/perfis", admin,
+	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
 		`{"nome":"Leitor `+sfx+`","permissoes":["users:read"]}`))
 
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/iam/ad-mappings", admin, `{"perfil_id":"`+perfil.ID+`"}`)
@@ -158,7 +158,7 @@ func TestIAMPreventsPrivilegeEscalation(t *testing.T) {
 	h := newHarness(t)
 	admin := h.admin()
 	sfx := uuid.NewString()[:6]
-	gestor := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/perfis", admin,
+	gestor := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
 		`{"nome":"Gestor `+sfx+`","permissoes":["users:read","users:manage","iam:manage"]}`))
 	managerID, manager := h.user("nexus-user")
 	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+managerID.String()+"/lotacoes", admin, `{"perfil_id":"`+gestor.ID+`"}`)
@@ -173,11 +173,11 @@ func TestIAMPreventsPrivilegeEscalation(t *testing.T) {
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/perfis", manager, `{"nome":"Tudo `+sfx+`","permissoes":["*"]}`)
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/perfis", manager, `{"nome":"Aud `+sfx+`","permissoes":["audit:read"]}`)
 	// Lotar-se num perfil mais poderoso criado pelo admin: 403.
-	root := data[idResp](t, h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/perfis", admin, `{"nome":"Root `+sfx+`","permissoes":["*"]}`))
+	root := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin, `{"nome":"Root `+sfx+`","permissoes":["*"]}`))
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/users/"+managerID.String()+"/lotacoes", manager, `{"perfil_id":"`+root.ID+`"}`)
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/ad-mappings", manager, `{"ad_group":"GRP_ROOT_`+sfx+`","perfil_id":"`+root.ID+`"}`)
 	// Dentro do que possui, pode.
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/iam/perfis", manager, `{"nome":"Leitor `+sfx+`","permissoes":["users:read"]}`)
+	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", manager, `{"nome":"Leitor `+sfx+`","permissoes":["users:read"]}`)
 	// O admin (acesso total) pode tudo isso.
 	h.expect(http.StatusOK, http.MethodPatch, "/api/v1/users/"+managerID.String(), admin, `{"display_name":"Gestor","active":true,"roles":["nexus-admin"]}`)
 }

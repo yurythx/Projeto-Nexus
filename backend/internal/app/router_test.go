@@ -34,31 +34,12 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
 	"github.com/yurythx/projeto-nexus/internal/platform/ratelimit"
 	"github.com/yurythx/projeto-nexus/internal/platform/secretcrypto"
-	"github.com/yurythx/projeto-nexus/internal/platform/storage"
 	"github.com/yurythx/projeto-nexus/internal/platform/transparency"
 	"github.com/yurythx/projeto-nexus/internal/platform/ws"
 )
 
-type nopStorage struct{}
-
-func (nopStorage) Ping(context.Context) error                                          { return nil }
-func (nopStorage) Put(context.Context, string, string, io.Reader, int64, string) error { return nil }
-func (nopStorage) Get(context.Context, string, string) (io.ReadCloser, error) {
-	return nil, storage.ErrObjectNotFound
-}
-func (nopStorage) Delete(context.Context, string, string) error { return nil }
-func (nopStorage) PresignedPutURL(context.Context, string, string, time.Duration) (string, error) {
-	return "https://minio.test/put", nil
-}
-func (nopStorage) PresignedGetURL(context.Context, string, string, time.Duration) (string, error) {
-	return "https://minio.test/get", nil
-}
-func (nopStorage) Stat(context.Context, string, string) (storage.ObjectInfo, error) {
-	return storage.ObjectInfo{}, storage.ErrObjectNotFound
-}
-
 // testDeps monta um Dependencies real (Postgres de teste + Redis em
-// memória) sem RabbitMQ/MinIO/Keycloak.
+// memória, storage em memória) sem RabbitMQ/MinIO/Keycloak.
 func testDeps(t *testing.T) *Dependencies {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -99,7 +80,7 @@ func testDeps(t *testing.T) *Dependencies {
 	d := &Dependencies{
 		Config: cfg, Logger: logger, DB: pool, Redis: rdb, Verifier: verifier, LocalSigner: signer,
 		IAM: iam.NewResolver(pool, rdb, logger), Outbox: outbox.NewWriter("nexus.test"), OutboxStats: outbox.NewStats(pool),
-		Storage: nopStorage{}, Hub: ws.NewHub(logger, rdb), Tickets: ws.NewTicketStore(rdb, ws.TicketTTL), Cipher: cipher,
+		Storage: newMemStorage(), Hub: ws.NewHub(logger, rdb), Tickets: ws.NewTicketStore(rdb, ws.TicketTTL), Cipher: cipher,
 		Idempotency: idempotency.NewPostgresStore(pool), KeycloakCfg: keycloakconfig.NewPostgresStore(pool, cipher),
 		Branding: branding.NewStore(pool), LGPD: lgpd.NewService(pool, logger, nil),
 		RateLimiters: &RateLimiters{

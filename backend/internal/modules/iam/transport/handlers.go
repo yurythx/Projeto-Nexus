@@ -158,6 +158,16 @@ type entidadeRequest struct {
 	Ativo     *bool  `json:"ativo"`
 }
 
+// writeSaved responde 201 na criação (POST, sem id na rota) e 200 na
+// atualização (PUT /{id}).
+func writeSaved(w http.ResponseWriter, id uuid.UUID, v any) {
+	if id == uuid.Nil {
+		httputil.WriteCreated(w, v)
+		return
+	}
+	httputil.WriteOK(w, v)
+}
+
 func optionalID(r *http.Request) (uuid.UUID, error) {
 	if chi.URLParam(r, "id") == "" {
 		return uuid.Nil, nil
@@ -199,7 +209,7 @@ func (h *Handlers) SaveEntidade(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httputil.WriteOK(w, out)
+	writeSaved(w, id, out)
 }
 
 func (h *Handlers) DeleteEntidade(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +272,7 @@ func (h *Handlers) SaveUnidade(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httputil.WriteOK(w, out)
+	writeSaved(w, id, out)
 }
 
 func (h *Handlers) DeleteUnidade(w http.ResponseWriter, r *http.Request) {
@@ -323,7 +333,7 @@ func (h *Handlers) SaveDepartamento(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httputil.WriteOK(w, out)
+	writeSaved(w, id, out)
 }
 
 func (h *Handlers) DeleteDepartamento(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +385,7 @@ func (h *Handlers) SavePerfil(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	httputil.WriteOK(w, out)
+	writeSaved(w, id, out)
 }
 
 func (h *Handlers) DeletePerfil(w http.ResponseWriter, r *http.Request) {

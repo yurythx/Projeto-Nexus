@@ -19,6 +19,7 @@ var (
 	ErrDuplicate = errors.New("files: já existe um item com este nome na pasta")
 	ErrForbidden = errors.New("files: acesso negado")
 	ErrCycle     = errors.New("files: uma pasta não pode ser movida para dentro de si mesma")
+	ErrNotEmpty  = errors.New("files: a pasta não está vazia")
 )
 
 // Folder é uma pasta.
@@ -136,6 +137,7 @@ type Repository interface {
 	GetFolder(ctx context.Context, db database.DBTX, id uuid.UUID) (Folder, error)
 	SaveFolder(ctx context.Context, db database.DBTX, f Folder) (Folder, error)
 	DeleteFolder(ctx context.Context, db database.DBTX, id uuid.UUID) ([]string, error)
+	FolderEmpty(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
 	IsDescendant(ctx context.Context, db database.DBTX, candidate, ancestor uuid.UUID) (bool, error)
 	ACL(ctx context.Context, db database.DBTX, folderID uuid.UUID) ([]ACLEntry, error)
 	ReplaceACL(ctx context.Context, db database.DBTX, folderID uuid.UUID, entries []ACLEntry, grantedBy string) error

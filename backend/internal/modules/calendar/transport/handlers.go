@@ -267,6 +267,10 @@ func (h *Handlers) SaveRoom(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if id == uuid.Nil {
+		httputil.WriteCreated(w, room)
+		return
+	}
 	httputil.WriteOK(w, room)
 }
 

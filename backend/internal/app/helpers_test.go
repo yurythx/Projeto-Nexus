@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -54,6 +55,15 @@ func (h *apiHarness) user(roles ...string) (uuid.UUID, string) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
 	return id, out.Data.AccessToken
+}
+
+// upload simula o PUT direto do navegador no MinIO (URL pré-assinada).
+func (h *apiHarness) upload(objectKey, contentType string, body []byte) {
+	h.t.Helper()
+	st := h.d.Storage.(*memStorage)
+	if err := st.Put(context.Background(), h.d.Config.MinIO.Bucket, objectKey, bytes.NewReader(body), int64(len(body)), contentType); err != nil {
+		h.t.Fatal(err)
+	}
 }
 
 func (h *apiHarness) admin() string {

@@ -58,6 +58,8 @@ func MapError(err error) error {
 		return apperrors.Forbidden("você não tem acesso a esta pasta")
 	case errors.Is(err, domain.ErrCycle):
 		return apperrors.Conflict(err.Error())
+	case errors.Is(err, domain.ErrNotEmpty):
+		return apperrors.Conflict("a pasta tem subpastas ou arquivos — confirme a exclusão recursiva (recursive=true)").WithCode("FOLDER_NOT_EMPTY")
 	}
 	return err
 }
@@ -204,8 +206,10 @@ func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id u
 	return out, MapError(err)
 }
 
-// DeleteFolder apaga a pasta, as subpastas e os objetos no MinIO.
-func (s *Service) DeleteFolder(ctx context.Context, identity auth.Identity, id uuid.UUID) error {
+// DeleteFolder apaga a pasta. Com conteúdo, só com recursive=true
+// (confirmação explícita): aí leva subpastas, arquivos e os objetos no
+// MinIO — operação destrutiva que nunca acontece por engano.
+func (s *Service) DeleteFolder(ctx context.Context, identity auth.Identity, id uuid.UUID, recursive bool) error {
 	var keys []string
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		acc, err := s.access(ctx, tx, identity, id)
@@ -218,6 +222,15 @@ func (s *Service) DeleteFolder(ctx context.Context, identity auth.Identity, id u
 		prev, err := s.repo.GetFolder(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !recursive {
+			empty, err := s.repo.FolderEmpty(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if !empty {
+				return domain.ErrNotEmpty
+			}
 		}
 		if keys, err = s.repo.DeleteFolder(ctx, tx, id); err != nil {
 			return err
