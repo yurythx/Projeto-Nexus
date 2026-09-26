@@ -99,6 +99,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+  migrate:
+    # One-shot: aplica as migrations (goose) antes da API e do worker, que
+    # não sobem com schema desatualizado (o Kernel lê system_modules no boot).
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    entrypoint:
+    - ./migrate
+    - up
+    restart: "no"
+    env_file:
+    - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+    networks:
+    - nexus_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
   backend-api:
     build:
       context: ./backend
@@ -128,6 +148,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
@@ -171,6 +193,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       redis:
