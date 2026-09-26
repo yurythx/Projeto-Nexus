@@ -5,6 +5,7 @@ package logging
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -30,7 +31,9 @@ type Options struct {
 // pedidos, com os atributos service/environment presos em todo registro —
 // assim toda linha de log já vem identificada com "de qual processo" e
 // "em qual ambiente" ela veio, sem cada chamador precisar repetir isso.
-func New(opts Options) *slog.Logger {
+func New(opts Options) *slog.Logger { return newLogger(os.Stdout, opts) }
+
+func newLogger(out io.Writer, opts Options) *slog.Logger {
 	level := parseLevel(opts.Level)
 
 	handlerOpts := &slog.HandlerOptions{
@@ -45,9 +48,9 @@ func New(opts Options) *slog.Logger {
 		// Formato texto é mais legível rodando localmente no terminal;
 		// json é o que se espera em produção, onde os logs são coletados
 		// por um agregador (ver APP_LOG_FORMAT no .env.example).
-		handler = slog.NewTextHandler(os.Stdout, handlerOpts)
+		handler = slog.NewTextHandler(out, handlerOpts)
 	} else {
-		handler = slog.NewJSONHandler(os.Stdout, handlerOpts)
+		handler = slog.NewJSONHandler(out, handlerOpts)
 	}
 
 	logger := slog.New(handler).With(

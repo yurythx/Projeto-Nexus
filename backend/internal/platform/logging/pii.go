@@ -17,6 +17,7 @@ package logging
 //   Telefone (66) 99876-1234     -> (**) *****-1234
 
 import (
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -127,8 +128,19 @@ func SanitizeAttr(_ []string, a slog.Attr) slog.Attr {
 	if isSensitiveKey(a.Key) {
 		return slog.String(a.Key, "[REDACTED]")
 	}
-	if a.Value.Kind() == slog.KindString {
+	switch a.Value.Kind() {
+	case slog.KindString:
 		return slog.String(a.Key, SanitizeString(a.Value.String()))
+	case slog.KindAny:
+		// Erros (slog.Any("error", err)) e Stringers também passam pelo
+		// filtro: uma mensagem de erro que carregue um e-mail ou CPF não
+		// pode sair em claro só por não ser uma string.
+		switch v := a.Value.Any().(type) {
+		case error:
+			return slog.String(a.Key, SanitizeString(v.Error()))
+		case fmt.Stringer:
+			return slog.String(a.Key, SanitizeString(v.String()))
+		}
 	}
 	return a
 }
