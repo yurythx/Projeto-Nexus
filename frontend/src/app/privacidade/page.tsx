@@ -146,7 +146,7 @@ export default async function PrivacidadePage() {
             encadeada por hash. Dados de identificação são mantidos enquanto a conta estiver ativa; a
             trilha de auditoria segue os prazos de guarda da legislação de controle interno. Detalhes
             técnicos em{" "}
-            <Link href="/padroes" className="text-primary hover:underline">Padrões &amp; Parâmetros</Link>.
+            <Link href="/sobre" className="text-primary hover:underline">Sobre &amp; Conformidade</Link>.
           </p>
         </section>
 

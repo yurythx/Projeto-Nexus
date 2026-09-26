@@ -7,6 +7,8 @@ import { useSession } from "next-auth/react";
 
 import { useBranding } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
+import { ApiError, apiClient } from "@/lib/api/client";
+import { publicPost } from "@/lib/api/publicClient";
 
 const CURRENT_TERM_VERSION = "v1.0.0-2026";
 
@@ -31,53 +33,66 @@ export function LGPDConsentModal() {
   const { branding } = useBranding();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const { status } = useSession();
 
   useEffect(() => {
-    try {
-      const consent = localStorage.getItem("nexus_lgpd_consent");
-      if (consent === CURRENT_TERM_VERSION) return;
-    } catch {
-      // localStorage indisponível — mostra o modal mesmo assim
-    }
+    if (status === "loading") return;
+    let cancelled = false;
     // 1.2s, não 0ms: na 1ª visita este backdrop cobre a tela bem na hora
     // em que um toast de login/logout pode estar chamando atenção — o
     // atraso deixa o toast aparecer antes de o modal disputar o foco.
-    const timer = setTimeout(() => setIsOpen(true), 1200);
-    return () => clearTimeout(timer);
-  }, []);
+    const open = () => setTimeout(() => !cancelled && setIsOpen(true), 1200);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    if (status === "authenticated") {
+      // A fonte da verdade é o servidor (prova de consentimento, LGPD art.
+      // 8º): um aceite feito como visitante ou em outro dispositivo não
+      // dispensa o registro na conta.
+      apiClient
+        .get<{ accepted: boolean; term_version: string }>("v1/lgpd/status")
+        .then(({ data }) => {
+          if (!data.accepted) timer = open();
+        })
+        .catch(() => undefined);
+    } else {
+      let accepted = false;
+      try {
+        accepted = localStorage.getItem("nexus_lgpd_consent") === CURRENT_TERM_VERSION;
+      } catch {
+        // localStorage indisponível — mostra o modal mesmo assim
+      }
+      if (!accepted) timer = open();
+    }
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [status]);
 
   const handleAccept = async () => {
     setLoading(true);
+    setError(null);
     try {
       if (status === "authenticated") {
-        await fetch("/api/backend/api/v1/lgpd/accept", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ term_version: CURRENT_TERM_VERSION }),
-        });
+        await apiClient.post("v1/lgpd/accept", { term_version: CURRENT_TERM_VERSION });
       } else {
         // Gap G-11: visitante não autenticado — registro anônimo (sem PII)
-        // no backend, não só no localStorage.
-        await fetch("/api/backend/api/v1/lgpd/accept-anon", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            device_hash: getOrCreateDeviceId(),
-            term_version: CURRENT_TERM_VERSION,
-          }),
-        });
+        // pelo proxy PÚBLICO (/api/public, allowlist) — o BFF autenticado
+        // recusaria a chamada sem sessão.
+        await publicPost("v1/lgpd/accept-anon", { device_hash: getOrCreateDeviceId(), term_version: CURRENT_TERM_VERSION });
       }
-    } catch {
-      // Fallback gracioso se a rota estiver indisponível
-    } finally {
       try {
         localStorage.setItem("nexus_lgpd_consent", CURRENT_TERM_VERSION);
       } catch {
         /* sem localStorage — o modal reaparece na próxima visita */
       }
-      setLoading(false);
       setIsOpen(false);
+    } catch (err) {
+      // Sem registro no servidor não há consentimento: o modal continua.
+      setError(err instanceof ApiError ? err.message : "Não foi possível registrar o aceite. Tente novamente.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,13 +147,18 @@ export function LGPDConsentModal() {
               Política de Privacidade completa
             </Link>{" "}
             e os{" "}
-            <Link href="/padroes" className="text-primary underline hover:no-underline">
+            <Link href="/sobre" className="text-primary underline hover:no-underline">
               padrões e parâmetros aplicados
             </Link>
             .
           </p>
         </div>
 
+        {error && (
+          <p role="alert" className="rounded-md bg-danger/10 p-2 text-xs text-danger">
+            {error}
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-surface-border">
           <Button size="md" onClick={handleAccept} loading={loading}>
             <CheckCircle2 size={16} aria-hidden="true" />

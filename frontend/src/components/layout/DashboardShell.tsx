@@ -7,6 +7,7 @@ import { ConnectionStateProvider } from "@/components/layout/ConnectionStateCont
 import { GovFooter } from "@/components/layout/GovFooter";
 import { GovHeader } from "@/components/layout/GovHeader";
 import { LGPDConsentModal } from "@/components/layout/LGPDConsentModal";
+import { ModuleGate } from "@/components/layout/ModuleGate";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
@@ -77,7 +78,9 @@ function ShellBody({
         }`}
       >
         <main id="main-content" tabIndex={-1} className="flex-1 px-4 pb-10 pt-6 outline-none sm:px-8">
-          <ConnectionStateProvider value={state}>{children}</ConnectionStateProvider>
+          <ConnectionStateProvider value={state}>
+            <ModuleGate>{children}</ModuleGate>
+          </ConnectionStateProvider>
         </main>
         <GovFooter />
       </div>

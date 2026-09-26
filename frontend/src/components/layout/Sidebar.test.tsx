@@ -7,7 +7,7 @@ import { hasPermission } from "@/lib/nexus/permissions";
 function mod(key: string, extra: Partial<ModuleStatus> = {}): ModuleStatus {
   return {
     key, name: key, description: "", core: false, default_enabled: true, depends_on: [], permissions: [],
-    public: false, icon: "box", route: `/${key}`, enabled: true, ...extra,
+    public: false, icon: "box", route: `/${key}`, enabled: true, configured: true, dependents: [], blocked_by: [], ...extra,
   };
 }
 

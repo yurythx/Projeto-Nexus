@@ -48,7 +48,14 @@ export interface ModuleStatus {
   public: boolean;
   icon: string;
   route: string;
+  /** Estado efetivo: configurado ativo e com todas as dependências ativas. */
   enabled: boolean;
+  /** Estado desejado gravado pelo administrador. */
+  configured: boolean;
+  /** Módulos que dependem deste. */
+  dependents: string[];
+  /** Dependências diretas inativas agora. */
+  blocked_by: string[];
 }
 
 export interface PublicModule {
