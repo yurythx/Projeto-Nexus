@@ -16,8 +16,14 @@ COPY . .
 # runtime `environment:` in docker-compose.yml.
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
+# NEXT_PUBLIC_MINIO_URL entra na CSP (img-src/connect-src, montada no
+# proxy.ts, também inlinado no build) — sem este ARG o build de produção
+# caía no fallback de lib/env.ts e a CSP bloqueava o PUT/GET direto nas
+# URLs pré-assinadas do MinIO (upload/download de arquivos quebrado).
+ARG NEXT_PUBLIC_MINIO_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL} \
-    NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+    NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL} \
+    NEXT_PUBLIC_MINIO_URL=${NEXT_PUBLIC_MINIO_URL}
 # Auth/config env is only READ at request time by server code, so build
 # placeholders are enough to satisfy the fail-fast checks in lib/auth —
 # the real values come from docker-compose's runtime `environment:`.

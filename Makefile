@@ -1,4 +1,5 @@
 .PHONY: dev up down logs build test lint format \
+	deploy prod-seed-admin prod-ps prod-logs prod-down \
 	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
 	backend-build backend-test backend-lint backend-sec backend-format \
@@ -25,6 +26,23 @@ dev: ## Sobe todos os serviços em modo desenvolvimento (com overrides de dev)
 
 up: ## Sobe todos os serviços em modo produção
 	$(COMPOSE_PROD) up --build -d
+
+## --- Servidor (produção, só docker-compose.yml — ver docs/DEPLOY.md) ---
+
+deploy: ## git pull + gera .env/chave na 1ª vez + build + sobe e espera healthy
+	./scripts/deploy.sh
+
+prod-seed-admin: ## Cria/reseta o admin local dentro do container (sem Go no host)
+	$(COMPOSE_PROD) run --rm --no-deps --entrypoint ./seedadmin backend-api
+
+prod-ps: ## Estado dos serviços de produção
+	$(COMPOSE_PROD) ps
+
+prod-logs: ## Logs dos serviços de produção
+	$(COMPOSE_PROD) logs -f --tail=200
+
+prod-down: ## Para os serviços de produção (mantém os volumes)
+	$(COMPOSE_PROD) down
 
 down: ## Para e remove todos os serviços
 	$(COMPOSE) down

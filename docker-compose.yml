@@ -127,6 +127,10 @@ services:
     env_file:
     - .env
     environment:
+      # APP_ENV é obrigatório (config.Load recusa subir sem ele). Este
+      # arquivo sozinho é o deploy de produção; o docker-compose.dev.yml
+      # sobrescreve para development.
+      APP_ENV: ${APP_ENV:-production}
       HTTP_PORT: ${HTTP_PORT:-8002}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3002}
       DB_PORT: 5432
@@ -175,6 +179,7 @@ services:
     env_file:
     - .env
     environment:
+      APP_ENV: ${APP_ENV:-production}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9102}
       DB_PORT: 5432
       DB_HOST: postgres

@@ -125,6 +125,9 @@ make seed-admin
 - **Frontend (Painel Nexus):** [http://localhost:3002](http://localhost:3002)
 - **API Healthcheck:** [http://localhost:8002/health](http://localhost:8002/health)
 
+### Deploy em servidor
+`./scripts/deploy.sh <ip-ou-dns>` gera `.env` com segredos fortes, a chave RSA e sobe a stack em produção; depois `make prod-seed-admin`. Detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
 ---
 
 ## 🧪 Testes e Qualidade de Código
