@@ -65,7 +65,10 @@ func TestBlogHTTP(t *testing.T) {
 		t.Fatalf("busca textual deveria achar a publicação: %s", body)
 	}
 
-	h.expect(http.StatusOK, http.MethodPut, "/api/v1/blog/posts/"+p.ID, admin, `{"title":"`+title+` (editado)","kind":"comunicado"}`)
+	// PUT substitui a publicação inteira: editar a publicada sem o texto
+	// apagaria o conteúdo no ar — é recusado.
+	h.expect(http.StatusUnprocessableEntity, http.MethodPut, "/api/v1/blog/posts/"+p.ID, admin, `{"title":"`+title+` (editado)","kind":"comunicado"}`)
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/blog/posts/"+p.ID, admin, `{"title":"`+title+` (editado)","body":"# Olá, editado","kind":"comunicado"}`)
 	h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+p.ID+"/archive", admin, "")
 	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/blog/posts/"+p.Slug, reader, "")
 

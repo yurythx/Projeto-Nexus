@@ -140,7 +140,7 @@ func TestSearchHTTP(t *testing.T) {
 	_, reader := h.user("nexus-user")
 	term := "Zircônio" + strings.ReplaceAll(uuid.NewString()[:6], "-", "")
 
-	post := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"Notícia `+term+`","summary":"s"}`))
+	post := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"Notícia `+term+`","summary":"s","body":"Texto da notícia"}`))
 	h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+post.ID+"/publish", admin, "")
 	page := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", reader, `{"title":"Página `+term+`","body":"corpo"}`))
 

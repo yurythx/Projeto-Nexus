@@ -16,6 +16,7 @@ var (
 	ErrNotFound     = errors.New("blog: publicação não encontrada")
 	ErrSlugTaken    = errors.New("blog: slug já utilizado")
 	ErrInvalidState = errors.New("blog: transição de estado inválida")
+	ErrEmptyBody    = errors.New("blog: publicação sem texto não pode ser publicada")
 )
 
 // Estados e tipos.
