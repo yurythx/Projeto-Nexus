@@ -198,6 +198,12 @@ jobs:
       - name: ESLint & e-MAG Accessibility Check (jsx-a11y via eslint-config-next)
         run: cd frontend && npm run lint
 
+      # Os tipos do contrato (src/types/openapi.gen.ts) saem do OpenAPI do
+      # backend; src/lib/nexus/contract.types.ts faz o tsc provar que cada
+      # tipo da tela aceita o que o backend envia (ADR 010 §10.5).
+      - name: Contrato frontend × backend (tipos gerados do OpenAPI em dia)
+        run: cd frontend && npm run gen:api && git diff --exit-code -- src/types/openapi.gen.ts
+
       - name: TypeScript Type Check
         run: cd frontend && npx tsc --noEmit
 

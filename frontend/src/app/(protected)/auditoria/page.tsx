@@ -17,6 +17,10 @@ import { useApiPage, withQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
 import type { AuditRecord, VerifyResult } from "@/lib/nexus/types";
 
+function hasKeys(v: unknown): boolean {
+  return typeof v === "object" && v !== null && Object.keys(v).length > 0;
+}
+
 function Json({ value }: { value: unknown }) {
   if (value === undefined || value === null) return <p className="text-xs text-muted">—</p>;
   return <pre className="max-h-64 overflow-auto rounded-md bg-surface-hover p-3 font-mono text-xs">{JSON.stringify(value, null, 2)}</pre>;
@@ -40,7 +44,7 @@ function RecordDetail({ r }: { r: AuditRecord }) {
         <div><h3 className="mb-1 text-xs font-semibold text-muted">Depois</h3><Json value={r.diff_after} /></div>
       </div>
       <div><h3 className="mb-1 text-xs font-semibold text-muted">Contexto organizacional</h3><Json value={r.entity_context} /></div>
-      {Object.keys(r.metadata ?? {}).length > 0 && <div><h3 className="mb-1 text-xs font-semibold text-muted">Metadados</h3><Json value={r.metadata} /></div>}
+      {hasKeys(r.metadata) && <div><h3 className="mb-1 text-xs font-semibold text-muted">Metadados</h3><Json value={r.metadata} /></div>}
       <div className="rounded-md border border-surface-border p-3 font-mono text-[11px] text-muted">
         <p>posição #{r.chain_pos}</p>
         <p className="break-all">prev: {r.prev_hash}</p>

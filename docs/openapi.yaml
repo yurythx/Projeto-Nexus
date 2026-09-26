@@ -133,7 +133,6 @@ components:
                     type: string
                 actor_id:
                     format: uuid
-                    nullable: true
                     type: string
                 actor_name:
                     type: string
@@ -147,7 +146,6 @@ components:
                     type: integer
                 correlation_id:
                     format: uuid
-                    nullable: true
                     type: string
                 diff_after: {}
                 diff_before: {}
@@ -188,7 +186,6 @@ components:
                 checked:
                     type: integer
                 first_invalid_pos:
-                    nullable: true
                     type: integer
                 reason:
                     type: string
@@ -206,11 +203,9 @@ components:
             properties:
                 departamento_id:
                     format: uuid
-                    nullable: true
                     type: string
                 entidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 origem:
                     type: string
@@ -218,7 +213,6 @@ components:
                     type: string
                 unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
             required:
                 - origem
@@ -229,7 +223,6 @@ components:
             properties:
                 author_id:
                     format: uuid
-                    nullable: true
                     type: string
                 author_name:
                     type: string
@@ -251,7 +244,6 @@ components:
                     type: boolean
                 published_at:
                     format: date-time
-                    nullable: true
                     type: string
                 slug:
                     type: string
@@ -319,6 +311,53 @@ components:
             type: object
             x-nexus-generated: true
         BrandingSettings:
+            properties:
+                app_description:
+                    maxLength: 200
+                    type: string
+                app_name:
+                    maxLength: 80
+                    type: string
+                favicon_url:
+                    maxLength: 500
+                    type: string
+                logo_url:
+                    maxLength: 500
+                    type: string
+                org_name:
+                    maxLength: 120
+                    type: string
+                support_email:
+                    format: email
+                    maxLength: 200
+                    type: string
+                support_hours:
+                    maxLength: 120
+                    type: string
+                support_phone:
+                    maxLength: 40
+                    type: string
+                tokens:
+                    additionalProperties:
+                        type: string
+                    type: object
+                updated_at:
+                    format: date-time
+                    type: string
+            required:
+                - app_description
+                - app_name
+                - favicon_url
+                - logo_url
+                - org_name
+                - support_email
+                - support_hours
+                - support_phone
+                - tokens
+                - updated_at
+            type: object
+            x-nexus-generated: true
+        BrandingSettingsInput:
             properties:
                 app_description:
                     maxLength: 200
@@ -427,7 +466,6 @@ components:
                     type: string
                 room_id:
                     format: uuid
-                    nullable: true
                     type: string
                 room_name:
                     type: string
@@ -610,7 +648,6 @@ components:
                     type: integer
                 published_at:
                     format: date-time
-                    nullable: true
                     type: string
                 requirements:
                     items:
@@ -620,7 +657,6 @@ components:
                     type: string
                 responsible_unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 sla:
                     type: string
@@ -719,7 +755,6 @@ components:
             properties:
                 assigned_to:
                     format: uuid
-                    nullable: true
                     type: string
                 category:
                     type: string
@@ -868,7 +903,6 @@ components:
                     type: string
                 departamento_id:
                     format: uuid
-                    nullable: true
                     type: string
                 email:
                     type: string
@@ -886,7 +920,6 @@ components:
                     type: string
                 unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 user_id:
                     format: uuid
@@ -960,7 +993,6 @@ components:
                     type: string
                 unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
             required:
                 - email
@@ -981,7 +1013,6 @@ components:
                     type: string
                 delivered_at:
                     format: date-time
-                    nullable: true
                     type: string
                 event_id:
                     format: uuid
@@ -994,7 +1025,6 @@ components:
                 last_error:
                     type: string
                 last_status_code:
-                    nullable: true
                     type: integer
                 next_attempt_at:
                     format: date-time
@@ -1236,6 +1266,28 @@ components:
                         - departamento
                     type: string
             required:
+                - can_write
+                - subject
+                - subject_type
+            type: object
+            x-nexus-generated: true
+        FilesACLEntryInput:
+            properties:
+                can_write:
+                    type: boolean
+                subject:
+                    maxLength: 200
+                    type: string
+                subject_type:
+                    enum:
+                        - everyone
+                        - user
+                        - perfil
+                        - ad_group
+                        - unidade
+                        - departamento
+                    type: string
+            required:
                 - subject_type
             type: object
             x-nexus-generated: true
@@ -1257,7 +1309,7 @@ components:
             properties:
                 entries:
                     items:
-                        $ref: '#/components/schemas/FilesACLEntry'
+                        $ref: '#/components/schemas/FilesACLEntryInput'
                     maxItems: 100
                     type: array
             type: object
@@ -1332,7 +1384,6 @@ components:
                     type: string
                 parent_id:
                     format: uuid
-                    nullable: true
                     type: string
                 updated_at:
                     format: date-time
@@ -1374,9 +1425,7 @@ components:
                         $ref: '#/components/schemas/FilesFile'
                     type: array
                 folder:
-                    allOf:
-                        - $ref: '#/components/schemas/FilesFolder'
-                    nullable: true
+                    $ref: '#/components/schemas/FilesFolder'
                 folders:
                     items:
                         $ref: '#/components/schemas/FilesFolder'
@@ -1431,13 +1480,11 @@ components:
                     type: string
                 departamento_id:
                     format: uuid
-                    nullable: true
                     type: string
                 descricao:
                     type: string
                 entidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 id:
                     format: uuid
@@ -1451,7 +1498,6 @@ components:
                     type: string
                 unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
             required:
                 - ad_group
@@ -1627,11 +1673,9 @@ components:
                     type: string
                 departamento_id:
                     format: uuid
-                    nullable: true
                     type: string
                 entidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 id:
                     format: uuid
@@ -1647,7 +1691,6 @@ components:
                     type: string
                 unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 user_id:
                     format: uuid
@@ -1822,7 +1865,6 @@ components:
                     type: string
                 parent_id:
                     format: uuid
-                    nullable: true
                     type: string
                 sigla:
                     type: string
@@ -1968,7 +2010,6 @@ components:
                     type: string
                 parent_id:
                     format: uuid
-                    nullable: true
                     type: string
                 sigla:
                     type: string
@@ -2056,7 +2097,6 @@ components:
                     type: boolean
                 ad_synced_at:
                     format: date-time
-                    nullable: true
                     type: string
                 created_at:
                     format: date-time
@@ -2076,13 +2116,11 @@ components:
                     type: string
                 last_seen_at:
                     format: date-time
-                    nullable: true
                     type: string
                 local_login:
                     type: boolean
                 locked_until:
                     format: date-time
-                    nullable: true
                     type: string
                 roles:
                     items:
@@ -2109,7 +2147,6 @@ components:
                     type: boolean
                 ad_synced_at:
                     format: date-time
-                    nullable: true
                     type: string
                 created_at:
                     format: date-time
@@ -2129,13 +2166,11 @@ components:
                     type: string
                 last_seen_at:
                     format: date-time
-                    nullable: true
                     type: string
                 local_login:
                     type: boolean
                 locked_until:
                     format: date-time
-                    nullable: true
                     type: string
                 lotacoes:
                     items:
@@ -2462,7 +2497,6 @@ components:
                     type: boolean
                 edited_at:
                     format: date-time
-                    nullable: true
                     type: string
                 id:
                     format: uuid
@@ -2500,7 +2534,6 @@ components:
                     type: string
                 departamento_id:
                     format: uuid
-                    nullable: true
                     type: string
                 description:
                     type: string
@@ -2511,7 +2544,6 @@ components:
                     type: string
                 last_message_at:
                     format: date-time
-                    nullable: true
                     type: string
                 members:
                     items:
@@ -2606,6 +2638,11 @@ components:
                     type: integer
                 total_pages:
                     type: integer
+            required:
+                - page
+                - page_size
+                - total_items
+                - total_pages
             type: object
         SearchResult:
             properties:
@@ -2623,7 +2660,6 @@ components:
                     type: string
                 updated_at:
                     format: date-time
-                    nullable: true
                     type: string
                 url:
                     type: string
@@ -2659,7 +2695,6 @@ components:
             properties:
                 completed_at:
                     format: date-time
-                    nullable: true
                     type: string
                 created_at:
                     format: date-time
@@ -2773,7 +2808,6 @@ components:
                     type: string
                 signed_at:
                     format: date-time
-                    nullable: true
                     type: string
                 status:
                     type: string
@@ -2805,7 +2839,6 @@ components:
                     type: string
                 signed_at:
                     format: date-time
-                    nullable: true
                     type: string
                 status:
                     type: string
@@ -2827,7 +2860,6 @@ components:
                     format: date-time
                     type: string
                 document_match:
-                    nullable: true
                     type: boolean
                 document_sha256:
                     type: string
@@ -2933,7 +2965,6 @@ components:
                     type: string
                 envelope_id:
                     format: uuid
-                    nullable: true
                     type: string
                 id:
                     format: uuid
@@ -2944,7 +2975,6 @@ components:
                     format: uuid
                     type: string
                 sha256:
-                    nullable: true
                     type: string
                 size_bytes:
                     type: integer
@@ -3004,7 +3034,6 @@ components:
                     type: string
                 envelope_id:
                     format: uuid
-                    nullable: true
                     type: string
                 id:
                     format: uuid
@@ -3015,7 +3044,6 @@ components:
                     format: uuid
                     type: string
                 sha256:
-                    nullable: true
                     type: string
                 size_bytes:
                     type: integer
@@ -3067,7 +3095,6 @@ components:
                     type: string
                 actor_id:
                     format: uuid
-                    nullable: true
                     type: string
                 actor_name:
                     type: string
@@ -3078,7 +3105,6 @@ components:
                     type: string
                 de_unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 despacho:
                     type: string
@@ -3089,7 +3115,6 @@ components:
                     type: string
                 para_unidade_id:
                     format: uuid
-                    nullable: true
                     type: string
                 processo_id:
                     format: uuid
@@ -3108,7 +3133,6 @@ components:
                     type: string
                 concluido_at:
                     format: date-time
-                    nullable: true
                     type: string
                 created_at:
                     format: date-time
@@ -3217,7 +3241,6 @@ components:
                     type: boolean
                 concluido_at:
                     format: date-time
-                    nullable: true
                     type: string
                 created_at:
                     format: date-time
@@ -3306,7 +3329,6 @@ components:
                     type: string
                 parent_id:
                     format: uuid
-                    nullable: true
                     type: string
                 position:
                     type: integer
@@ -3384,7 +3406,6 @@ components:
                     type: string
                 parent_id:
                     format: uuid
-                    nullable: true
                     type: string
                 position:
                     type: integer
@@ -3536,7 +3557,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/BrandingSettings'
+                            $ref: '#/components/schemas/BrandingSettingsInput'
                 required: true
                 x-nexus-generated: true
             responses:

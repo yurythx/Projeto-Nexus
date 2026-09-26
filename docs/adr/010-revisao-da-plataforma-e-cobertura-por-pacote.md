@@ -133,7 +133,34 @@ Essa comparação mostrou que três entradas escritas à mão estavam erradas:
 - `GET /lgpd/meus-dados` não tinha schema.
 
 O teste de contrato também compara o arquivo com o resultado da geração:
-mudar um DTO sem regenerar quebra o CI. De passagem, três respostas escritas
+mudar um DTO sem regenerar quebra o CI.
+
+Duas regras de fidelidade ao `encoding/json`:
+
+- **Ponteiro com `omitempty`** nunca sai como `null`, porque o nil é omitido.
+  Só o ponteiro sem `omitempty` é `nullable`.
+- **`required` depende do sentido.** Na resposta, marca o campo sempre
+  presente no JSON (sem `omitempty`). Na requisição, marca o que o cliente
+  precisa enviar (`validate:"required"`). Um struct usado nos dois sentidos
+  ganha a variante `XInput` quando as duas regras dão resultados diferentes.
+
+**Contrato frontend × backend.** O compilador também confere o frontend:
+
+- `npm run gen:api` gera `src/types/openapi.gen.ts` a partir do OpenAPI, com `openapi-typescript`;
+- `src/lib/nexus/contract.types.ts` faz o `tsc` provar que cada tipo escrito à
+  mão em `types.ts` aceita o que o backend envia; a comparação é de forma, e
+  um literal como `"noticia"` conta como string;
+- no CI, um passo regenera os tipos e falha se o arquivo estiver defasado.
+
+Na primeira verificação, o compilador acusou 36 divergências:
+
+- a maioria era imprecisão do gerador (ponteiro com `omitempty` marcado como `nullable`) ou o `required` com um sentido só;
+- três eram reais, e foram corrigidas:
+  - `PaginationMeta` sem `required`;
+  - os dois structs de duplo uso;
+  - `AuditRecord.entity_context` e `metadata` tipados como objeto, embora
+    sejam JSON livre e `entity_context` possa vir `null`. A tela agora
+    confere o tipo antes de ler as chaves. De passagem, três respostas escritas
 à mão estavam sem `description`, o que tornava o documento inválido. Foram
 corrigidas, e o teste passou a exigir o campo.
 

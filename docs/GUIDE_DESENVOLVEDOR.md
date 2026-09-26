@@ -200,6 +200,10 @@ TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/...,./pkg/... -coverprof
 UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter
 
 cd ../frontend && npm test
+
+# Depois de regenerar o OpenAPI, atualize os tipos do contrato no frontend.
+# O tsc confere cada tipo de src/lib/nexus/types.ts contra o que o backend envia:
+npm run gen:api && npx tsc --noEmit
 ```
 
 Convenções: todo endpoint novo ganha teste do caminho negativo (403 sem a permissão) e, se for mutação, confere a auditoria/outbox; todo plug-in novo entra automaticamente no teste de ativação.

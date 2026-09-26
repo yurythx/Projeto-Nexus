@@ -78,6 +78,10 @@ type schemaGen struct {
 	taken      map[string]bool           // nomes de componentes escritos à mão
 	hand       map[string]map[string]any // schemas escritos à mão (para reaproveitar)
 	building   map[string]bool
+	// input: gerando o corpo de uma requisição. required muda de sentido:
+	// na resposta, o campo sempre presente no JSON (sem omitempty); na
+	// requisição, o que o cliente precisa enviar (validate:"required").
+	input bool
 }
 
 func loadSchemaGen(t *testing.T, hand map[string]map[string]any) *schemaGen {
@@ -547,17 +551,32 @@ func uniqStrings(in []string) []string {
 // BlogPostRequest).
 func (g *schemaGen) component(n *types.Named, st *types.Struct) string {
 	key := typeKey(n)
+	if g.input {
+		key += "|input"
+	}
 	if name, ok := g.names[key]; ok {
 		return name
 	}
-	name := componentName(n)
+	base := componentName(n)
+	// Um struct usado nos dois sentidos (ex.: branding.Settings) só ganha
+	// uma variante "Input" se o required da requisição for diferente.
+	if respName, ok := g.names[typeKey(n)]; ok && g.input {
+		base = respName + "Input"
+	}
+	name := base
 	for i := 2; g.taken[name] || g.nameUsed(name); i++ {
-		name = fmt.Sprintf("%s%d", componentName(n), i)
+		name = fmt.Sprintf("%s%d", base, i)
 	}
 	g.names[key] = name
 	g.building[key] = true
 	s := g.structSchema(st)
 	delete(g.building, key)
+	if g.input {
+		if respName, ok := g.names[typeKey(n)]; ok && sameSchema(g.components[respName], s) {
+			g.names[key] = respName
+			return respName
+		}
+	}
 	// Um componente escrito à mão com exatamente a mesma forma (campos,
 	// tipos, formatos) é reaproveitado: mantém as descrições e não duplica.
 	if twin := g.handTwin(s); twin != "" {
@@ -567,6 +586,19 @@ func (g *schemaGen) component(n *types.Named, st *types.Struct) string {
 	s[genMark] = true
 	g.components[name] = s
 	return name
+}
+
+func sameSchema(a, b map[string]any) bool {
+	if a == nil {
+		return false
+	}
+	strip := func(m map[string]any) string {
+		c := clone(m)
+		delete(c, genMark)
+		j, _ := json.Marshal(c)
+		return string(j)
+	}
+	return strip(a) == strip(b)
 }
 
 func (g *schemaGen) handTwin(s map[string]any) string {
@@ -710,9 +742,9 @@ func camel(s string) string {
 
 var validateMax = regexp.MustCompile(`^(max|min|len)=(\d+)$`)
 
-// structSchema descreve os campos que encoding/json serializa. required:
-// numa struct validada (tags validate), os campos validate:"required";
-// nas demais, os campos sem omitempty (que sempre saem no JSON).
+// structSchema descreve os campos que encoding/json serializa. required: na
+// resposta, os campos sem omitempty (sempre presentes no JSON); na
+// requisição, os validate:"required".
 func (g *schemaGen) structSchema(st *types.Struct) map[string]any {
 	props := map[string]any{}
 	var required []string
@@ -766,7 +798,12 @@ func (g *schemaGen) fields(st *types.Struct, props map[string]any, required *[]s
 		if name == "" {
 			name = f.Name()
 		}
+		omit := strings.Contains(","+opts+",", ",omitempty,") || strings.Contains(","+opts+",", ",omitzero,")
 		fs := g.schema(f.Type())
+		// ponteiro com omitempty nunca sai como null: nil é omitido
+		if p, ok := f.Type().(*types.Pointer); ok && omit {
+			fs = g.schema(p.Elem())
+		}
 		if strings.Contains(","+opts+",", ",string,") {
 			fs = map[string]any{"type": "string"}
 		}
@@ -774,11 +811,14 @@ func (g *schemaGen) fields(st *types.Struct, props map[string]any, required *[]s
 		if v, ok := tag.Lookup("validate"); ok {
 			isRequired = applyValidate(fs, v)
 		}
-		if validated {
+		switch {
+		case g.input && validated:
 			if isRequired {
 				*required = append(*required, name)
 			}
-		} else if !strings.Contains(","+opts+",", ",omitempty,") && !strings.Contains(","+opts+",", ",omitzero,") {
+		case g.input:
+			// requisição sem validate: nada é exigido
+		case !omit:
 			*required = append(*required, name)
 		}
 		props[name] = fs
@@ -868,6 +908,7 @@ func applySchemas(t *testing.T, spec map[string]any, routes []routeInfo) {
 	g := loadSchemaGen(t, hand)
 	paths := spec["paths"].(map[string]any)
 	var unresolved []string
+	var pending []func()
 	for _, r := range routes {
 		ops, _ := paths[r.path].(map[string]any)
 		op, _ := ops[strings.ToLower(r.method)].(map[string]any)
@@ -880,7 +921,15 @@ func applySchemas(t *testing.T, spec map[string]any, routes []routeInfo) {
 			continue
 		}
 		g.applyOperation(op, info)
+		pending = append(pending, func() { g.applyRequest(op, info) })
 	}
+	// Corpos de requisição por último: um struct usado nos dois sentidos
+	// reaproveita o componente da resposta quando a forma coincide.
+	g.input = true
+	for _, apply := range pending {
+		apply()
+	}
+	g.input = false
 	for name, s := range g.components {
 		schemas[name] = s
 	}
@@ -999,7 +1048,8 @@ func isPlainNoContent(v any) bool {
 	return ok && len(m) == 1 && m["description"] == "Sem conteúdo."
 }
 
-func (g *schemaGen) applyOperation(op map[string]any, info *opInfo) {
+// applyRequest escreve o corpo da requisição.
+func (g *schemaGen) applyRequest(op map[string]any, info *opInfo) {
 	// corpo da requisição (nenhum handler lê o corpo fora de Bind/
 	// DecodeJSON: sem a chamada, a operação não tem corpo)
 	if _, ok := op["requestBody"]; !ok && info.request != nil {
@@ -1025,7 +1075,10 @@ func (g *schemaGen) applyOperation(op map[string]any, info *opInfo) {
 			}
 		}
 	}
+}
 
+// applyOperation escreve as respostas de sucesso e os parâmetros de query.
+func (g *schemaGen) applyOperation(op map[string]any, info *opInfo) {
 	// respostas de sucesso
 	responses, _ := op["responses"].(map[string]any)
 	if responses != nil && len(info.responses) > 0 {

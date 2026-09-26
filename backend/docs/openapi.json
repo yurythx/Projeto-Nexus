@@ -194,7 +194,6 @@
           },
           "actor_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "actor_name": {
@@ -214,7 +213,6 @@
           },
           "correlation_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "diff_after": {},
@@ -268,7 +266,6 @@
             "type": "integer"
           },
           "first_invalid_pos": {
-            "nullable": true,
             "type": "integer"
           },
           "reason": {
@@ -293,12 +290,10 @@
         "properties": {
           "departamento_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "entidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "origem": {
@@ -309,7 +304,6 @@
           },
           "unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           }
         },
@@ -324,7 +318,6 @@
         "properties": {
           "author_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "author_name": {
@@ -355,7 +348,6 @@
           },
           "published_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "slug": {
@@ -448,6 +440,67 @@
         "x-nexus-generated": true
       },
       "BrandingSettings": {
+        "properties": {
+          "app_description": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "app_name": {
+            "maxLength": 80,
+            "type": "string"
+          },
+          "favicon_url": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "logo_url": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "org_name": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "support_email": {
+            "format": "email",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "support_hours": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "support_phone": {
+            "maxLength": 40,
+            "type": "string"
+          },
+          "tokens": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_description",
+          "app_name",
+          "favicon_url",
+          "logo_url",
+          "org_name",
+          "support_email",
+          "support_hours",
+          "support_phone",
+          "tokens",
+          "updated_at"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
+      "BrandingSettingsInput": {
         "properties": {
           "app_description": {
             "maxLength": 200,
@@ -596,7 +649,6 @@
           },
           "room_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "room_name": {
@@ -844,7 +896,6 @@
           },
           "published_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "requirements": {
@@ -858,7 +909,6 @@
           },
           "responsible_unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "sla": {
@@ -989,7 +1039,6 @@
         "properties": {
           "assigned_to": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "category": {
@@ -1188,7 +1237,6 @@
           },
           "departamento_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "email": {
@@ -1214,7 +1262,6 @@
           },
           "unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "user_id": {
@@ -1313,7 +1360,6 @@
           },
           "unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           }
         },
@@ -1340,7 +1386,6 @@
           },
           "delivered_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "event_id": {
@@ -1358,7 +1403,6 @@
             "type": "string"
           },
           "last_status_code": {
-            "nullable": true,
             "type": "integer"
           },
           "next_attempt_at": {
@@ -1684,6 +1728,35 @@
           }
         },
         "required": [
+          "can_write",
+          "subject",
+          "subject_type"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
+      "FilesACLEntryInput": {
+        "properties": {
+          "can_write": {
+            "type": "boolean"
+          },
+          "subject": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "everyone",
+              "user",
+              "perfil",
+              "ad_group",
+              "unidade",
+              "departamento"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
           "subject_type"
         ],
         "type": "object",
@@ -1713,7 +1786,7 @@
         "properties": {
           "entries": {
             "items": {
-              "$ref": "#/components/schemas/FilesACLEntry"
+              "$ref": "#/components/schemas/FilesACLEntryInput"
             },
             "maxItems": 100,
             "type": "array"
@@ -1815,7 +1888,6 @@
           },
           "parent_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "updated_at": {
@@ -1873,12 +1945,7 @@
             "type": "array"
           },
           "folder": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/FilesFolder"
-              }
-            ],
-            "nullable": true
+            "$ref": "#/components/schemas/FilesFolder"
           },
           "folders": {
             "items": {
@@ -1954,7 +2021,6 @@
           },
           "departamento_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "descricao": {
@@ -1962,7 +2028,6 @@
           },
           "entidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -1981,7 +2046,6 @@
           },
           "unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           }
         },
@@ -2216,12 +2280,10 @@
           },
           "departamento_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "entidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -2243,7 +2305,6 @@
           },
           "unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "user_id": {
@@ -2480,7 +2541,6 @@
           },
           "parent_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "sigla": {
@@ -2680,7 +2740,6 @@
           },
           "parent_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "sigla": {
@@ -2797,7 +2856,6 @@
           },
           "ad_synced_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "created_at": {
@@ -2825,7 +2883,6 @@
           },
           "last_seen_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "local_login": {
@@ -2833,7 +2890,6 @@
           },
           "locked_until": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "roles": {
@@ -2868,7 +2924,6 @@
           },
           "ad_synced_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "created_at": {
@@ -2896,7 +2951,6 @@
           },
           "last_seen_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "local_login": {
@@ -2904,7 +2958,6 @@
           },
           "locked_until": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "lotacoes": {
@@ -3349,7 +3402,6 @@
           },
           "edited_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -3400,7 +3452,6 @@
           },
           "departamento_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "description": {
@@ -3415,7 +3466,6 @@
           },
           "last_message_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "members": {
@@ -3548,6 +3598,12 @@
             "type": "integer"
           }
         },
+        "required": [
+          "page",
+          "page_size",
+          "total_items",
+          "total_pages"
+        ],
         "type": "object"
       },
       "SearchResult": {
@@ -3572,7 +3628,6 @@
           },
           "updated_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "url": {
@@ -3620,7 +3675,6 @@
         "properties": {
           "completed_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "created_at": {
@@ -3773,7 +3827,6 @@
           },
           "signed_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "status": {
@@ -3818,7 +3871,6 @@
           },
           "signed_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "status": {
@@ -3847,7 +3899,6 @@
             "type": "string"
           },
           "document_match": {
-            "nullable": true,
             "type": "boolean"
           },
           "document_sha256": {
@@ -3992,7 +4043,6 @@
           },
           "envelope_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -4007,7 +4057,6 @@
             "type": "string"
           },
           "sha256": {
-            "nullable": true,
             "type": "string"
           },
           "size_bytes": {
@@ -4088,7 +4137,6 @@
           },
           "envelope_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -4103,7 +4151,6 @@
             "type": "string"
           },
           "sha256": {
-            "nullable": true,
             "type": "string"
           },
           "size_bytes": {
@@ -4172,7 +4219,6 @@
           },
           "actor_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "actor_name": {
@@ -4187,7 +4233,6 @@
           },
           "de_unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "despacho": {
@@ -4202,7 +4247,6 @@
           },
           "para_unidade_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "processo_id": {
@@ -4227,7 +4271,6 @@
           },
           "concluido_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "created_at": {
@@ -4374,7 +4417,6 @@
           },
           "concluido_at": {
             "format": "date-time",
-            "nullable": true,
             "type": "string"
           },
           "created_at": {
@@ -4491,7 +4533,6 @@
           },
           "parent_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "position": {
@@ -4596,7 +4637,6 @@
           },
           "parent_id": {
             "format": "uuid",
-            "nullable": true,
             "type": "string"
           },
           "position": {
@@ -4736,7 +4776,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BrandingSettings"
+                "$ref": "#/components/schemas/BrandingSettingsInput"
               }
             }
           },

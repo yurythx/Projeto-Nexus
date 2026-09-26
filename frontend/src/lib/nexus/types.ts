@@ -188,13 +188,15 @@ export interface AuditRecord {
   actor_roles: string[];
   ip_address?: string;
   user_agent?: string;
-  entity_context: Record<string, unknown>;
+  /** JSON livre gravado com a entrada (json.RawMessage no backend; null se ausente). */
+  entity_context: unknown;
   action: string;
   resource_type?: string;
   resource_id?: string;
   diff_before?: unknown;
   diff_after?: unknown;
-  metadata: Record<string, unknown>;
+  /** JSON livre gravado com a entrada (json.RawMessage no backend). */
+  metadata: unknown;
   correlation_id?: UUID;
   timestamp_utc: string;
   prev_hash: string;
