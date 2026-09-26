@@ -338,12 +338,9 @@ func (l *loader) int32Val(key string, def int32) int32 {
 	return int32(n)
 }
 
-func (l *loader) durationVal(key string, required bool, def time.Duration) time.Duration {
+func (l *loader) durationVal(key string, def time.Duration) time.Duration {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
-		if required {
-			l.errs = append(l.errs, key)
-		}
 		return def
 	}
 	d, err := time.ParseDuration(v)
@@ -383,10 +380,10 @@ func Load() (*Config, error) {
 		HTTP: HTTPConfig{
 			Host:              l.str("HTTP_HOST", false, "0.0.0.0"),
 			Port:              l.intVal("HTTP_PORT", false, 8000),
-			ReadHeaderTimeout: l.durationVal("HTTP_READ_HEADER_TIMEOUT", false, 2*time.Second),
-			ReadTimeout:       l.durationVal("HTTP_READ_TIMEOUT", false, 5*time.Second),
-			WriteTimeout:      l.durationVal("HTTP_WRITE_TIMEOUT", false, 10*time.Second),
-			IdleTimeout:       l.durationVal("HTTP_IDLE_TIMEOUT", false, 120*time.Second),
+			ReadHeaderTimeout: l.durationVal("HTTP_READ_HEADER_TIMEOUT", 2*time.Second),
+			ReadTimeout:       l.durationVal("HTTP_READ_TIMEOUT", 5*time.Second),
+			WriteTimeout:      l.durationVal("HTTP_WRITE_TIMEOUT", 10*time.Second),
+			IdleTimeout:       l.durationVal("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		},
 		Database: DatabaseConfig{
 			Host:            l.str("DB_HOST", true, ""),
@@ -397,9 +394,9 @@ func Load() (*Config, error) {
 			SSLMode:         l.str("DB_SSLMODE", false, "disable"),
 			MaxConns:        l.int32Val("DB_MAX_CONNS", 20),
 			MinConns:        l.int32Val("DB_MIN_CONNS", 2),
-			MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", false, time.Hour),
-			MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", false, 15*time.Minute),
-			ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", false, 5*time.Second),
+			MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", time.Hour),
+			MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", 15*time.Minute),
+			ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", 5*time.Second),
 		},
 		RabbitMQ: RabbitMQConfig{
 			URL:           l.secret("RABBITMQ_URL", true, ""),
@@ -424,7 +421,7 @@ func Load() (*Config, error) {
 		LocalAuth: LocalAuthConfig{
 			Enabled:       l.boolVal("LOCAL_AUTH_ENABLED", false),
 			PrivateKeyPEM: l.secret("LOCAL_AUTH_PRIVATE_KEY", false, ""),
-			TokenTTL:      l.durationVal("LOCAL_AUTH_TOKEN_TTL", false, time.Hour),
+			TokenTTL:      l.durationVal("LOCAL_AUTH_TOKEN_TTL", time.Hour),
 		},
 		APIRateLimit: RateLimitConfig{
 			WindowSeconds: l.intVal("API_RATE_LIMIT_WINDOW_SECONDS", false, 60),
@@ -443,18 +440,18 @@ func Load() (*Config, error) {
 			MaxRequests:   l.intVal("PUBLIC_RATE_LIMIT_MAX", false, 120),
 		},
 		Egress: EgressConfig{
-			Timeout:              l.durationVal("EGRESS_TIMEOUT", false, 10*time.Second),
+			Timeout:              l.durationVal("EGRESS_TIMEOUT", 10*time.Second),
 			MaxAttempts:          l.intVal("EGRESS_MAX_ATTEMPTS", false, 8),
 			BatchSize:            l.intVal("EGRESS_BATCH_SIZE", false, 20),
-			PollInterval:         l.durationVal("EGRESS_POLL_INTERVAL", false, 5*time.Second),
+			PollInterval:         l.durationVal("EGRESS_POLL_INTERVAL", 5*time.Second),
 			AllowPrivateNetworks: l.boolVal("EGRESS_ALLOW_PRIVATE_NETWORKS", false),
 		},
 		Signum: SignumConfig{
-			ChallengeTTL: l.durationVal("SIGNUM_CHALLENGE_TTL", false, 5*time.Minute),
+			ChallengeTTL: l.durationVal("SIGNUM_CHALLENGE_TTL", 5*time.Minute),
 		},
 		Upload: UploadConfig{
 			MaxFileBytes: int64(l.intVal("UPLOAD_MAX_FILE_MB", false, 100)) * 1024 * 1024,
-			URLExpiry:    l.durationVal("UPLOAD_URL_EXPIRY", false, 15*time.Minute),
+			URLExpiry:    l.durationVal("UPLOAD_URL_EXPIRY", 15*time.Minute),
 		},
 		AuditWORM: AuditWORMConfig{
 			Bucket:        l.str("AUDIT_WORM_BUCKET", false, "nexus-audit-worm"),
@@ -621,9 +618,9 @@ func LoadDatabase() (DatabaseConfig, error) {
 		SSLMode:         l.str("DB_SSLMODE", false, "disable"),
 		MaxConns:        l.int32Val("DB_MAX_CONNS", 20),
 		MinConns:        l.int32Val("DB_MIN_CONNS", 2),
-		MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", false, time.Hour),
-		MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", false, 15*time.Minute),
-		ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", false, 5*time.Second),
+		MaxConnLifetime: l.durationVal("DB_MAX_CONN_LIFETIME", time.Hour),
+		MaxConnIdleTime: l.durationVal("DB_MAX_CONN_IDLE_TIME", 15*time.Minute),
+		ConnectTimeout:  l.durationVal("DB_CONNECT_TIMEOUT", 5*time.Second),
 	}
 	if len(l.errs) > 0 {
 		return DatabaseConfig{}, fmt.Errorf("config: missing or invalid required environment variables: %s", strings.Join(l.errs, ", "))
