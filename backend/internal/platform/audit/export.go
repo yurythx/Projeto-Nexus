@@ -13,10 +13,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
@@ -32,13 +32,16 @@ const maxExportRows = 20000
 
 const defaultExportWindow = 30 * 24 * time.Hour
 
+// Exporter gera o relatório de transparência (LAI) da trilha.
 type Exporter struct {
-	db     *pgxpool.Pool
-	logger *slog.Logger
+	db      database.DBTX
+	logger  *slog.Logger
+	maxRows int
 }
 
-func NewExporter(db *pgxpool.Pool, logger *slog.Logger) *Exporter {
-	return &Exporter{db: db, logger: logger}
+// NewExporter constrói o exportador (db: o pool, em produção).
+func NewExporter(db database.DBTX, logger *slog.Logger) *Exporter {
+	return &Exporter{db: db, logger: logger, maxRows: maxExportRows}
 }
 
 // RegisterRoutes monta a exportação da trilha de auditoria (LAI), restrita
@@ -66,6 +69,7 @@ type exportRow struct {
 	IPAddress     string `json:"ip_address" xml:"ip_address"`
 	Metadata      string `json:"metadata" xml:"metadata"`
 	CreatedAt     string `json:"created_at" xml:"created_at"`
+	at            time.Time
 }
 
 type exportMeta struct {
@@ -112,7 +116,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString(`
 		SELECT id, COALESCE(actor_id::text,'SISTEMA'), action,
 		       COALESCE(resource_type,''), COALESCE(resource_id,''),
-		       COALESCE(correlation_id::text,''), COALESCE(ip_address::text,''),
+		       COALESCE(correlation_id::text,''), COALESCE(host(ip_address),''),
 		       COALESCE(metadata::text,'{}'), created_at
 		FROM audit_logs
 		WHERE created_at >= $1 AND created_at < $2`)
@@ -125,7 +129,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 		args = append(args, cursorTime, cursorID)
 		sb.WriteString(fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)", len(args)-1, len(args)))
 	}
-	sb.WriteString(fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT %d", maxExportRows+1))
+	sb.WriteString(fmt.Sprintf(" ORDER BY created_at DESC, id DESC LIMIT %d", e.maxRows+1))
 
 	rows, err := e.db.Query(r.Context(), sb.String(), args...)
 	if err != nil {
@@ -137,12 +141,14 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	collected := make([]exportRow, 0, 512)
 	for rows.Next() {
 		var rw exportRow
-		var createdAt time.Time
 		if err := rows.Scan(&rw.ID, &rw.ActorID, &rw.Action, &rw.ResourceType, &rw.ResourceID,
-			&rw.CorrelationID, &rw.IPAddress, &rw.Metadata, &createdAt); err != nil {
-			continue
+			&rw.CorrelationID, &rw.IPAddress, &rw.Metadata, &rw.at); err != nil {
+			// Relatório de transparência não pode sair com linhas faltando
+			// em silêncio: ou vem completo, ou falha.
+			httputil.WriteError(w, r, e.logger, apperrors.Internal(fmt.Errorf("audit export scan: %w", err)))
+			return
 		}
-		rw.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+		rw.CreatedAt = rw.at.UTC().Format(time.RFC3339Nano)
 		collected = append(collected, rw)
 	}
 	if rows.Err() != nil {
@@ -151,12 +157,10 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nextCursor := ""
-	if len(collected) > maxExportRows {
-		collected = collected[:maxExportRows]
+	if len(collected) > e.maxRows {
+		collected = collected[:e.maxRows]
 		last := collected[len(collected)-1]
-		if lt, perr := time.Parse(time.RFC3339Nano, last.CreatedAt); perr == nil {
-			nextCursor = encodeCursor(lt, last.ID)
-		}
+		nextCursor = encodeCursor(last.at, last.ID)
 	}
 
 	meta := exportMeta{

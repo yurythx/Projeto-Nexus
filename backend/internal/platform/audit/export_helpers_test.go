@@ -92,3 +92,18 @@ func TestCursorRoundTrip(t *testing.T) {
 		t.Errorf("cursor vazio deve ser (zero, nil), veio (%v, %v)", tt, err)
 	}
 }
+
+func TestParseWindowAndCursorEdgeCases(t *testing.T) {
+	if _, _, err := parseWindow("", "amanhã"); err == nil {
+		t.Error("'to' inválido deveria falhar")
+	}
+	from, to, err := parseWindow("", "2026-03-31T12:00:00Z")
+	if err != nil || to.Sub(from) != defaultExportWindow {
+		t.Errorf("só 'to': janela padrão terminando em 'to' (%v→%v, %v)", from, to, err)
+	}
+	for _, c := range []string{"nao-e-data," + uuid.NewString(), "2026-01-01T00:00:00Z,nao-uuid"} {
+		if _, _, err := parseCursor(c); err == nil {
+			t.Errorf("cursor %q deveria ser recusado", c)
+		}
+	}
+}
