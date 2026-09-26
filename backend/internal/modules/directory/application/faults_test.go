@@ -149,3 +149,20 @@ func TestModuleAndHandlers(t *testing.T) {
 		}
 	}
 }
+
+func TestPersonalDataExportAndErase(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx := context.Background()
+	svc := application.NewService(pool, infrastructure.NewRepository())
+	if data, err := svc.ExportPersonalData(ctx, pool, uuid.New()); err != nil || data != nil {
+		t.Fatalf("titular sem conta: nada a exportar (%v, %v)", data, err)
+	}
+	down := application.NewService(pool, &faultRepo{inner: infrastructure.NewRepository(), failAt: 1})
+	if _, err := down.ExportPersonalData(ctx, pool, uuid.New()); !errors.Is(err, errBoom) {
+		t.Fatalf("falha do repositório na exportação: %v", err)
+	}
+	down = application.NewService(pool, &faultRepo{inner: infrastructure.NewRepository(), failAt: 1})
+	if err := down.ErasePersonalData(ctx, pool, uuid.New()); !errors.Is(err, errBoom) {
+		t.Fatalf("falha do repositório na eliminação: %v", err)
+	}
+}

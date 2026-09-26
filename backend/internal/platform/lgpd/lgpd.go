@@ -13,20 +13,29 @@ import (
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
 const CurrentTermVersion = "v1.0.0-2026"
 
+// Service implementa o consentimento e os direitos do titular.
 type Service struct {
-	db             *pgxpool.Pool
+	pool           *pgxpool.Pool
+	db             database.DBTX // leituras/escritas avulsas (o pool, em produção)
 	logger         *slog.Logger
 	trustedProxies []*net.IPNet
+	personal       PersonalDataSource
+
+	erasureInterval    time.Duration
+	maxErasureAttempts int
 }
 
-func NewService(db *pgxpool.Pool, logger *slog.Logger, trustedProxies []*net.IPNet) *Service {
-	return &Service{db: db, logger: logger, trustedProxies: trustedProxies}
+// NewService cria o serviço.
+func NewService(pool *pgxpool.Pool, logger *slog.Logger, trustedProxies []*net.IPNet) *Service {
+	return &Service{pool: pool, db: pool, logger: logger, trustedProxies: trustedProxies,
+		erasureInterval: 30 * time.Second, maxErasureAttempts: 5}
 }
 
 // HasAcceptedCurrentTerm reporta se o usuário já aceitou a versão mais recente dos termos.

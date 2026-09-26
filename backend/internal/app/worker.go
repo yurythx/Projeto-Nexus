@@ -15,7 +15,6 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/idempotency"
 	"github.com/yurythx/projeto-nexus/internal/platform/jobs"
 	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
-	"github.com/yurythx/projeto-nexus/internal/platform/lgpd"
 	"github.com/yurythx/projeto-nexus/internal/platform/messaging"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
@@ -42,7 +41,7 @@ func NewWorker(d *Dependencies) *Worker {
 			supervised("processed_events_cleanup", d.Logger, kernel.CleanupProcessedEvents(d.DB, d.Logger)),
 			supervised("jobs_stale_sweeper", d.Logger, jobs.SweepStale(d.DB, map[string]jobs.StaleJobHandler{}, d.Config.Jobs.StaleAfter, d.Logger)),
 			// LGPD art. 18, VI — anonimização a pedido do titular.
-			supervised("lgpd_erasure", d.Logger, lgpd.ErasureProcessor(d.DB, d.Logger)),
+			supervised("lgpd_erasure", d.Logger, d.LGPD.ErasureProcessor()),
 			// Cópia WORM diária da trilha (com os hashes da cadeia).
 			supervised("audit_worm_export", d.Logger, audit.WORMExporter(d.DB, d.Storage, d.Config.AuditWORM.Bucket, d.Config.AuditWORM.RetentionDays, d.Logger)),
 			// Estado dos módulos: LISTEN/NOTIFY + polling.

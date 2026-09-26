@@ -94,3 +94,11 @@ func (fr *faultRepo) DepartamentoUnidade(ctx context.Context, db database.DBTX, 
 	defer fr.post(ctx, db)
 	return fr.inner.DepartamentoUnidade(ctx, db, departamentoID)
 }
+
+func (fr *faultRepo) DeleteProfile(ctx context.Context, db database.DBTX, userID uuid.UUID) error {
+	if err := fr.hook("DeleteProfile"); err != nil {
+		return err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.DeleteProfile(ctx, db, userID)
+}

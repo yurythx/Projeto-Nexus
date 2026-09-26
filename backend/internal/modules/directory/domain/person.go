@@ -79,4 +79,6 @@ type Repository interface {
 	Sectors(ctx context.Context, db database.DBTX, query string) ([]Sector, error)
 	// DepartamentoUnidade devolve a unidade a que o departamento pertence.
 	DepartamentoUnidade(ctx context.Context, db database.DBTX, departamentoID uuid.UUID) (uuid.UUID, error)
+	// DeleteProfile apaga o perfil estendido (eliminação LGPD, art. 18, VI).
+	DeleteProfile(ctx context.Context, db database.DBTX, userID uuid.UUID) error
 }

@@ -19,6 +19,7 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 	id := uuid.New()
 	p := pagination.New(1, 10, 10)
 	calls := map[string]func(db database.DBTX) error{
+		"DeleteProfile":       func(db database.DBTX) error { return r.DeleteProfile(ctx, db, uuid.New()) },
 		"List":                func(db database.DBTX) error { _, _, err := r.List(ctx, db, domain.Filter{}, p); return err },
 		"Get":                 func(db database.DBTX) error { _, err := r.Get(ctx, db, id); return err },
 		"SaveProfile":         func(db database.DBTX) error { return r.SaveProfile(ctx, db, id, domain.ProfileInput{}, true) },

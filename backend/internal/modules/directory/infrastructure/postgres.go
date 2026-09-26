@@ -105,6 +105,13 @@ func (r *Repository) SaveProfile(ctx context.Context, db database.DBTX, userID u
 	return wrap(err)
 }
 
+// DeleteProfile apaga o perfil estendido — telefone, ramal, cargo e bio são
+// dados pessoais sem valor de registro legal.
+func (r *Repository) DeleteProfile(ctx context.Context, db database.DBTX, userID uuid.UUID) error {
+	_, err := db.Exec(ctx, `DELETE FROM directory_profiles WHERE user_id = $1`, userID)
+	return wrap(err)
+}
+
 func (r *Repository) DepartamentoUnidade(ctx context.Context, db database.DBTX, departamentoID uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx, `SELECT unidade_id FROM departamentos WHERE id = $1`, departamentoID).Scan(&id)

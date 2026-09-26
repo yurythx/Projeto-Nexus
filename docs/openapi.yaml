@@ -3262,7 +3262,7 @@ paths:
     /api/v1/lgpd/meus-dados:
         get:
             description: |
-                Pacote JSON com a conta, os registros de consentimento, a trilha de auditoria e as solicitações do próprio titular — acesso e portabilidade. Síncrono. Auditado como `lgpd.data_export.self`.
+                Pacote JSON com a conta, os registros de consentimento, a trilha de auditoria, as solicitações do próprio titular e, em `modules`, os dados pessoais guardados por cada plug-in (ex.: perfil do Diretório — ativo ou não) — acesso e portabilidade. Síncrono; sai completo ou responde 500 (nunca um pacote parcial). Auditado como `lgpd.data_export.self`.
             operationId: lgpdExportMyData
             responses:
                 "200":

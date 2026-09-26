@@ -96,3 +96,24 @@ func (s *Service) SaveProfile(ctx context.Context, userID uuid.UUID, in domain.P
 func (s *Service) Sectors(ctx context.Context, query string) ([]domain.Sector, error) {
 	return s.repo.Sectors(ctx, s.pool, query)
 }
+
+// ExportPersonalData devolve o perfil do titular para o pacote de
+// exportação da LGPD (art. 18, II e V). Titular sem conta ativa: nada.
+func (s *Service) ExportPersonalData(ctx context.Context, db database.DBTX, userID uuid.UUID) (any, error) {
+	p, err := s.repo.Get(ctx, db, userID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"job_title": p.JobTitle, "phone": p.Phone, "extension": p.Extension, "bio": p.Bio,
+		"visible": p.Visible, "unidade": p.Unidade, "departamento": p.Departamento,
+	}, nil
+}
+
+// ErasePersonalData apaga o perfil do titular na transação da eliminação.
+func (s *Service) ErasePersonalData(ctx context.Context, tx database.DBTX, userID uuid.UUID) error {
+	return s.repo.DeleteProfile(ctx, tx, userID)
+}

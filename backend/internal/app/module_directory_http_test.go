@@ -1,9 +1,11 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -80,4 +82,43 @@ func TestDirectoryProfileRules(t *testing.T) {
 	}
 	h.expect(http.StatusNotFound, http.MethodPut, "/api/v1/directory/people/"+uuid.NewString(), admin, `{"job_title":"Fantasma"}`)
 	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/directory/people/"+uuid.NewString(), admin, "")
+}
+
+// LGPD art. 18 com dados de plugin: o perfil do Diretório entra no pacote
+// do titular e é eliminado junto com a anonimização da conta — mesmo com o
+// módulo desativado (desativar não suspende os direitos do titular).
+func TestDirectoryPersonalDataFollowsLGPDRequests(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	anaID, ana := h.user("nexus-user")
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/directory/me", ana, `{"job_title":"Analista","phone":"61 99999-0000","bio":"sobre mim"}`)
+
+	export := h.expect(http.StatusOK, http.MethodGet, "/api/v1/lgpd/meus-dados", ana, "").Body.String()
+	if !strings.Contains(export, `"directory"`) || !strings.Contains(export, "61 99999-0000") {
+		t.Fatalf("o perfil do Diretório entra no pacote do titular: %s", export)
+	}
+
+	h.setModule(admin, "directory", false)
+	defer h.setModule(admin, "directory", true)
+	h.expect(http.StatusAccepted, http.MethodPost, "/api/v1/lgpd/solicitar-exclusao", ana, "")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = h.d.LGPD.ErasureProcessor()(ctx); close(done) }()
+	deadline := time.Now().Add(5 * time.Second)
+	var status string
+	for time.Now().Before(deadline) {
+		_ = h.d.DB.QueryRow(context.Background(), `SELECT status FROM data_subject_requests WHERE user_id = $1`, anaID).Scan(&status)
+		if status == "completed" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	var profiles int
+	_ = h.d.DB.QueryRow(context.Background(), `SELECT count(*) FROM directory_profiles WHERE user_id = $1`, anaID).Scan(&profiles)
+	if status != "completed" || profiles != 0 {
+		t.Fatalf("eliminação concluída e perfil apagado: %s, %d perfil(is)", status, profiles)
+	}
 }
