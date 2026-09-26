@@ -16,6 +16,10 @@ import (
 // ErrNotFound indica pessoa inexistente/invisível.
 var ErrNotFound = errors.New("directory: pessoa não encontrada")
 
+// ErrSector indica unidade/departamento inexistente ou inconsistente (o
+// departamento precisa pertencer à unidade informada).
+var ErrSector = errors.New("directory: unidade ou departamento inexistente ou inconsistente")
+
 // Person é uma entrada do diretório.
 type Person struct {
 	UserID         uuid.UUID  `json:"user_id"`
@@ -73,4 +77,6 @@ type Repository interface {
 	Get(ctx context.Context, db database.DBTX, userID uuid.UUID) (Person, error)
 	SaveProfile(ctx context.Context, db database.DBTX, userID uuid.UUID, in ProfileInput, keepLotacao bool) error
 	Sectors(ctx context.Context, db database.DBTX, query string) ([]Sector, error)
+	// DepartamentoUnidade devolve a unidade a que o departamento pertence.
+	DepartamentoUnidade(ctx context.Context, db database.DBTX, departamentoID uuid.UUID) (uuid.UUID, error)
 }

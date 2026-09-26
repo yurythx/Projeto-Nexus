@@ -30,8 +30,11 @@ func NewService(pool *pgxpool.Pool, repo domain.Repository) *Service {
 
 // MapError traduz erros de domínio.
 func MapError(err error) error {
-	if errors.Is(err, domain.ErrNotFound) {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
 		return apperrors.NotFound("pessoa não encontrada no diretório")
+	case errors.Is(err, domain.ErrSector):
+		return apperrors.Validation(err.Error())
 	}
 	return err
 }
@@ -57,11 +60,26 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 // SaveProfile atualiza o perfil estendido. self = autoatendimento (não
 // altera a lotação exibida).
 func (s *Service) SaveProfile(ctx context.Context, userID uuid.UUID, in domain.ProfileInput, self bool) (domain.Person, error) {
+	if self {
+		// Autoatendimento nunca define a lotação exibida — nem no primeiro
+		// salvamento (quando o perfil ainda não existe).
+		in.UnidadeID, in.DepartamentoID = nil, nil
+	}
 	var out domain.Person
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, userID)
 		if err != nil {
 			return err
+		}
+		if in.DepartamentoID != nil {
+			unidade, err := s.repo.DepartamentoUnidade(ctx, tx, *in.DepartamentoID)
+			if err != nil {
+				return err
+			}
+			if in.UnidadeID != nil && *in.UnidadeID != unidade {
+				return domain.ErrSector
+			}
+			in.UnidadeID = &unidade
 		}
 		if err := s.repo.SaveProfile(ctx, tx, userID, in, self); err != nil {
 			return err
