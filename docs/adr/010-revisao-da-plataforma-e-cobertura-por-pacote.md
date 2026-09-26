@@ -89,6 +89,40 @@ infraestrutura e prova duas coisas:
 
 O perfil vem de `go test -race -p 1 -coverpkg=./internal/...,./pkg/...`.
 
+### 10.5. Pendências do ADR 008
+
+**Schemas do contrato gerados a partir do código.** Os schemas saem de
+`internal/app/openapi_schemas_test.go`. O passo a passo:
+
+1. o teste acha, pelo nome em runtime, a função que atende cada rota montada;
+2. analisa essa função estaticamente, com `go/packages` e `go/types`;
+3. extrai da análise:
+   - o tipo passado a `httputil.Bind`/`DecodeJSON`, que vira o corpo da requisição;
+   - o tipo passado a `WriteOK`, `WriteCreated`, `WriteAccepted`, `WritePage` e `WriteJSON`, que vira o `data` da resposta, com o código HTTP;
+   - `WriteNoContent`, que vira o 204;
+   - `httputil.Query`, `Page`, `OptionalUUIDQuery` e `r.URL.Query().Get`, que viram parâmetros de query.
+
+Os tipos Go viram `components/schemas`:
+
+| No Go | No schema |
+|---|---|
+| tag `json` | nome da propriedade |
+| ponteiro | `nullable` |
+| `validate` (required, max, min, oneof, email, uuid) | `required`, `maxLength`/`maxItems`/`maximum`, `enum`, `format` |
+| constantes declaradas com o tipo | `enum` |
+
+Das 172 rotas, só uma continua com schema genérico: a de transparência que
+negocia CSV/XML.
+
+Tudo o que é gerado leva a marca `x-nexus-generated`. Regenerar
+(`UPDATE_OPENAPI=1`) refaz o que tem a marca e nunca toca o que foi escrito à
+mão. O teste de contrato também compara o arquivo com o resultado da geração:
+mudar um DTO sem regenerar quebra o CI. De passagem, três respostas escritas
+à mão estavam sem `description`, o que tornava o documento inválido. Foram
+corrigidas, e o teste passou a exigir o campo.
+
+**Grafo visual dos módulos.** Ver a tela de Módulos (seção 10.6).
+
 ## Consequências
 
 - Uma regressão no núcleo agora quebra o CI com a linha descoberta, como já acontecia com os plug-ins.

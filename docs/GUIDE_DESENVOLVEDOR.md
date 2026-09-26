@@ -159,7 +159,7 @@ A suíte cobre três níveis, todos rodando no CI (job de backend com Postgres 1
 | Unidade | `*_test.go` junto do código; `frontend/src/**/*.test.ts(x)` | Regras de domínio, Kernel (grafo, cascata, réplicas), mascaramento PII, componentes e acessibilidade |
 | Sistema (API real) | `backend/internal/app/*_http_test.go` | Cada módulo pela API completa (autenticação, IAM, Guard, auditoria, outbox): permissões (403), validação (422), fluxos felizes e de erro |
 | Ativação de módulos | `internal/app/modules_toggle_test.go` | Para **cada** plug-in, todas as rotas descobertas automaticamente respondem `404 MODULE_DISABLED` quando desligado e voltam ao religar; dependências aplicadas nos dois sentidos |
-| Contrato | `internal/app/openapi_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas |
+| Contrato | `internal/app/openapi_test.go`, `openapi_schemas_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas, e os schemas de corpo, resposta e query batem com os tipos Go de cada handler |
 | Matriz de falhas | `internal/modules/<m>/application/faults_test.go` | Cada chamada ao repositório de cada caso de uso falha, ou envenena a transação logo depois, e o erro chega a quem chamou: nada é engolido, nada fica gravado pela metade |
 | Repositório | `internal/modules/<m>/infrastructure/*_test.go` | Toda falha do banco (consulta, leitura de linha, `rows.Err`) é propagada, usando os fakes de `database/dbtest` |
 
@@ -194,7 +194,9 @@ TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/...,./pkg/... -coverprof
 # Mudou a interface Repository de um plug-in? Regenere o decorador de falhas:
 #   scripts/genfault.py (uso no cabeçalho do script)
 
-# Novo endpoint? Regenere o contrato (preserva o que já foi descrito à mão):
+# Novo endpoint ou DTO alterado? Regenere o contrato. Os schemas marcados com
+# x-nexus-generated são refeitos a partir dos tipos Go; o que foi escrito à mão
+# (sem a marca) é preservado:
 UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter
 
 cd ../frontend && npm test

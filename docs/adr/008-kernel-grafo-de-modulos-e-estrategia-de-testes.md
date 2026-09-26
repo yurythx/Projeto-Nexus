@@ -120,4 +120,5 @@ de 46,5% para 70%, e o frontend foi de 134 para 174 testes.
 - **Pendências.** O esqueleto gerado para as rotas no OpenAPI usa corpo e
   resposta genéricos: os schemas detalhados de cada módulo podem ser
   descritos à mão, e o gerador os preserva. A visualização gráfica do grafo
-  (hoje em listas) fica para uma próxima iteração.
+  (hoje em listas) fica para uma próxima iteração. *(Resolvidas no ADR 010,
+  seção 10.5.)*

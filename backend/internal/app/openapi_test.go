@@ -39,6 +39,7 @@ var chiParam = regexp.MustCompile(`\{([^}:]+)(:[^}]+)?\}`)
 type routeInfo struct {
 	method, path string // path no formato OpenAPI (/x/{id})
 	module       string // chave do plugin dono (vazio = núcleo da plataforma)
+	handler      string // função que atende (nome em runtime), para os schemas
 }
 
 func collectRoutes(t *testing.T, h *apiHarness) []routeInfo {
@@ -50,7 +51,7 @@ func collectRoutes(t *testing.T, h *apiHarness) []routeInfo {
 		}
 	}
 	var out []routeInfo
-	_ = chi.Walk(h.router.(chi.Router), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+	_ = chi.Walk(h.router.(chi.Router), func(method, route string, handler http.Handler, _ ...func(http.Handler) http.Handler) error {
 		route = strings.TrimSuffix(route, "/")
 		if route == "" {
 			route = "/"
@@ -60,7 +61,7 @@ func collectRoutes(t *testing.T, h *apiHarness) []routeInfo {
 			return nil
 		}
 		path := chiParam.ReplaceAllString(route, "{$1}")
-		out = append(out, routeInfo{method: method, path: path, module: owner[key]})
+		out = append(out, routeInfo{method: method, path: path, module: owner[key], handler: handlerName(handler)})
 		return nil
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].path+out[i].method < out[j].path+out[j].method })
@@ -117,6 +118,33 @@ func TestOpenAPIMatchesRouter(t *testing.T) {
 	if len(missing)+len(stale) > 0 {
 		t.Fatalf("OpenAPI fora de sincronia com o roteador (rode com UPDATE_OPENAPI=1).\nsem documentação: %v\ndocumentadas mas inexistentes: %v", missing, stale)
 	}
+
+	// Todo objeto de resposta precisa de description (OpenAPI 3.0).
+	for p, ops := range paths {
+		for m, op := range ops.(map[string]any) {
+			om, _ := op.(map[string]any)
+			if !isMethod(m) || om == nil {
+				continue
+			}
+			resps, _ := om["responses"].(map[string]any)
+			for code, r := range resps {
+				rm, _ := r.(map[string]any)
+				if _, ref := rm["$ref"]; !ref && rm["description"] == nil {
+					t.Errorf("%s %s: resposta %s sem description", strings.ToUpper(m), p, code)
+				}
+			}
+		}
+	}
+
+	// Os schemas gerados precisam refletir os tipos Go de hoje.
+	var expected map[string]any
+	_ = json.Unmarshal(raw, &expected)
+	applySchemas(t, expected, routes)
+	want, _ := json.Marshal(expected)
+	got, _ := json.Marshal(spec)
+	if string(want) != string(got) {
+		t.Fatal("schemas do OpenAPI desatualizados em relação aos tipos Go (rode com UPDATE_OPENAPI=1)")
+	}
 }
 
 func isMethod(m string) bool {
@@ -170,6 +198,7 @@ func regenerate(t *testing.T, h *apiHarness, spec map[string]any, routes []route
 	spec["paths"] = newPaths
 	spec["tags"] = buildTags(spec, usedTags, manifests)
 	ensureCommonComponents(spec)
+	applySchemas(t, spec, routes)
 	if info, ok := spec["info"].(map[string]any); ok {
 		info["version"] = "2.0.0"
 	}
