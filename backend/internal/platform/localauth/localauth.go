@@ -16,12 +16,15 @@ package localauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // maxFailedAttempts é a partir de quantas tentativas seguidas de senha
@@ -94,11 +97,12 @@ type Store interface {
 // PostgresStore implementa Store sobre a tabela users compartilhada com o
 // módulo users.
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	db database.DBTX // o pool, em produção
 }
 
+// NewPostgresStore cria o store.
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
-	return &PostgresStore{pool: pool}
+	return &PostgresStore{db: pool}
 }
 
 var _ Store = (*PostgresStore)(nil)
@@ -111,12 +115,12 @@ func (s *PostgresStore) GetByUsername(ctx context.Context, username string) (*Ac
 		WHERE username = $1 AND password_hash IS NOT NULL
 	`
 	var a Account
-	err := s.pool.QueryRow(ctx, q, username).Scan(
+	err := s.db.QueryRow(ctx, q, username).Scan(
 		&a.ID, &a.Username, &a.Email, &a.DisplayName, &a.PasswordHash, &a.Roles, &a.Groups, &a.Active,
 		&a.FailedLoginAttempts, &a.LockedUntil,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("localauth: get by username: %w", err)
@@ -126,7 +130,7 @@ func (s *PostgresStore) GetByUsername(ctx context.Context, username string) (*Ac
 
 func (s *PostgresStore) TouchLastSeen(ctx context.Context, id uuid.UUID) error {
 	const q = `UPDATE users SET last_seen_at = now() WHERE id = $1`
-	if _, err := s.pool.Exec(ctx, q, id); err != nil {
+	if _, err := s.db.Exec(ctx, q, id); err != nil {
 		return fmt.Errorf("localauth: touch last seen: %w", err)
 	}
 	return nil
@@ -143,12 +147,12 @@ func (s *PostgresStore) RegisterFailedAttempt(ctx context.Context, id uuid.UUID)
 		    locked_until = CASE
 		        WHEN failed_login_attempts + 1 >= $2 THEN now() + LEAST(
 		            interval '1 minute' * power(2, LEAST(failed_login_attempts + 1 - $2, 20)),
-		            $3::interval)
+		            make_interval(secs => $3))
 		        ELSE locked_until
 		    END
 		WHERE id = $1
 	`
-	if _, err := s.pool.Exec(ctx, q, id, maxFailedAttempts, maxLockout.String()); err != nil {
+	if _, err := s.db.Exec(ctx, q, id, maxFailedAttempts, maxLockout.Seconds()); err != nil {
 		return fmt.Errorf("localauth: register failed attempt: %w", err)
 	}
 	return nil
@@ -156,14 +160,14 @@ func (s *PostgresStore) RegisterFailedAttempt(ctx context.Context, id uuid.UUID)
 
 func (s *PostgresStore) ResetFailedAttempts(ctx context.Context, id uuid.UUID) error {
 	const q = `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`
-	if _, err := s.pool.Exec(ctx, q, id); err != nil {
+	if _, err := s.db.Exec(ctx, q, id); err != nil {
 		return fmt.Errorf("localauth: reset failed attempts: %w", err)
 	}
 	return nil
 }
 
 func (s *PostgresStore) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
-	if _, err := s.pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, hash); err != nil {
+	if _, err := s.db.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, hash); err != nil {
 		return fmt.Errorf("localauth: update password hash: %w", err)
 	}
 	return nil
