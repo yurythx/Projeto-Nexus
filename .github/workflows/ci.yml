@@ -69,7 +69,13 @@ jobs:
           DB_NAME: nexus_test
           DB_USER: nexus
           DB_PASSWORD: nexus_ci_password
-        run: cd backend && go run ./cmd/migrate up
+        run: |
+          cd backend && go run ./cmd/migrate up
+          # Os testes de falha (matriz de falhas, transação envenenada)
+          # geram milhares de ERROR esperados no log do Postgres, que o
+          # runner despeja no fim do job e escondem a saída do go test.
+          psql "$TEST_DATABASE_URL" -qc "ALTER SYSTEM SET log_min_messages = 'fatal'" \
+            -c "ALTER SYSTEM SET log_min_error_statement = 'panic'" -c "SELECT pg_reload_conf()"
 
       - name: Run Backend Tests (unit + integração com Postgres)
         # -p 1: os testes de integração tocam o mesmo TEST_DATABASE_URL e
@@ -78,7 +84,14 @@ jobs:
         # produzem nos módulos.
         run: |
           cd backend
-          go test -race -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+          go test -race -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./... 2>&1 | tee test.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Resumo das falhas"
+            grep -E '^(--- FAIL|FAIL|panic:)|_test\.go:[0-9]+:|WARNING: DATA RACE' test.log | head -100
+            echo "::endgroup::"
+            exit "$status"
+          fi
           go tool cover -func=coverage.out | tail -1
 
       - name: Coverage gate — 100% por módulo (internal/modules/* + auditoria)
