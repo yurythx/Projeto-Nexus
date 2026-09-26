@@ -30,9 +30,6 @@ const (
 	ActionLogout           = "logout"
 	ActionUserCreated      = "user.created"
 	ActionUserUpdated      = "user.updated"
-	ActionJobCreated       = "job.created"
-	ActionJobCompleted     = "job.completed"
-	ActionJobFailed        = "job.failed"
 	ActionModuleToggled    = "kernel.module.toggled"
 	ActionLGPDConsentGiven = "lgpd_consent_given"
 )

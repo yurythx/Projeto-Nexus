@@ -57,18 +57,6 @@ var (
 		Help: "Messages routed to a dead-letter queue after exhausting retries, by queue.",
 	}, []string{"queue"})
 
-	// --- Jobs ---
-	JobsProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "nexus_jobs_processed_total",
-		Help: "Jobs that reached a terminal state, by type and outcome (completed/failed/dead_letter).",
-	}, []string{"type", "status"})
-
-	JobsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "nexus_jobs_duration_seconds",
-		Help:    "Time from job creation to reaching a terminal state, by type.",
-		Buckets: prometheus.ExponentialBuckets(0.1, 2, 12), // 100ms .. ~200s
-	}, []string{"type"})
-
 	// --- WebSocket ---
 	WebSocketConnections = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "nexus_websocket_connections",

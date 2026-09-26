@@ -185,23 +185,6 @@ type AuditWORMConfig struct {
 	RetentionDays int    // AUDIT_WORM_RETENTION_DAYS (default 1825 = 5 anos)
 }
 
-// JobsConfig guarda as configurações de processamento assíncrono de jobs.
-type JobsConfig struct {
-	// StaleAfter: há quanto tempo sem atividade um job "processing" (ver
-	// jobs.Status) precisa estar pro sweeper (jobs.SweepStale) considerar
-	// ele órfão — um worker que morreu no meio do trabalho (crash, OOM,
-	// `docker compose restart`/`--force-recreate` no meio de um job, o
-	// host reiniciando) nunca chama MarkCompleted/MarkFailed, e como a
-	// mensagem do RabbitMQ que disparou o processamento já foi
-	// confirmada (ack) muito antes de o worker morrer, nenhuma
-	// redelivery chega nunca — sem um sweeper, esse job fica preso em
-	// "processing" pra sempre (ex.: um job de sincronização com um
-	// provedor externo preso indefinidamente após crash do worker).
-	// O default de 45min é conservador e cobre jobs de longa duração
-	// como uma sincronização completa com um provedor externo.
-	StaleAfter time.Duration
-}
-
 // WorkerConfig guarda as configurações do listener HTTP mínimo próprio do
 // cmd/worker, usado só para /health e /metrics (healthcheck do Docker +
 // scrape do Prometheus) — nunca para tráfego de negócio.
@@ -239,7 +222,6 @@ type Config struct {
 	Keycloak  KeycloakConfig
 	Security  SecurityConfig
 	LocalAuth LocalAuthConfig
-	Jobs      JobsConfig
 	Worker    WorkerConfig
 	Egress    EgressConfig
 	Signum    SignumConfig
@@ -443,9 +425,6 @@ func Load() (*Config, error) {
 			Enabled:       l.boolVal("LOCAL_AUTH_ENABLED", false),
 			PrivateKeyPEM: l.secret("LOCAL_AUTH_PRIVATE_KEY", false, ""),
 			TokenTTL:      l.durationVal("LOCAL_AUTH_TOKEN_TTL", false, time.Hour),
-		},
-		Jobs: JobsConfig{
-			StaleAfter: l.durationVal("JOB_STALE_AFTER", false, 45*time.Minute),
 		},
 		APIRateLimit: RateLimitConfig{
 			WindowSeconds: l.intVal("API_RATE_LIMIT_WINDOW_SECONDS", false, 60),

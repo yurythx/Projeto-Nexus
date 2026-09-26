@@ -13,7 +13,6 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/internal/platform/idempotency"
-	"github.com/yurythx/projeto-nexus/internal/platform/jobs"
 	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
 	"github.com/yurythx/projeto-nexus/internal/platform/messaging"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
@@ -39,7 +38,6 @@ func NewWorker(d *Dependencies) *Worker {
 			supervised("outbox_relay", d.Logger, relay.Run),
 			supervised("idempotency_cleanup", d.Logger, idempotency.Cleanup(d.DB)),
 			supervised("processed_events_cleanup", d.Logger, kernel.CleanupProcessedEvents(d.DB, d.Logger)),
-			supervised("jobs_stale_sweeper", d.Logger, jobs.SweepStale(d.DB, map[string]jobs.StaleJobHandler{}, d.Config.Jobs.StaleAfter, d.Logger)),
 			// LGPD art. 18, VI — anonimização a pedido do titular.
 			supervised("lgpd_erasure", d.Logger, d.LGPD.ErasureProcessor()),
 			// Cópia WORM diária da trilha (com os hashes da cadeia).
