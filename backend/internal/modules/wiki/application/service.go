@@ -94,6 +94,9 @@ func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) 
 	if slug == "" {
 		slug = modkit.Slugify(in.Title)
 	}
+	if slug == "" {
+		return domain.Page{}, apperrors.Validation("o título (ou o slug) precisa ter letras ou números para formar o endereço")
+	}
 	var out domain.Page
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		if in.ParentID != nil {
@@ -133,7 +136,14 @@ func (s *Service) Update(ctx context.Context, identity auth.Identity, id uuid.UU
 			if *in.ParentID == id {
 				return domain.ErrCycle
 			}
-			if desc, err := s.repo.IsDescendant(ctx, tx, *in.ParentID, id); err != nil || desc {
+			if _, err := s.repo.Get(ctx, tx, *in.ParentID); err != nil {
+				return err
+			}
+			desc, err := s.repo.IsDescendant(ctx, tx, *in.ParentID, id)
+			if err != nil {
+				return err
+			}
+			if desc {
 				return domain.ErrCycle
 			}
 		}
@@ -191,8 +201,11 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	}))
 }
 
-// Revisions lista o histórico.
+// Revisions lista o histórico (página inexistente: 404).
 func (s *Service) Revisions(ctx context.Context, id uuid.UUID) ([]domain.Revision, error) {
+	if _, err := s.repo.Get(ctx, s.pool, id); err != nil {
+		return nil, MapError(err)
+	}
 	return s.repo.Revisions(ctx, s.pool, id)
 }
 
