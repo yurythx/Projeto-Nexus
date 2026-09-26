@@ -30,17 +30,23 @@ const EventMessageCreated = "mercurio.message.created"
 // RoomTopic é o tópico WebSocket de uma sala.
 func RoomTopic(id uuid.UUID) string { return "mercurio:room:" + id.String() }
 
+// Publisher é a porta para o tempo real (implementada por *ws.Hub).
+type Publisher interface {
+	Publish(ctx context.Context, topic, frameType string, data any) error
+	DropTopic(topic string)
+}
+
 // Service implementa os casos de uso.
 type Service struct {
 	pool   *pgxpool.Pool
 	repo   domain.Repository
-	hub    *ws.Hub
+	hub    Publisher
 	outbox *outbox.Writer
 	logger *slog.Logger
 }
 
 // NewService cria o serviço.
-func NewService(pool *pgxpool.Pool, repo domain.Repository, hub *ws.Hub, ob *outbox.Writer, logger *slog.Logger) *Service {
+func NewService(pool *pgxpool.Pool, repo domain.Repository, hub Publisher, ob *outbox.Writer, logger *slog.Logger) *Service {
 	return &Service{pool: pool, repo: repo, hub: hub, outbox: ob, logger: logger}
 }
 
@@ -114,6 +120,7 @@ func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.
 		return domain.Room{}, apperrors.Validation("sala departamental precisa de grupo do AD ou departamento")
 	}
 	var out domain.Room
+	accessChanged := false
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		var before any
 		room := domain.Room{ID: id, Kind: in.Kind, Name: strings.TrimSpace(in.Name), Description: in.Description,
@@ -129,6 +136,7 @@ func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.
 				return apperrors.Conflict("salas diretas não são editáveis")
 			}
 			room.Kind, before = prev.Kind, prev
+			accessChanged = prev.ADGroup != room.ADGroup || !sameID(prev.DepartamentoID, room.DepartamentoID)
 		}
 		var err error
 		if out, err = s.repo.SaveRoom(ctx, tx, room, identity.UserID); err != nil {
@@ -139,10 +147,20 @@ func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.
 		}
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "mercurio.room.saved", "mercurio_room", out.ID.String(), before, out))
 	})
-	if err == nil && out.Archived {
+	// Arquivar ou mudar quem participa derruba as inscrições em tempo real:
+	// cada cliente precisa se reinscrever e passar de novo pela autorização
+	// (quem saiu da sala para de receber as mensagens na hora).
+	if err == nil && (out.Archived || accessChanged) {
 		s.hub.DropTopic(RoomTopic(out.ID))
 	}
 	return out, MapError(err)
+}
+
+func sameID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // Direct obtém/cria a conversa direta com outro usuário.
@@ -154,7 +172,12 @@ func (s *Service) Direct(ctx context.Context, identity auth.Identity, other uuid
 	if err != nil {
 		return domain.Room{}, MapError(err)
 	}
-	room, err := s.repo.DirectRoom(ctx, s.pool, identity.UserID, other, "DM")
+	var room domain.Room
+	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		room, err = s.repo.DirectRoom(ctx, tx, identity.UserID, other, "DM")
+		return err
+	})
 	if err != nil {
 		return domain.Room{}, err
 	}
@@ -179,12 +202,9 @@ func (s *Service) Send(ctx context.Context, identity auth.Identity, roomID uuid.
 	if body == "" || len([]rune(body)) > 4000 {
 		return domain.Message{}, apperrors.Validation("a mensagem deve ter de 1 a 4000 caracteres")
 	}
-	room, err := s.room(ctx, identity, roomID)
+	room, err := s.writable(ctx, identity, roomID)
 	if err != nil {
-		return domain.Message{}, MapError(err)
-	}
-	if room.Archived {
-		return domain.Message{}, apperrors.Conflict("sala arquivada: somente leitura")
+		return domain.Message{}, err
 	}
 	var out domain.Message
 	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
@@ -228,6 +248,9 @@ func (s *Service) Edit(ctx context.Context, identity auth.Identity, id uuid.UUID
 	if m.AuthorID != identity.UserID {
 		return domain.Message{}, MapError(domain.ErrForbidden)
 	}
+	if _, err := s.writable(ctx, identity, m.RoomID); err != nil {
+		return domain.Message{}, err
+	}
 	if m.Deleted || time.Since(m.CreatedAt) > domain.EditWindow {
 		return domain.Message{}, MapError(domain.ErrEditWindow)
 	}
@@ -249,6 +272,13 @@ func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UU
 	if moderation && !auth.HasPermission(identity, auth.PermMercurioManage) {
 		return MapError(domain.ErrForbidden)
 	}
+	// O autor apaga a própria mensagem enquanto participa de uma sala
+	// ativa; a moderação (mercurio:manage) atua também nas arquivadas.
+	if !moderation {
+		if _, err := s.writable(ctx, identity, m.RoomID); err != nil {
+			return err
+		}
+	}
 	out, err := s.repo.UpdateMessage(ctx, s.pool, id, "", true)
 	if err != nil {
 		return MapError(err)
@@ -259,6 +289,19 @@ func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UU
 	}
 	s.publish(ctx, RoomTopic(out.RoomID), "mercurio.message.deleted", map[string]string{"id": id.String(), "room_id": out.RoomID.String()})
 	return nil
+}
+
+// writable exige que identity participe da sala e que ela não esteja
+// arquivada (sala arquivada é somente leitura).
+func (s *Service) writable(ctx context.Context, identity auth.Identity, roomID uuid.UUID) (domain.Room, error) {
+	room, err := s.room(ctx, identity, roomID)
+	if err != nil {
+		return domain.Room{}, MapError(err)
+	}
+	if room.Archived {
+		return domain.Room{}, apperrors.Conflict("sala arquivada: somente leitura")
+	}
+	return room, nil
 }
 
 // MarkRead zera as não lidas da sala.

@@ -148,7 +148,7 @@ func (r *Repository) Message(ctx context.Context, db database.DBTX, id uuid.UUID
 func (r *Repository) UpdateMessage(ctx context.Context, db database.DBTX, id uuid.UUID, body string, deleted bool) (domain.Message, error) {
 	var err error
 	if deleted {
-		_, err = db.Exec(ctx, `UPDATE mercurio_messages SET deleted_at = now() WHERE id = $1`, id)
+		_, err = db.Exec(ctx, `UPDATE mercurio_messages SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`, id)
 	} else {
 		_, err = db.Exec(ctx, `UPDATE mercurio_messages SET body = $2, edited_at = now() WHERE id = $1 AND deleted_at IS NULL`, id, body)
 	}
