@@ -136,7 +136,7 @@ Negócio, evento (Transactional Outbox) e auditoria imutável commitam **na mesm
 
 ```go
 err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
-	if err := s.repo.CreateTx(ctx, tx, titulo); err != nil {
+	if err := s.repo.Insert(ctx, tx, titulo) // o repositório recebe o executor (database.DBTX), nunca abre tx própria; err != nil {
 		return err
 	}
 	if err := s.outbox.Write(ctx, tx, "financeiro.titulo.created", "financeiro_titulo", titulo.ID.String(), uuid.Nil, payload); err != nil {

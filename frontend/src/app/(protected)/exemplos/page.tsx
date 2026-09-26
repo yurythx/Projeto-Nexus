@@ -59,7 +59,7 @@ export default function ExemplosPage() {
           <CardContent className="pb-5">
             <form onSubmit={create} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <Input id="ex-title" name="title" label="Título *" required maxLength={200} autoComplete="off" />
-              <Input id="ex-desc" name="description" label="Descrição" maxLength={1000} autoComplete="off" />
+              <Input id="ex-desc" name="description" label="Descrição" maxLength={2000} autoComplete="off" />
               <Button type="submit" loading={pending}>
                 <Plus size={16} aria-hidden="true" className="mr-1" /> Criar
               </Button>

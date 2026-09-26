@@ -23,7 +23,7 @@ type Module struct {
 
 // New constrói o módulo.
 func New(deps modkit.Deps) *Module {
-	svc := application.NewService(deps.Pool, infrastructure.NewPostgresRepository(deps.Pool), deps.Outbox, deps.Logger)
+	svc := application.NewService(deps.Pool, infrastructure.NewPostgresRepository(), deps.Outbox, deps.Logger)
 	return &Module{deps: deps, handlers: transport.NewHandlers(svc, deps.Logger)}
 }
 

@@ -258,6 +258,7 @@ func TestExampleBlueprintHTTP(t *testing.T) {
 
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/examples", plain, `{"title":"x"}`)
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/examples", admin, `{"title":""}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/examples", admin, `{"title":"   "}`) // passa no validate, o domínio recusa
 	h.expect(http.StatusBadRequest, http.MethodPost, "/api/v1/examples", admin, `{"title":"x","campo_desconhecido":1}`)
 	item := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/examples", admin, `{"title":"Blueprint","description":"d"}`))
 	h.expect(http.StatusOK, http.MethodGet, "/api/v1/examples/"+item.ID, plain, "")
