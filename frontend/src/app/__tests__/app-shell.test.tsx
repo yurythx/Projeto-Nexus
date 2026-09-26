@@ -78,6 +78,10 @@ describe("layouts de servidor", () => {
     const plain = (await RootLayout({ children: null })) as unknown as { props: Record<string, unknown> };
     expect(plain.props["data-theme"]).toBeUndefined();
     expect(plain.props["data-high-contrast"]).toBeUndefined();
+    // sem tokens, <head> não recebe nó de texto vazio (quebrava a hidratação
+    // e a navegação do login para o dashboard)
+    const head = (plain.props.children as { type: string; props: { children: unknown } }[]).find((c) => c?.type === "head")!;
+    expect(head.props.children).toBeNull();
   });
 
   it("área autenticada: sem sessão (ou com erro) vai ao login; senão monta o shell", async () => {

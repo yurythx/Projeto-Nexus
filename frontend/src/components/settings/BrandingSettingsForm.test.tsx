@@ -1,10 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrandingProvider, useBranding } from "@/components/branding/BrandingContext";
 import { DEFAULT_BRANDING } from "@/components/branding/brandingConfig";
 import { fail, identityRoutes, mockBackend, renderApp } from "@/test/backend";
+
+const refreshBranding = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("./brandingActions", () => ({ refreshBranding }));
 
 import { BrandingSettingsForm } from "./BrandingSettingsForm";
 
@@ -32,6 +35,7 @@ function renderForm() {
 
 describe("BrandingSettingsForm", () => {
   beforeEach(() => {
+    refreshBranding.mockClear();
     for (const pair of document.cookie.split(";")) {
       const name = pair.split("=")[0]?.trim();
       if (name) document.cookie = `${name}=; path=/; max-age=0`;
@@ -63,6 +67,7 @@ describe("BrandingSettingsForm", () => {
     delete expected.support_hours;
     expect(sent).toEqual(expected);
     expect(await screen.findByText("Configurações salvas")).toBeInTheDocument();
+    expect(refreshBranding).toHaveBeenCalled();
     // o novo nome fica (antes, o render seguinte o trocava de volta)
     expect(screen.getByTestId("nome")).toHaveTextContent("Portal do Cidadão");
   });
@@ -78,7 +83,18 @@ describe("BrandingSettingsForm", () => {
     await userEvent.type(nome, " 2");
     await userEvent.click(screen.getByRole("button", { name: /Salvar alterações/ }));
     expect(await screen.findByText(/contraste entre/)).toBeInTheDocument();
+    expect(refreshBranding).not.toHaveBeenCalled();
     expect(screen.getByTestId("nome")).toHaveTextContent("Prefeitura X");
+  });
+
+  it("falha ao expirar o cache não desfaz a gravação", async () => {
+    refreshBranding.mockRejectedValueOnce(new Error("rede"));
+    mockBackend({ ...identityRoutes({ permissions: ["branding:manage"] }), "PUT v1/admin/branding": (req) => ({ data: req.body }) });
+    renderForm();
+    const nome = await screen.findByLabelText("Nome da Aplicação / Sistema *");
+    await waitFor(() => expect(nome).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: /Salvar alterações/ }));
+    expect(await screen.findByText("Configurações salvas")).toBeInTheDocument();
   });
 
   it("restaurar padrões grava a identidade padrão e limpa os tokens", async () => {

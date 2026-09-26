@@ -16,6 +16,8 @@ import { useNexus } from "@/lib/nexus/NexusProvider";
 import type { Branding } from "@/lib/nexus/types";
 import { safeResourceUrl } from "@/lib/security/safe-url";
 
+import { refreshBranding } from "./brandingActions";
+
 /** Formato do PUT /admin/branding. Os design tokens de cor não são
  * editados aqui e seguem como estão (o reset os limpa). */
 function toApi(c: SystemBrandingConfig): Omit<Branding, "updated_at"> {
@@ -67,6 +69,9 @@ export function BrandingSettingsForm() {
     try {
       const { data } = await apiClient.put<Branding>("v1/admin/branding", toApi(config));
       const saved = mergeServerBranding(data, branding);
+      // Expira o cache do servidor; se falhar, o valor novo aparece quando
+      // o cache de 60s vencer (a gravação em si já deu certo).
+      await refreshBranding().catch(() => undefined);
       updateBranding(saved);
       setForm(saved);
       showToast(success);
@@ -87,7 +92,7 @@ export function BrandingSettingsForm() {
     e.preventDefault();
     void persist(form, {
       title: "Configurações salvas",
-      description: "A identidade visual foi atualizada para todos os usuários (as páginas abertas atualizam em até 1 minuto).",
+      description: "A identidade visual foi atualizada para todos os usuários.",
       tone: "success",
     });
   };

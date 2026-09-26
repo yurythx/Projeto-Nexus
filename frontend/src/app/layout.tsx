@@ -6,6 +6,7 @@ import "./globals.css";
 
 import { BRANDING_COOKIE, mergeServerBranding, parseBrandingCookie, tokensToCss } from "@/components/branding/brandingConfig";
 import { publicGetOr } from "@/lib/api/publicServer";
+import { BRANDING_TAG } from "@/lib/branding/tag";
 import type { Branding } from "@/lib/nexus/types";
 import { Providers } from "./providers";
 
@@ -35,7 +36,7 @@ const geistMono = localFont({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const b = await publicGetOr<Branding | null>("branding", null, 60);
+  const b = await publicGetOr<Branding | null>("branding", null, 60, [BRANDING_TAG]);
   const name = b?.app_name || "Projeto Nexus";
   return {
     title: { default: name, template: `%s — ${name}` },
@@ -50,7 +51,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   // Identidade da organização (API, cache de 60s) + preferências e-MAG do
   // visitante (cookie) — aplicadas em <html> ANTES do 1º paint.
-  const api = await publicGetOr<Branding | null>("branding", null, 60);
+  const api = await publicGetOr<Branding | null>("branding", null, 60, [BRANDING_TAG]);
   const branding = mergeServerBranding(api, parseBrandingCookie(cookieStore.get(BRANDING_COOKIE)?.value));
   const tokenCss = tokensToCss(branding.tokens);
 
@@ -62,7 +63,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       data-font-scale={String(branding.fontSizeScale || 100)}
       className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>{tokenCss && <style id="nexus-white-label">{tokenCss}</style>}</head>
+      {/* Ternário, não `&&`: com tokenCss === "" o `&&` rendia um nó de texto
+          vazio dentro de <head>, a hidratação falhava (React #418) e a
+          navegação seguinte quebrava (removeChild em null) — o login não
+          chegava ao dashboard numa instalação sem tokens de cor. */}
+      <head>{tokenCss ? <style id="nexus-white-label">{tokenCss}</style> : null}</head>
       <body className="flex min-h-full flex-col">
         <Providers initialBranding={branding}>{children}</Providers>
       </body>
