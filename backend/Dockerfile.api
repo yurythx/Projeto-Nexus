@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- builder ----
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /src
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -10,7 +10,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate
 
 # ---- runtime ----
 FROM debian:bookworm-slim AS runtime
@@ -20,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 USER nix
 WORKDIR /app
 COPY --from=builder --chown=nix:nix /out/api ./api
+# Migrations (goose, SQL embutido no binário): usado pelo serviço one-shot
+# `migrate` do docker-compose, que roda antes da API e do worker.
+COPY --from=builder --chown=nix:nix /out/migrate ./migrate
 # docs/openapi.json é servido em runtime por GET /openapi.json e /docs
 # (router.go, http.ServeFile com caminho relativo ao WORKDIR) — sem esta
 # linha, o binário sobe normalmente mas as duas rotas sempre devolviam 404

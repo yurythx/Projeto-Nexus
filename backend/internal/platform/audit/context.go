@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -25,11 +26,37 @@ func FromRequest(r *http.Request) Entry {
 	return e
 }
 
-// FromContext preenche ator, contexto organizacional e correlation id a
-// partir do context (sem IP/user agent) — para casos de uso da camada de
-// aplicação que recebem só o ctx.
+type originKey struct{}
+
+type origin struct{ ip, userAgent string }
+
+// WithOrigin guarda no context o IP de origem e o user agent da requisição
+// — a proveniência que a skill exige em TODA entrada de auditoria, mesmo
+// nas gravadas pela camada de aplicação, que só recebe o ctx.
+func WithOrigin(ctx context.Context, ip, userAgent string) context.Context {
+	return context.WithValue(ctx, originKey{}, origin{ip: ip, userAgent: userAgent})
+}
+
+// CaptureOrigin é o middleware HTTP que chama WithOrigin. Deve rodar
+// depois de httpserver.TrustedRealIP (RemoteAddr já é o IP real).
+func CaptureOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(ip); err == nil {
+			ip = host
+		}
+		next.ServeHTTP(w, r.WithContext(WithOrigin(r.Context(), ip, r.UserAgent())))
+	})
+}
+
+// FromContext preenche ator, contexto organizacional, correlation id e a
+// origem (IP/user agent, quando CaptureOrigin rodou) a partir do context —
+// para casos de uso da camada de aplicação que recebem só o ctx.
 func FromContext(ctx context.Context) Entry {
 	var e Entry
+	if o, ok := ctx.Value(originKey{}).(origin); ok {
+		e.IPAddress, e.UserAgent = o.ip, o.userAgent
+	}
 	if cid := logging.CorrelationID(ctx); cid != "" {
 		if id, err := uuid.Parse(cid); err == nil {
 			e.CorrelationID = &id

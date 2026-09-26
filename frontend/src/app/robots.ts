@@ -2,20 +2,18 @@ import type { MetadataRoute } from "next";
 
 import { APP_URL } from "@/lib/env";
 
-// Disallow explícito das seções autenticadas — um crawler nunca passa da
-// tela de login de qualquer forma (proxy.ts redireciona), mas listar
-// isso aqui evita tentativa de rastreio/ruído de log por um bot bem-
-// comportado, e deixa a intenção (só / e /sobre são públicas) explícita
-// em vez de implícita.
-const baseUrl = APP_URL;
-
+// Só o site institucional é público; a área autenticada (app/(protected))
+// fica fora do rastreio. A verificação de assinatura tem noindex na página.
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/sobre", "/padroes", "/acessibilidade", "/privacidade"],
-      disallow: ["/dashboard", "/integracoes", "/configuracao", "/seguranca", "/login"],
+      allow: ["/", "/sobre", "/servicos", "/setores", "/eventos", "/contato", "/transparencia", "/acessibilidade", "/privacidade"],
+      disallow: [
+        "/login", "/dashboard", "/configuracao", "/monitoramento", "/auditoria", "/perfil", "/busca", "/mercurio", "/blog",
+        "/wiki", "/agenda", "/diretorio", "/arquivos", "/signum", "/tramite", "/gestao", "/exemplos", "/verificar/",
+      ],
     },
-    sitemap: `${baseUrl}/sitemap.xml`,
+    sitemap: `${APP_URL}/sitemap.xml`,
   };
 }

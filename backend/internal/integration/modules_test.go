@@ -98,6 +98,9 @@ func setup(t *testing.T) *env {
 
 	iamSvc := iamApp.NewService(pool, iamInfra.NewRepository(), nil)
 	suffix := uuid.NewString()[:8]
+	// A montagem da estrutura é feita por um administrador (o IAM recusa
+	// conceder permissões que o ator não possui).
+	e.ctx = auth.WithIdentity(e.ctx, auth.Identity{Username: "bootstrap", Roles: []string{auth.RoleAdmin}})
 
 	ent, err := iamSvc.SaveEntidade(e.ctx, iamDomain.Entidade{Nome: "Entidade " + suffix, Sigla: "ENT", Ativo: true})
 	must(t, err)
@@ -332,7 +335,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if len(res) != 1 {
 			t.Fatalf("busca deveria respeitar a ACL e achar 1 arquivo, veio %d", len(res))
 		}
-		must(t, svc.DeleteFolder(ctx, e.identity, root.ID))
+		must(t, svc.DeleteFolder(ctx, e.identity, root.ID, true))
 		if _, err := e.store.Stat(ctx, bucket, up.Upload.ObjectKey); err == nil {
 			t.Fatal("objeto deveria ter saído do storage junto com a pasta")
 		}
@@ -531,6 +534,15 @@ func TestPluginsEndToEnd(t *testing.T) {
 		must(t, err)
 		if total != 1 || len(dels) != 1 {
 			t.Fatalf("1 entrega esperada (padrão blog.# + dedup), veio %d", total)
+		}
+		// Isolamento: entregas pendentes deixadas por execuções anteriores no
+		// mesmo banco (destinos de servidores de teste já encerrados) não
+		// podem disputar o lote do worker com a entrega deste teste.
+		if _, err := e.pool.Exec(ctx, `UPDATE egress_targets SET active = false WHERE id <> $1`, target.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.pool.Exec(ctx, `UPDATE egress_deliveries SET status = 'dead' WHERE target_id <> $1 AND status IN ('pending','failed')`, target.ID); err != nil {
+			t.Fatal(err)
 		}
 		runCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 		_ = svc.RunDeliveries(runCtx)

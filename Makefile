@@ -49,7 +49,7 @@ frontend-build:
 
 test: backend-test frontend-test ## Roda as suítes de teste do backend e do frontend
 
-backend-test:
+backend-test: 
 	cd backend && go test ./... -p 1
 
 frontend-test:

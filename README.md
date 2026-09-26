@@ -36,7 +36,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 
 ```text
 .
-├── backend/                   # ⚙️ Backend em Go (1.25+) — Arquitetura Microkernel
+├── backend/                   # ⚙️ Backend em Go (1.26+) — Arquitetura Microkernel
 │   ├── cmd/
 │   │   ├── api/               # API REST e Servidor WebSocket
 │   │   ├── worker/            # Processador background RabbitMQ / Outbox
@@ -60,7 +60,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 │   │   ├── hooks/             # Custom React Hooks
 │   │   ├── lib/               # Clientes API / WS / Auth
 │   │   └── types/             # TypeScript DTOs
-├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, MinIO, API, Worker, Frontend)
+├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, Redis, MinIO, API, Worker, Frontend)
 ├── docker-compose.dev.yml     # Exposição de portas em desenvolvimento
 └── Makefile                   # Atalhos de build, testes, lint e migrations
 ```
@@ -86,7 +86,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 | Signum | Plug-in | `/signum` | `/verificar/{id}` |
 | Trâmite | Plug-in | `/tramite` | — |
 
-Os plug-ins são ativados e desativados em runtime em **Configurações → Módulos**: o menu, as páginas públicas e o sitemap acompanham o estado do Kernel.
+Os plug-ins são ativados e desativados em runtime em **Configurações → Módulos**: o menu, as páginas públicas e o sitemap acompanham o estado do Kernel. A tela mostra o grafo de dependências (hoje, **Trâmite depende de Signum**): desligar um módulo pede para desligar antes quem depende dele, e ligar pede para ligar antes as dependências.
 
 ---
 
@@ -94,7 +94,7 @@ Os plug-ins são ativados e desativados em runtime em **Configurações → Mód
 
 ### Pré-requisitos
 - Docker & Docker Compose
-- Go 1.25+ (opcional para rodar local fora do container)
+- Go 1.26+ (opcional para rodar local fora do container)
 - Node.js 20+ (opcional para rodar frontend fora do container)
 
 ### 1. Configurar Variáveis de Ambiente
@@ -129,18 +129,21 @@ make seed-admin
 
 ## 🧪 Testes e Qualidade de Código
 
-Para executar as suítes de teste automatizadas do backend e frontend:
-
 ```bash
-# Executar todos os testes
-make test
+make test                 # backend + frontend
 
-# Testes do Backend
-cd backend && go test ./... -p 1
+# Backend com os testes de integração (Postgres real, como no CI)
+cd backend
+TEST_DATABASE_URL="postgres://nexus:SENHA@localhost:5432/nexus_test?sslmode=disable" \
+  go test -race -p 1 -coverpkg=./internal/... ./...
 
-# Testes do Frontend
-cd frontend && npm test
+cd frontend && npm test   # Vitest + Testing Library
 ```
+
+- **Todos os módulos** são exercitados pela API real (`backend/internal/app/*_http_test.go`): permissões, validação, fluxos e auditoria.
+- **Ativar/desativar**: um teste descobre todas as rotas de cada plug-in e exige `404 MODULE_DISABLED` com o módulo desligado; o grafo de dependências é aplicado e exibido.
+- **Contrato**: `docs/openapi.yaml` é verificado contra as rotas montadas.
+- Detalhes em [`docs/GUIDE_DESENVOLVEDOR.md`](docs/GUIDE_DESENVOLVEDOR.md#-6-testes) e no [ADR 008](docs/adr/008-kernel-grafo-de-modulos-e-estrategia-de-testes.md).
 
 ---
 

@@ -8,6 +8,14 @@ import { safeResourceUrl } from "@/lib/security/safe-url";
 // citações, blocos de código, **negrito**, *itálico*, `código` e links
 // (só http/https/relativos, via safeResourceUrl).
 
+/** Link permitido no Markdown: caminho interno ("/wiki/x", nunca
+ * "//host") ou URL absoluta http/https. javascript:, data: etc. viram
+ * texto. */
+export function safeMarkdownHref(href: string): string | null {
+  if (/^\/(?![\/\\])/.test(href)) return href;
+  return safeResourceUrl(href, { allowHttp: true });
+}
+
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\))/g;
@@ -22,7 +30,7 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (tok.startsWith("`")) out.push(<code key={key} className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[0.9em]">{tok.slice(1, -1)}</code>);
     else if (tok.startsWith("[")) {
       const [, label, href] = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(tok) ?? [];
-      const safe = href ? safeResourceUrl(href) : null;
+      const safe = href ? safeMarkdownHref(href) : null;
       out.push(
         safe ? (
           <a key={key} href={safe} className="text-primary underline underline-offset-2" rel="noopener noreferrer" target={safe.startsWith("/") ? undefined : "_blank"}>

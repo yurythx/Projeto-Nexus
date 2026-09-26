@@ -2,7 +2,6 @@ package lgpd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -76,12 +75,12 @@ func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := uuid.Parse(identity.Subject)
+	// Local ou federado (Keycloak/AD): o id interno vem do IAM. Antes, um
+	// subject não-UUID (todo usuário do Keycloak) caía num "accepted: true"
+	// fixo — o consentimento nunca era pedido nem registrado.
+	userID, err := s.resolveUserID(r.Context(), identity)
 	if err != nil {
-		httputil.WriteOK(w, map[string]any{
-			"accepted":     true,
-			"term_version": CurrentTermVersion,
-		})
+		httputil.WriteError(w, r, s.logger, err)
 		return
 	}
 
@@ -107,16 +106,26 @@ func (s *Service) handleAccept(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TermVersion string `json:"term_version"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TermVersion == "" {
+	if r.ContentLength != 0 {
+		if err := httputil.DecodeJSON(w, r, &req); err != nil {
+			httputil.WriteError(w, r, s.logger, err)
+			return
+		}
+	}
+	// O consentimento é sempre à versão VIGENTE: aceitar um texto antigo
+	// (ou inventado pelo cliente) não pode virar prova de consentimento.
+	if req.TermVersion == "" {
 		req.TermVersion = CurrentTermVersion
 	}
+	if req.TermVersion != CurrentTermVersion {
+		httputil.WriteError(w, r, s.logger, apperrors.Conflict(
+			"os termos foram atualizados — recarregue e leia a versão "+CurrentTermVersion).WithCode("TERM_OUTDATED"))
+		return
+	}
 
-	userID, err := uuid.Parse(identity.Subject)
+	userID, err := s.resolveUserID(r.Context(), identity)
 	if err != nil {
-		httputil.WriteOK(w, map[string]any{
-			"status":       "ok",
-			"term_version": req.TermVersion,
-		})
+		httputil.WriteError(w, r, s.logger, err)
 		return
 	}
 

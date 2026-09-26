@@ -36,6 +36,15 @@ func wrap(op string, err error) error {
 	}
 }
 
+// wrapDelete: numa exclusão, violação de FK significa "ainda em uso"
+// (ON DELETE RESTRICT — migration 000121), não escopo inválido.
+func wrapDelete(op string, err error) error {
+	if err != nil && database.IsForeignKeyViolation(err) {
+		return domain.ErrInUse
+	}
+	return wrap(op, err)
+}
+
 // ---------------------------------------------------------------- entidades
 
 const entidadeCols = `id, nome, sigla, slug, documento, ativo, created_at, updated_at`
@@ -82,7 +91,7 @@ func (r *Repository) DeleteEntidade(ctx context.Context, db database.DBTX, id uu
 	if err == nil && tag.RowsAffected() == 0 {
 		return domain.ErrNotFound
 	}
-	return wrap("delete entidade", err)
+	return wrapDelete("delete entidade", err)
 }
 
 // ----------------------------------------------------------------- unidades
@@ -150,7 +159,7 @@ func (r *Repository) DeleteUnidade(ctx context.Context, db database.DBTX, id uui
 	if err == nil && tag.RowsAffected() == 0 {
 		return domain.ErrNotFound
 	}
-	return wrap("delete unidade", err)
+	return wrapDelete("delete unidade", err)
 }
 
 // ------------------------------------------------------------ departamentos
@@ -202,7 +211,7 @@ func (r *Repository) DeleteDepartamento(ctx context.Context, db database.DBTX, i
 	if err == nil && tag.RowsAffected() == 0 {
 		return domain.ErrNotFound
 	}
-	return wrap("delete departamento", err)
+	return wrapDelete("delete departamento", err)
 }
 
 // ------------------------------------------------------------------ perfis
@@ -251,7 +260,7 @@ func (r *Repository) DeletePerfil(ctx context.Context, db database.DBTX, id uuid
 	if err == nil && tag.RowsAffected() == 0 {
 		return domain.ErrSystemProfile
 	}
-	return wrap("delete perfil", err)
+	return wrapDelete("delete perfil", err)
 }
 
 // ------------------------------------------------------- escopos (rótulos)

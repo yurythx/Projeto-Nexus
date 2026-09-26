@@ -8,8 +8,24 @@ on:
 
 jobs:
   backend-ci:
-    name: ⚙️ Backend (Go 1.25 + Security + Tests)
+    name: ⚙️ Backend (Go 1.26 + Security + Tests)
     runs-on: ubuntu-latest
+    # Postgres real: os testes de integração (Kernel, todos os plugins pela
+    # API, auditoria encadeada, outbox, idempotência) pulam sem
+    # TEST_DATABASE_URL — sem este serviço eles nunca rodariam no CI.
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus_ci_password
+          POSTGRES_DB: nexus_test
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd "pg_isready -U nexus -d nexus_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: "postgres://nexus:nexus_ci_password@localhost:5432/nexus_test?sslmode=disable"
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -17,7 +33,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          # Versão vem do go.mod (diretiva toolchain): CI, Docker e máquinas
+          # locais compilam com o mesmo patch — o govulncheck acusa CVEs da
+          # stdlib de patches antigos.
+          go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       - name: Install SAST tooling (govulncheck + staticcheck + gosec)
@@ -43,10 +62,24 @@ jobs:
       - name: go vet
         run: cd backend && go vet ./...
 
-      - name: Run Backend Unit Tests
-        # -p 1: os testes de integração (audit, example, ratelimit) tocam
-        # o mesmo TEST_DATABASE_URL e não podem rodar em paralelo.
-        run: cd backend && go test -race -p 1 -coverprofile=coverage.out ./...
+      - name: Apply migrations (banco de teste)
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: nexus_test
+          DB_USER: nexus
+          DB_PASSWORD: nexus_ci_password
+        run: cd backend && go run ./cmd/migrate up
+
+      - name: Run Backend Tests (unit + integração com Postgres)
+        # -p 1: os testes de integração tocam o mesmo TEST_DATABASE_URL e
+        # não podem rodar em paralelo. -coverpkg conta também a cobertura
+        # que os testes de sistema (internal/app, internal/integration)
+        # produzem nos módulos.
+        run: |
+          cd backend
+          go test -race -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
 
       - name: Verify Go Build (API & Worker)
         run: |
@@ -75,7 +108,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version-file: backend/go.mod
+          cache: false
 
       - name: Install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@latest
@@ -138,6 +172,10 @@ jobs:
           cp .env.example .env
           mkdir -p secrets
           openssl genrsa -out secrets/local_auth_private_key.pem 2048
+          # O container roda como usuário não-root (nix), com outro uid:
+          # sem leitura para "outros" a API/worker falham com
+          # "permission denied" (mesmo passo do README).
+          chmod 644 secrets/local_auth_private_key.pem
 
       - name: Build all images
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml build
@@ -147,7 +185,7 @@ jobs:
 
       - name: Wait for every service to report healthy
         run: |
-          services="postgres rabbitmq minio backend-api backend-worker frontend"
+          services="postgres rabbitmq redis minio backend-api backend-worker frontend"
           deadline=$((SECONDS + 180))
           for svc in $services; do
             while true; do

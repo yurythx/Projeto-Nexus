@@ -37,6 +37,9 @@ type Deps struct {
 	// InvalidatePermissions avisa o IAM (todas as réplicas) que perfis,
 	// lotações ou mapeamentos mudaram.
 	InvalidatePermissions func(ctx context.Context)
+	// ResetLoginLockout limpa o bloqueio progressivo de login (Redis) de um
+	// usuário — usado pelo desbloqueio administrativo do IAM.
+	ResetLoginLockout func(ctx context.Context, username string) error
 }
 
 var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)

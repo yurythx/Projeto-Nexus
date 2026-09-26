@@ -63,6 +63,10 @@ func NewRouter(d *Dependencies) chi.Router {
 	outboxStats := outbox.NewStatsHandlers(d.OutboxStats, d.Logger)
 
 	r.Route("/api/v1", func(api chi.Router) {
+		// IP real + user agent no context: toda auditoria gravada pelos
+		// casos de uso (audit.Meta) carrega a proveniência completa.
+		api.Use(audit.CaptureOrigin)
+
 		// ---------------- grupo PÚBLICO (visitante anônimo) ----------------
 		api.Group(func(pub chi.Router) {
 			pub.Use(httpserver.RateLimit(d.Logger, d.RateLimiters.Public, httpserver.ClientIPKey))

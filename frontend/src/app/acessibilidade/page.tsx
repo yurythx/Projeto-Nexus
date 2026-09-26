@@ -240,7 +240,7 @@ export default async function AccessibilityPage() {
             <dd className="text-muted leading-relaxed">
               Barreiras de acessibilidade podem ser relatadas pelos canais de atendimento da
               Prefeitura (ver rodapé). Detalhes técnicos dos parâmetros aplicados em{" "}
-              <Link href="/padroes" className="text-primary hover:underline">Padrões &amp; Parâmetros</Link>.
+              <Link href="/sobre" className="text-primary hover:underline">Sobre &amp; Conformidade</Link>.
             </dd>
           </dl>
         </section>

@@ -9,7 +9,8 @@ Bem-vindo ao guia de desenvolvimento e arquitetura do **Projeto Nexus**. Este do
 O **Projeto Nexus** é uma plataforma corporativa modular construída segundo o padrão de **Arquitetura Microkernel (Plug-in Architecture)** combinado a um **Monólito Modular & Clean Architecture**:
 
 - **Core System / Kernel (`internal/platform/`)**: Infraestrutura central reutilizável que fornece os serviços fundamentais da plataforma:
-  - Autenticação OIDC Gov.br / Local RSA.
+  - **Kernel de plug-ins** (`internal/platform/kernel`): registro (`RegisterModule`), ciclo de vida em runtime, grafo de dependências, Guard HTTP, supervisão de workers/consumidores e tópicos WebSocket.
+  - IAM: Keycloak dedicado (OIDC, federação LDAP/LDAPS com o Active Directory) e fallback local RS256.
   - Segurança HTTP (Headers OWASP, CSP Nonce, Rate Limiter).
   - Privacidade LGPD (Mascaramento PII em logs e consentimento).
   - Resiliência e Concorrência (Transactional Outbox, RabbitMQ com DLQ, Idempotência, Circuit Breaker).
@@ -17,7 +18,8 @@ O **Projeto Nexus** é uma plataforma corporativa modular construída segundo o 
   - Auditoria Imutável (PostgreSQL Append-Only).
 - **Plug-ins / Módulos de Negócio (`internal/modules/`)**: Componentes de domínio de negócio totalmente isolados e desacoplados:
   - Cada plug-in possui sua própria divisão Clean Architecture (`domain`, `application`, `infrastructure`, `transport`).
-  - São acoplados ao Kernel via injeção de dependências e registrados dinamicamente no roteador com controle por Feature Flags (`feature_flags`).
+  - Declaram um **Manifest** (chave, dependências, permissões, ícone, rota) e são registrados no Kernel (`internal/app/modules.go`); a ativação/desativação acontece em runtime em **Configurações → Módulos** — rotas, workers, filas, WebSocket e busca acompanham na hora, sem reiniciar.
+  - Nunca importam outro plug-in: colaborações (ex.: Trâmite → Signum) passam por portas ligadas em `internal/app` e a dependência é declarada em `DependsOn`.
 - **Frontend (Next.js 16 App Router & React 19)**:
   - Componentes acessíveis em conformidade com o **e-MAG 2.0 / WCAG 2.1 AA**.
   - Estilização Tailwind CSS v4 com suporte White-Label dinâmico (`BrandingProvider`).
@@ -63,15 +65,16 @@ Todo código desenvolvido na plataforma deve obedecer estritamente aos 5 pilares
   ```
 - **Aceite de Termos**: O componente `<LGPDConsentModal />` verifica automaticamente o aceite formal dos termos pelo usuário e registra o evento auditável na tabela imutável `audit_logs`.
 
-### 3.3. Autenticação e Níveis Gov.br (Portaria SGD/SEDGG Nº 2.154)
-- O sistema aceita autenticação via OIDC Keycloak / Gov.br e Login Local.
-- As identidades autenticadas contêm o nível de confiabilidade do Gov.br (`BRONZE`, `PRATA`, `OURO`):
+### 3.3. Identidade e autorização (Keycloak + AD, RBAC multi-escopo)
+- Autenticação por **Keycloak dedicado** (OIDC, tokens RS256 validados localmente via JWKS com cache e rotação) com federação do **Active Directory**; login local RS256 como contingência.
+- O IAM resolve, a cada requisição (com cache invalidado entre réplicas), as **permissões efetivas** (`recurso:ação`, curingas `recurso:*` e `*`) a partir das **lotações** manuais e do **mapeamento de grupos do AD**, cada um num escopo (Entidade → Unidade → Departamento):
   ```go
-  identity, ok := auth.IdentityFromContext(ctx)
-  if identity.HasGovBRLevelAtLeast(auth.GovBRLevelPrata) {
-      // Permitir ação sensível
-  }
+  r.With(auth.RequirePermission(logger, "financeiro:manage")).Post("/financeiro/titulos", h.Create)
+
+  identity, _ := auth.IdentityFromContext(ctx)
+  if auth.HasPermission(identity, "financeiro:manage") { /* ... */ }
   ```
+- **Ninguém concede o que não possui**: o IAM recusa (403) criar perfil, lotar ou mapear grupo do AD com permissões que o administrador não tem, e só quem tem acesso total concede o papel `nexus-admin`.
 
 ---
 
@@ -144,3 +147,35 @@ em `docs/ROADMAP_CONFORMIDADE.md`.
 | `make migrate-up` | Executa as migrations de banco pendentes via Goose |
 | `make migrate-redo` | Testa a reversibilidade: up → down-to 0 → up |
 | `make seed-admin` | Cria ou reseta a conta do administrador local com senha segura |
+
+---
+
+## 🧪 6. Testes
+
+A suíte cobre três níveis, todos rodando no CI (job de backend com Postgres 16 real):
+
+| Nível | Onde | O que garante |
+| :--- | :--- | :--- |
+| Unidade | `*_test.go` junto do código; `frontend/src/**/*.test.ts(x)` | Regras de domínio, Kernel (grafo, cascata, réplicas), mascaramento PII, componentes e acessibilidade |
+| Sistema (API real) | `backend/internal/app/*_http_test.go` | Cada módulo pela API completa (autenticação, IAM, Guard, auditoria, outbox): permissões (403), validação (422), fluxos felizes e de erro |
+| Ativação de módulos | `internal/app/modules_toggle_test.go` | Para **cada** plug-in, todas as rotas descobertas automaticamente respondem `404 MODULE_DISABLED` quando desligado e voltam ao religar; dependências aplicadas nos dois sentidos |
+| Contrato | `internal/app/openapi_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas |
+
+Rodando localmente (os testes de integração pulam sem banco):
+
+```bash
+# Postgres de teste com as migrations
+createdb nexus_test
+DB_HOST=localhost DB_PORT=5432 DB_NAME=nexus_test DB_USER=nexus DB_PASSWORD=... go run ./cmd/migrate up
+
+cd backend
+TEST_DATABASE_URL="postgres://nexus:...@localhost:5432/nexus_test?sslmode=disable" \
+  go test -race -p 1 -coverpkg=./internal/... ./...
+
+# Novo endpoint? Regenere o contrato (preserva o que já foi descrito à mão):
+UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter
+
+cd ../frontend && npm test
+```
+
+Convenções: todo endpoint novo ganha teste do caminho negativo (403 sem a permissão) e, se for mutação, confere a auditoria/outbox; todo plug-in novo entra automaticamente no teste de ativação.

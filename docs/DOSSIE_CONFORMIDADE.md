@@ -6,7 +6,7 @@ homologação junto à Secretaria de Governo Digital.
 
 - **Última atualização:** 2026-09-09
 - **Branch de referência:** `feat/conformidade-roadmap`
-- **Escopo:** backend Go 1.25 (microkernel) + frontend Next.js 16
+- **Escopo:** backend Go 1.26 (microkernel) + frontend Next.js 16
 
 ---
 

@@ -105,7 +105,7 @@ func (h *Handlers) UpdateFolder(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 	id, err := httputil.UUIDParam(r, "id")
 	if err == nil {
-		err = h.svc.DeleteFolder(r.Context(), identity(r), id)
+		err = h.svc.DeleteFolder(r.Context(), identity(r), id, r.URL.Query().Get("recursive") == "true")
 	}
 	if err != nil {
 		h.fail(w, r, err)

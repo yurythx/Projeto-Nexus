@@ -84,6 +84,10 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if id == uuid.Nil {
+		httputil.WriteCreated(w, t)
+		return
+	}
 	httputil.WriteOK(w, t)
 }
 

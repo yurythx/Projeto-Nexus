@@ -176,6 +176,15 @@ func (r *Repository) SaveFolder(ctx context.Context, db database.DBTX, f domain.
 
 // DeleteFolder apaga a pasta (cascata no banco) e devolve as chaves dos
 // objetos que precisam sair do MinIO.
+// FolderEmpty informa se a pasta não tem subpastas nem arquivos.
+func (r *Repository) FolderEmpty(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	var busy bool
+	err := db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM files_folders WHERE parent_id = $1)
+		    OR EXISTS (SELECT 1 FROM files_objects WHERE folder_id = $1)`, id).Scan(&busy)
+	return !busy, wrap(err)
+}
+
 func (r *Repository) DeleteFolder(ctx context.Context, db database.DBTX, id uuid.UUID) ([]string, error) {
 	rows, err := db.Query(ctx, `
 		WITH RECURSIVE sub AS (

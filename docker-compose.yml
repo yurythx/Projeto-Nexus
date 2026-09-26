@@ -6,6 +6,7 @@ volumes:
   postgres_data: null
   rabbitmq_data: null
   minio_data: null
+  redis_data: null
 services:
   postgres:
     image: postgres:16-bookworm
@@ -50,7 +51,10 @@ services:
       retries: 5
       start_period: 30s
   minio:
-    image: minio/minio:latest
+    # minio/minio saiu do Docker Hub e a MinIO parou de publicar imagens da
+    # edição comunitária. pgsty/minio é um fork mantido e compatível (mesmo
+    # entrypoint, inclui curl/mc). Versão fixada para builds reproduzíveis.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -69,6 +73,52 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  redis:
+    # Cache do resolvedor de permissões (IAM), rate limiting, lockout
+    # progressivo de login e idempotência — REDIS_URL é obrigatório no
+    # backend (config.Load recusa subir sem ele).
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+    - sh
+    - -c
+    - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    volumes:
+    - redis_data:/data
+    networks:
+    - nexus_internal
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+  migrate:
+    # One-shot: aplica as migrations (goose) antes da API e do worker, que
+    # não sobem com schema desatualizado (o Kernel lê system_modules no boot).
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    entrypoint:
+    - ./migrate
+    - up
+    restart: "no"
+    env_file:
+    - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+    networks:
+    - nexus_internal
+    depends_on:
+      postgres:
+        condition: service_healthy
   backend-api:
     build:
       context: ./backend
@@ -82,6 +132,7 @@ services:
       DB_PORT: 5432
       DB_HOST: postgres
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nexus}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nexus}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
@@ -97,7 +148,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -124,6 +179,7 @@ services:
       DB_PORT: 5432
       DB_HOST: postgres
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-nexus}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/${RABBITMQ_DEFAULT_VHOST:-nexus}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
@@ -137,7 +193,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:

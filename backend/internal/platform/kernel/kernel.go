@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -232,21 +233,13 @@ func (k *Kernel) SetEnabled(ctx context.Context, key string, enabled bool, actor
 		return ErrCoreModule
 	}
 	if enabled {
-		for _, dep := range m.DependsOn {
-			if !k.enabledLocked(dep, 0) {
-				k.mu.RUnlock()
-				return fmt.Errorf("%w: ative antes %q", ErrDependencyMissing, dep)
-			}
+		if missing := k.inactiveDepsLocked(m); len(missing) > 0 {
+			k.mu.RUnlock()
+			return fmt.Errorf("%w: ative antes %s", ErrDependencyMissing, quoteList(missing))
 		}
-	} else {
-		for otherKey, other := range k.plugins {
-			for _, dep := range other.Manifest().DependsOn {
-				if dep == key && k.state[otherKey] {
-					k.mu.RUnlock()
-					return fmt.Errorf("%w: desative antes %q", ErrDependentActive, otherKey)
-				}
-			}
-		}
+	} else if active := k.activeDependentsLocked(key); len(active) > 0 {
+		k.mu.RUnlock()
+		return fmt.Errorf("%w: desative antes %s", ErrDependentActive, quoteList(active))
 	}
 	before := k.state[key]
 	k.mu.RUnlock()
@@ -352,23 +345,85 @@ func (k *Kernel) Plugins() []Plugin {
 // ModuleStatus é a visão pública de um módulo.
 type ModuleStatus struct {
 	Manifest
+	// Enabled é o estado EFETIVO: configurado como ativo e com todas as
+	// dependências (transitivas) ativas.
 	Enabled bool `json:"enabled"`
+	// Configured é o estado desejado gravado pelo administrador (pode ser
+	// true com Enabled=false se uma dependência estiver inativa).
+	Configured bool `json:"configured"`
+	// Dependents são os módulos que declaram DependsOn neste.
+	Dependents []string `json:"dependents"`
+	// BlockedBy são as dependências diretas inativas neste instante.
+	BlockedBy []string `json:"blocked_by"`
 }
 
-// Status lista todos os módulos com o estado efetivo.
+// Status lista todos os módulos com o estado efetivo e o grafo de
+// dependências nos dois sentidos.
 func (k *Kernel) Status() []ModuleStatus {
-	out := []ModuleStatus{}
-	for _, p := range k.Plugins() {
-		m := p.Manifest()
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	out := make([]ModuleStatus, 0, len(k.order))
+	for _, key := range k.order {
+		m := k.plugins[key].Manifest()
 		if m.DependsOn == nil {
 			m.DependsOn = []string{}
 		}
 		if m.Permissions == nil {
 			m.Permissions = []PermissionInfo{}
 		}
-		out = append(out, ModuleStatus{Manifest: m, Enabled: k.Enabled(m.Key)})
+		out = append(out, ModuleStatus{
+			Manifest:   m,
+			Enabled:    k.enabledLocked(key, 0),
+			Configured: k.state[key],
+			Dependents: k.dependentsLocked(key),
+			BlockedBy:  k.inactiveDepsLocked(m),
+		})
 	}
 	return out
+}
+
+// dependentsLocked lista (em ordem de registro) quem depende de key.
+func (k *Kernel) dependentsLocked(key string) []string {
+	out := []string{}
+	for _, other := range k.order {
+		for _, dep := range k.plugins[other].Manifest().DependsOn {
+			if dep == key {
+				out = append(out, other)
+			}
+		}
+	}
+	return out
+}
+
+// activeDependentsLocked: dependentes configurados como ativos (impedem
+// desativar key).
+func (k *Kernel) activeDependentsLocked(key string) []string {
+	out := []string{}
+	for _, d := range k.dependentsLocked(key) {
+		if k.state[d] {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// inactiveDepsLocked: dependências diretas de m que não estão ativas.
+func (k *Kernel) inactiveDepsLocked(m Manifest) []string {
+	out := []string{}
+	for _, dep := range m.DependsOn {
+		if !k.enabledLocked(dep, 0) {
+			out = append(out, dep)
+		}
+	}
+	return out
+}
+
+func quoteList(keys []string) string {
+	q := make([]string, len(keys))
+	for i, k := range keys {
+		q[i] = fmt.Sprintf("%q", k)
+	}
+	return strings.Join(q, ", ")
 }
 
 // Queues devolve todas as filas declaradas por plugins — declaradas no
