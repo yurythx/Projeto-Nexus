@@ -19,7 +19,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 )
 
 // KeySize é o tamanho exigido, em bytes, da chave decodificada de
@@ -55,14 +54,10 @@ func NewFromBase64Key(keyBase64 string) (*Cipher, error) {
 		return nil, fmt.Errorf("secretcrypto: CONFIG_ENCRYPTION_KEY deve decodificar para %d bytes, tem %d", KeySize, len(raw))
 	}
 
-	block, err := aes.NewCipher(raw)
-	if err != nil {
-		return nil, fmt.Errorf("secretcrypto: construir cipher AES: %w", err)
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("secretcrypto: construir AEAD GCM: %w", err)
-	}
+	// Não falham: a chave tem exatamente KeySize (32) bytes, e GCM sobre AES
+	// é sempre suportado.
+	block, _ := aes.NewCipher(raw)
+	aead, _ := cipher.NewGCM(block)
 	return &Cipher{aead: aead}, nil
 }
 
@@ -81,9 +76,7 @@ func (c *Cipher) Encrypt(plaintext string) (string, error) {
 	}
 
 	nonce := make([]byte, c.aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("secretcrypto: gerar nonce: %w", err)
-	}
+	_, _ = rand.Read(nonce) // não falha (Go 1.24+)
 
 	ciphertext := c.aead.Seal(nonce, nonce, []byte(plaintext), nil)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil

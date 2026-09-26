@@ -63,3 +63,9 @@ func TestNew_RequiresTypeAndSource(t *testing.T) {
 		t.Error("expected error for empty source")
 	}
 }
+
+func TestNewRejectsUnserializablePayload(t *testing.T) {
+	if _, err := New("a.b.c", "src", uuid.Nil, make(chan int)); err == nil {
+		t.Fatal("payload não serializável")
+	}
+}

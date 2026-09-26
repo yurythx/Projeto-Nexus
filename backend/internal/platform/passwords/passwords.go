@@ -42,9 +42,7 @@ var (
 // Hash gera o hash Argon2id de password no formato PHC.
 func Hash(password string) (string, error) {
 	salt := make([]byte, argonSaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("passwords: gerar salt: %w", err)
-	}
+	_, _ = rand.Read(salt) // não falha (Go 1.24+: aborta o processo sem entropia)
 	key := argon2.IDKey([]byte(password), salt, argonIterations, argonMemoryKiB, argonThreads, argonKeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemoryKiB, argonIterations, argonThreads,
