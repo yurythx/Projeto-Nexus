@@ -71,7 +71,9 @@ function AbrirProcesso({ onDone }: { onDone: (p: Processo) => void }) {
       </div>
       <Input id="pr-assunto" name="assunto" label="Assunto *" required maxLength={300} />
       <Input id="pr-interessado" name="interessado" label="Interessado" maxLength={300} />
-      <Select id="pr-origem" name="unidade_origem_id" label="Unidade de origem *" required placeholder="Selecione…" defaultValue={defaultUnidade} options={unidades} />
+      {/* key: o select é não controlado e a árvore/identidade chegam depois do
+          primeiro render — remonta para a unidade do usuário vir marcada. */}
+      <Select key={defaultUnidade ?? "sem-unidade"} id="pr-origem" name="unidade_origem_id" label="Unidade de origem *" required placeholder="Selecione…" defaultValue={defaultUnidade} options={unidades} />
       <Textarea id="pr-desc" name="descricao" label="Descrição" rows={4} maxLength={20000} />
       <div className="flex justify-end">
         <Button type="submit" loading={pending}>
