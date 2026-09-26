@@ -9,6 +9,9 @@
 	# Quem acessa por IP não manda SNI: sem isto o handshake falha.
 	default_sni {$PUBLIC_HOST}
 	skip_install_trust
+	# Os redirecionamentos HTTP->HTTPS automáticos disputavam a porta 80 com
+	# o bloco abaixo (e iam para uma porta qualquer): só o nosso vale.
+	auto_https disable_redirects
 	pki {
 		ca local {
 			name "Projeto Nexus - CA de teste"
@@ -46,7 +49,7 @@ https://{$PUBLIC_HOST}:8543 {
 }
 
 # HTTP: só entrega a raiz da CA para instalar e redireciona o resto.
-:80 {
+http://{$PUBLIC_HOST}, :80 {
 	handle /nexus-ca.crt {
 		root * /data/caddy/pki/authorities/local
 		rewrite * /root.crt
