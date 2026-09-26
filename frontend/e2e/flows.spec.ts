@@ -157,7 +157,7 @@ test.describe("Fluxos críticos", () => {
     // o download sai direto do MinIO por URL pré-assinada (o binário não
     // passa pela API nem pelo BFF)
     await row.getByRole("button", { name: "Baixar ata.txt" }).click();
-    await page.waitForURL(/localhost:9000\/.*X-Amz-Signature=/);
+    await page.waitForURL(/\/files\/.*X-Amz-Signature=/); // host público do MinIO (MINIO_PUBLIC_URL)
     await expect(page.locator("body")).toContainText("ata da reuni");
   });
 
