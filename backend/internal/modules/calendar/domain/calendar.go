@@ -16,6 +16,9 @@ var (
 	ErrRoomConflict = errors.New("calendar: sala já reservada no horário")
 	ErrInvalidRange = errors.New("calendar: intervalo inválido")
 	ErrDuplicate    = errors.New("calendar: registro duplicado")
+	ErrInvalidValue = errors.New("calendar: valor fora do permitido")
+	ErrCancelled    = errors.New("calendar: evento cancelado não pode ser alterado; crie um novo")
+	ErrRoomInUse    = errors.New("calendar: a sala tem reservas futuras; desative-a em vez de excluir")
 )
 
 // MaxRange limita consultas de período (evita varreduras gigantes).
@@ -84,6 +87,9 @@ type Repository interface {
 	GetRoom(ctx context.Context, db database.DBTX, id uuid.UUID) (Room, error)
 	SaveRoom(ctx context.Context, db database.DBTX, r Room) (Room, error)
 	DeleteRoom(ctx context.Context, db database.DBTX, id uuid.UUID) error
+	// RoomHasUpcoming reporta se a sala tem reserva confirmada que ainda
+	// não terminou.
+	RoomHasUpcoming(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
 	RoomBusy(ctx context.Context, db database.DBTX, roomID uuid.UUID, from, to time.Time) ([]Busy, error)
 
 	ListEvents(ctx context.Context, db database.DBTX, f EventFilter) ([]Event, error)
