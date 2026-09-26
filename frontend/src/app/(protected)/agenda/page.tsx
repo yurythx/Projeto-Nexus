@@ -71,7 +71,11 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
           label="Sala (reserva)"
           placeholder="Sem reserva de sala"
           defaultValue={event?.room_id ?? ""}
-          options={rooms.filter((r) => r.active).map((r) => ({ value: r.id, label: `${r.name}${r.capacity ? ` · ${r.capacity} lugares` : ""}` }))}
+          // Sala desativada não recebe reserva nova, mas o evento que já está
+          // nela continua lá: sem a opção, salvar a edição apagava a reserva.
+          options={rooms
+            .filter((r) => r.active || r.id === event?.room_id)
+            .map((r) => ({ value: r.id, label: `${r.name}${r.capacity ? ` · ${r.capacity} lugares` : ""}${r.active ? "" : " (inativa)"}` }))}
         />
         <Input id="ev-location" name="location" label="Local / link" maxLength={200} defaultValue={event?.location} />
       </div>

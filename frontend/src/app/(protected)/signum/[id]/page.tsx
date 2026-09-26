@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
-import { apiClient } from "@/lib/api/client";
+import { apiClient, ApiError } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
 import type { Challenge, Envelope } from "@/lib/nexus/types";
@@ -46,12 +46,21 @@ function SignCeremony({ envelope, onDone }: { envelope: Envelope; onDone: () => 
     if (!challenge) return;
     const res = await run(
       () =>
-        apiClient.post(`v1/signum/envelopes/${envelope.id}/sign`, {
-          challenge_id: challenge.challenge_id,
-          nonce: challenge.nonce,
-          password,
-          confirm_document_sha256: hash,
-        }),
+        apiClient
+          .post(`v1/signum/envelopes/${envelope.id}/sign`, {
+            challenge_id: challenge.challenge_id,
+            nonce: challenge.nonce,
+            password,
+            confirm_document_sha256: hash,
+          })
+          .catch((err: unknown) => {
+            // Senha errada não consome o desafio (tenta de novo com ele).
+            // Qualquer outra recusa — desafio expirado ou já usado, excesso
+            // de tentativas — o invalida: libera gerar outro em vez de
+            // travar a cerimônia.
+            if (!(err instanceof ApiError && err.code === "SIGNUM_REAUTH_FAILED")) setChallenge(null);
+            throw err;
+          }),
       "Documento assinado",
     );
     setPassword("");
