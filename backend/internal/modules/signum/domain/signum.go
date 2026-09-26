@@ -160,6 +160,9 @@ type Filter struct {
 // Repository é a porta de persistência.
 type Repository interface {
 	Insert(ctx context.Context, db database.DBTX, e Envelope) error
+	// UnavailableSigners devolve, dentre ids, os que não existem ou estão
+	// desativados (não poderiam assinar nunca).
+	UnavailableSigners(ctx context.Context, db database.DBTX, ids []uuid.UUID) ([]uuid.UUID, error)
 	Get(ctx context.Context, db database.DBTX, id uuid.UUID, forUpdate bool) (Envelope, error)
 	List(ctx context.Context, db database.DBTX, f Filter, limit int) ([]Envelope, error)
 	SetEnvelopeStatus(ctx context.Context, db database.DBTX, id uuid.UUID, status string) error
