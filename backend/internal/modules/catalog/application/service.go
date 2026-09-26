@@ -42,6 +42,10 @@ func MapError(err error) error {
 		return apperrors.NotFound("serviço não encontrado")
 	case errors.Is(err, domain.ErrSlugTaken):
 		return apperrors.Conflict("já existe um serviço com este endereço (slug)")
+	case errors.Is(err, domain.ErrUnidade), errors.Is(err, domain.ErrIncomplete):
+		return apperrors.Validation(err.Error())
+	case errors.Is(err, domain.ErrPublished):
+		return apperrors.Conflict(err.Error())
 	}
 	return err
 }
@@ -90,6 +94,9 @@ func (s *Service) Save(ctx context.Context, id uuid.UUID, in domain.Service) (do
 	} else {
 		in.Slug = modkit.Slugify(in.Slug)
 	}
+	if in.Slug == "" {
+		return domain.Service{}, apperrors.Validation("o título (ou o slug) precisa ter letras ou números para formar o endereço")
+	}
 	if in.Category == "" {
 		in.Category = "Geral"
 	}
@@ -115,6 +122,12 @@ func (s *Service) Save(ctx context.Context, id uuid.UUID, in domain.Service) (do
 			}
 			in.ID, in.Status, in.PublishedAt = id, prev.Status, prev.PublishedAt
 			before = prev
+			// Publicado continua precisando do conteúdo mínimo.
+			if in.Status == domain.StatusPublished {
+				if err := in.ReadyToPublish(); err != nil {
+					return err
+				}
+			}
 		}
 		var err error
 		if out, err = s.repo.Save(ctx, tx, in); err != nil {
@@ -132,6 +145,15 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, status string) (d
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		out = prev
+		if prev.Status == status {
+			return nil // já está neste estado: nada a gravar nem auditar
+		}
+		if status == domain.StatusPublished {
+			if err := prev.ReadyToPublish(); err != nil {
+				return err
+			}
 		}
 		next := prev
 		next.Status = status
@@ -155,12 +177,15 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, status string) (d
 	return out, MapError(err)
 }
 
-// Delete remove um serviço.
+// Delete remove um serviço que não esteja publicado.
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if prev.Status == domain.StatusPublished {
+			return domain.ErrPublished
 		}
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
