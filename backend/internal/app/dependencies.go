@@ -173,8 +173,11 @@ func build(ctx context.Context, cfg *config.Config, component string) (*Dependen
 		WSTicket:  ratelimit.NewRedisLimiter(d.Redis, 5, 5, "ws_ticket"),
 		Public:    ratelimit.NewRedisLimiter(d.Redis, cfg.PublicRateLimit.WindowSeconds, cfg.PublicRateLimit.MaxRequests, "public"),
 		Contact:   ratelimit.NewRedisLimiter(d.Redis, cfg.ContactRateLimit.WindowSeconds, cfg.ContactRateLimit.MaxRequests, "contact"),
-		// 5 falhas liberadas; depois 1min, 2min, 4min... até 24h.
-		Lockout: ratelimit.NewLockout(d.Redis, 5, time.Minute, 24*time.Hour),
+		// Conta: 5 falhas liberadas; depois 1min, 2min, 4min... até 24h.
+		// IP: teto bem mais alto, janela de 1h e bloqueio máximo de 1h —
+		// atrás de NAT o IP é o prédio inteiro (ver Lockout.WithPolicy).
+		Lockout: ratelimit.NewLockout(d.Redis, 5, time.Minute, 24*time.Hour).
+			WithPolicy("ip:", ratelimit.LockoutPolicy{Threshold: cfg.LoginLockoutIPThreshold, Base: time.Minute, Max: time.Hour, Window: time.Hour}),
 	}
 
 	// ---- Kernel: registro dos plugins, estado e topologia ----

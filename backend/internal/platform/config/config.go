@@ -235,6 +235,10 @@ type Config struct {
 	// LoginRateLimit limita tentativas de login local por IP; o lockout
 	// progressivo por conta/IP fica em internal/platform/ratelimit.
 	LoginRateLimit RateLimitConfig
+	// LoginLockoutIPThreshold: falhas de login por IP antes do bloqueio
+	// progressivo do IP (a conta bloqueia com 5). Alto de propósito: atrás
+	// de NAT, um IP é um prédio inteiro.
+	LoginLockoutIPThreshold int
 	// ContactRateLimit é o limite dedicado do formulário público de
 	// contato, por IP.
 	ContactRateLimit RateLimitConfig
@@ -431,6 +435,7 @@ func Load() (*Config, error) {
 			WindowSeconds: l.intVal("LOGIN_RATE_LIMIT_WINDOW_SECONDS", false, 60),
 			MaxRequests:   l.intVal("LOGIN_RATE_LIMIT_MAX", false, 10),
 		},
+		LoginLockoutIPThreshold: l.intVal("LOGIN_LOCKOUT_IP_THRESHOLD", false, 30),
 		ContactRateLimit: RateLimitConfig{
 			WindowSeconds: l.intVal("CONTACT_RATE_LIMIT_WINDOW_SECONDS", false, 3600),
 			MaxRequests:   l.intVal("CONTACT_RATE_LIMIT_MAX", false, 5),

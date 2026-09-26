@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -117,18 +118,58 @@ func EffectiveLimit(max, penalty int) int {
 }
 
 // Lockout implementa o bloqueio progressivo de credenciais (A07): a partir
-// de threshold falhas consecutivas numa janela de 24h, cada nova falha
-// dobra o tempo de bloqueio (base, 2×base, 4×base, ...), limitado a max.
+// de threshold falhas consecutivas numa janela (padrão 24h), cada nova
+// falha dobra o tempo de bloqueio (base, 2×base, 4×base, ...), limitado a
+// max. WithPolicy dá limites próprios a um tipo de sujeito (prefixo).
 type Lockout struct {
-	client    *redis.Client
-	threshold int
-	base      time.Duration
-	max       time.Duration
+	client   *redis.Client
+	def      LockoutPolicy
+	prefixed []prefixPolicy
 }
 
-// NewLockout cria o controle de lockout progressivo.
+// LockoutPolicy são os limites de um tipo de sujeito.
+type LockoutPolicy struct {
+	Threshold int
+	Base      time.Duration
+	Max       time.Duration
+	Window    time.Duration // vida do contador de falhas
+}
+
+type prefixPolicy struct {
+	prefix string
+	LockoutPolicy
+}
+
+// NewLockout cria o controle de lockout progressivo (janela de 24h).
 func NewLockout(client *redis.Client, threshold int, base, max time.Duration) *Lockout {
-	return &Lockout{client: client, threshold: threshold, base: base, max: max}
+	return &Lockout{client: client, def: LockoutPolicy{Threshold: threshold, Base: base, Max: max, Window: 24 * time.Hour}}
+}
+
+// WithPolicy aplica p aos sujeitos que começam com prefix (ex.: "ip:").
+//
+// Motivo (achado ao testar com a estrutura da prefeitura): o login local
+// usava o MESMO limite para a conta e para o IP — e o contador do IP não
+// zera com login bem-sucedido (zerar deixaria um atacante com uma conta
+// válida "limpar" o IP entre tentativas de password spraying). Atrás de um
+// NAT (um prédio inteiro, um IP), 5 senhas erradas de pessoas diferentes
+// ao longo do dia bloqueavam o login de todos, escalando até 24h. O IP
+// precisa de um limite bem mais alto e de uma janela curta; a conta segue
+// com o limite rígido (OWASP: throttling por conta, IP só como teto).
+func (l *Lockout) WithPolicy(prefix string, p LockoutPolicy) *Lockout {
+	if p.Window <= 0 {
+		p.Window = l.def.Window
+	}
+	l.prefixed = append(l.prefixed, prefixPolicy{prefix: prefix, LockoutPolicy: p})
+	return l
+}
+
+func (l *Lockout) policy(subject string) LockoutPolicy {
+	for _, p := range l.prefixed {
+		if strings.HasPrefix(subject, p.prefix) {
+			return p.LockoutPolicy
+		}
+	}
+	return l.def
 }
 
 // LockedFor retorna quanto tempo falta de bloqueio para subject (0 se livre).
@@ -146,14 +187,15 @@ func (l *Lockout) LockedFor(ctx context.Context, subject string) (time.Duration,
 // RegisterFailure contabiliza uma falha e, se o limiar foi atingido,
 // aplica o bloqueio. Retorna a duração do bloqueio aplicado (0 se nenhum).
 func (l *Lockout) RegisterFailure(ctx context.Context, subject string) (time.Duration, error) {
+	p := l.policy(subject)
 	countKey := redisx.Key("lockout", "fails", subject)
 	pipe := l.client.TxPipeline()
 	incr := pipe.Incr(ctx, countKey)
-	pipe.Expire(ctx, countKey, 24*time.Hour)
+	pipe.Expire(ctx, countKey, p.Window)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return 0, fmt.Errorf("ratelimit: lockout incr: %w", err)
 	}
-	d := ProgressiveDelay(int(incr.Val()), l.threshold, l.base, l.max)
+	d := ProgressiveDelay(int(incr.Val()), p.Threshold, p.Base, p.Max)
 	if d == 0 {
 		return 0, nil
 	}

@@ -8,6 +8,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/redisx"
 )
 
 func newTestRedis(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
@@ -101,6 +103,40 @@ func TestLockoutLifecycle(t *testing.T) {
 	}
 	if left, _ := lo.LockedFor(ctx, "user:ana"); left != 0 {
 		t.Fatal("reset deveria liberar a conta")
+	}
+}
+
+// IP atrás de NAT: limite próprio (mais alto, janela curta); a conta segue
+// com o limite rígido e o contador do IP expira na janela dele.
+func TestLockoutPolicyPerSubjectKind(t *testing.T) {
+	client, mr := newTestRedis(t)
+	lo := NewLockout(client, 2, time.Minute, time.Hour).
+		WithPolicy("ip:", LockoutPolicy{Threshold: 4, Base: time.Minute, Max: 10 * time.Minute, Window: time.Hour})
+	ctx := context.Background()
+
+	for i := 1; i <= 3; i++ {
+		if d, _ := lo.RegisterFailure(ctx, "ip:10.0.0.1"); d != 0 {
+			t.Fatalf("falha %d do IP não bloqueia (limite 4), veio %v", i, d)
+		}
+	}
+	if d, _ := lo.RegisterFailure(ctx, "ip:10.0.0.1"); d != time.Minute {
+		t.Fatalf("4ª falha do IP bloqueia 1min, veio %v", d)
+	}
+	lo.RegisterFailure(ctx, "user:ana")
+	if d, _ := lo.RegisterFailure(ctx, "user:ana"); d != time.Minute {
+		t.Fatalf("conta segue com o limite padrão (2), veio %v", d)
+	}
+	for i := 0; i < 10; i++ {
+		lo.RegisterFailure(ctx, "ip:10.0.0.2")
+	}
+	if left, _ := lo.LockedFor(ctx, "ip:10.0.0.2"); left > 10*time.Minute {
+		t.Fatalf("bloqueio do IP limitado ao máximo dele, veio %v", left)
+	}
+	if ttl := mr.TTL(redisx.Key("lockout", "fails", "ip:10.0.0.1")); ttl <= 0 || ttl > time.Hour {
+		t.Fatalf("contador do IP expira na janela de 1h, TTL=%v", ttl)
+	}
+	if ttl := mr.TTL(redisx.Key("lockout", "fails", "user:ana")); ttl != 24*time.Hour {
+		t.Fatalf("contador da conta segue com a janela de 24h, TTL=%v", ttl)
 	}
 }
 
