@@ -15,6 +15,9 @@ import (
 // ErrNotFound indica mensagem inexistente.
 var ErrNotFound = errors.New("contact: mensagem não encontrada")
 
+// ErrAssignee indica responsável inexistente ou desativado.
+var ErrAssignee = errors.New("contact: responsável inexistente ou desativado")
+
 // Message é uma mensagem recebida (contém PII de visitante externo).
 type Message struct {
 	ID         uuid.UUID  `json:"id"`
@@ -53,4 +56,6 @@ type Repository interface {
 	List(ctx context.Context, db database.DBTX, status string, p pagination.Params) ([]Summary, int64, error)
 	Get(ctx context.Context, db database.DBTX, id uuid.UUID) (Message, error)
 	UpdateTriage(ctx context.Context, db database.DBTX, id uuid.UUID, status, notes string, assignedTo *uuid.UUID) error
+	// ActiveUser reporta se a conta existe e está ativa (responsável).
+	ActiveUser(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
 }

@@ -31,6 +31,12 @@ func wrap(err error) error {
 	return fmt.Errorf("contact: %w", err)
 }
 
+func (r *Repository) ActiveUser(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND active)`, id).Scan(&ok)
+	return ok, wrap(err)
+}
+
 // Insert grava a mensagem gerando o protocolo "CT-AAAA-NNNNNN".
 func (r *Repository) Insert(ctx context.Context, db database.DBTX, m domain.Message) (domain.Message, error) {
 	err := db.QueryRow(ctx, `
