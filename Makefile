@@ -1,5 +1,6 @@
 .PHONY: dev up down logs build test lint format \
 	deploy prod-seed-admin prod-ps prod-logs prod-down \
+	demo-keycloak demo-generate demo-seed \
 	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
 	backend-build backend-test backend-lint backend-sec backend-format \
@@ -11,7 +12,8 @@ export
 endif
 
 COMPOSE      := docker compose -f docker-compose.yml -f docker-compose.dev.yml
-COMPOSE_PROD := docker compose -f docker-compose.yml
+# Sem -f: respeita COMPOSE_FILE do .env (Keycloak de teste); padrão = docker-compose.yml.
+COMPOSE_PROD := docker compose
 GOOSE_DIR    := backend/migrations
 DB_USER      ?= nexus
 DB_PASSWORD  ?= nexus_pass
@@ -43,6 +45,17 @@ prod-logs: ## Logs dos serviços de produção
 
 prod-down: ## Para os serviços de produção (mantém os volumes)
 	$(COMPOSE_PROD) down
+
+## --- Ambiente de teste: Keycloak + dados fictícios (ver docs/DEPLOY.md) ---
+
+demo-keycloak: ## Liga o Keycloak de teste, sobe a stack e aplica os dados fictícios
+	./scripts/demo-keycloak.sh
+
+demo-generate: ## Regera realm do Keycloak + SQL + CSV a partir de scripts/demo-data
+	node scripts/demo-data/generate.mjs
+
+demo-seed: ## Aplica (idempotente) a estrutura organizacional e os usuários fictícios no Postgres
+	$(COMPOSE_PROD) exec -T postgres psql -q -v ON_ERROR_STOP=1 -U $(DB_USER) -d $(DB_NAME) < deploy/demo/seed-demo.sql
 
 down: ## Para e remove todos os serviços
 	$(COMPOSE) down

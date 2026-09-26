@@ -57,6 +57,44 @@ sozinhas (serviço `migrate`) antes da API e do worker.
 - A stack é servida em HTTP puro; para expor fora da rede interna, coloque
   um proxy reverso com TLS na frente e ajuste as URLs e `TRUSTED_PROXIES`.
 
+## Ambiente de teste: Keycloak + dados fictícios
+
+Enquanto não há um Keycloak oficial, `make demo-keycloak` (depois do
+primeiro deploy) sobe um **Keycloak de teste** (`docker-compose.keycloak.yml`,
+porta **8180**) já com o realm `nexus` e carrega no Postgres uma estrutura
+organizacional fictícia:
+
+| Entidade | Unidades | Departamentos |
+|---|---|---|
+| Prefeitura Municipal (PREF) | Sede Administrativa | RH, TI, Contabilidade, Compras, Administração, Governo |
+| Secretaria de Saúde (SEMSA) | PSF Sagrada Família, PSF Conjunto, PSF Marechal Rondon, UPA 24h | padrão* |
+| Secretaria de Educação (SEMED) | Escolas Maria Elza, Marechal Dutra, Silvestre, Elizabete | padrão* |
+| SEMPRAS | Sede, CRAS Conjunto, CRAS Ana Carla, CRAS Alfredo, CREAS, Centro POP | padrão* |
+
+\* Direção, Administração, Atendimento, Recursos Humanos, Almoxarifado.
+
+- **50 usuários por unidade**, divididos igualmente entre os departamentos
+  (754 no total, com as contas `teste.admin`, `teste.auditor`, `teste.iam`
+  e `teste.conteudo`). Lista em `deploy/demo/usuarios.csv`; senha comum em
+  `DEMO_USER_PASSWORD` no `.env` do servidor.
+- Cada departamento é um grupo no Keycloak (ex.: `SEMSA-UPA-ADM`) mapeado
+  para o perfil **Servidor** com lotação no departamento; a Administração
+  de cada unidade também recebe **Protocolo** na unidade.
+- Os usuários já existem no Nexus antes do 1º login (Diretório com cargo e
+  ramal); o login pelo Keycloak só os atualiza.
+- Console do Keycloak: `http://<host>:8180/admin` (`admin` /
+  `KEYCLOAK_ADMIN_PASSWORD` do `.env`).
+
+Mudar a estrutura: edite `scripts/demo-data/generate.mjs`, rode
+`make demo-generate` e faça commit dos arquivos gerados. O SQL é reaplicável
+(`make demo-seed`), mas o realm só é importado quando ainda não existe —
+para reimportar, `docker compose rm -sf keycloak && docker volume rm
+projeto-nexus_keycloak_data` e `make deploy`.
+
+Trocar pelo Keycloak oficial: aponte `KEYCLOAK_ISSUER_URL` (e o client
+secret) para ele, tire `docker-compose.keycloak.yml` do `COMPOSE_FILE` no
+`.env` e rode `make deploy`.
+
 ## Comandos úteis
 
 | Comando | O que faz |

@@ -24,7 +24,9 @@ if [ "${1:-}" = "--no-pull" ]; then
 fi
 
 PUBLIC_HOST="${1:-${PUBLIC_HOST:-$(hostname -I | awk '{print $1}')}}"
-COMPOSE=(docker compose -f docker-compose.yml)
+# Sem -f: o docker compose lê COMPOSE_FILE do .env (ex.: Keycloak de
+# teste, scripts/demo-keycloak.sh); sem ele, usa só o docker-compose.yml.
+COMPOSE=(docker compose)
 
 log() { printf '\n==> %s\n' "$*"; }
 
