@@ -126,6 +126,10 @@ func TestConnectFailsFastAndCloseIsIdempotent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	initialConnectBudget = time.Hour
+	// URL malformada falha sem esperar o orçamento de uma hora
+	if _, err := Connect(context.Background(), "http://127.0.0.1:5672/", nil); err == nil || !strings.Contains(err.Error(), "inválida") {
+		t.Fatalf("url malformada: %v", err)
+	}
 	if _, err := Connect(ctx, "amqp://x:y@127.0.0.1:1/", nil); err == nil {
 		t.Fatal("contexto cancelado")
 	}

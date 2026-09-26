@@ -39,6 +39,9 @@ jobs:
     env:
       TEST_DATABASE_URL: "postgres://nexus:nexus_ci_password@localhost:5432/nexus_test?sslmode=disable"
       TEST_RABBITMQ_URL: "amqp://nexus:nexus_ci_password@localhost:5672/nexus"
+      TEST_MINIO_ENDPOINT: "localhost:9000"
+      TEST_MINIO_ACCESS_KEY: nexus
+      TEST_MINIO_SECRET_KEY: nexus_ci_password
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -75,6 +78,19 @@ jobs:
       - name: go vet
         run: cd backend && go vet ./...
 
+      - name: Start MinIO (armazenamento de objetos, object-lock/WORM)
+        # Serviço do job não aceita o comando "server /data" da imagem, por
+        # isso sobe aqui. Mesma imagem do docker-compose.
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER="$TEST_MINIO_ACCESS_KEY" -e MINIO_ROOT_PASSWORD="$TEST_MINIO_SECRET_KEY" \
+            pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/ready && exit 0
+            sleep 1
+          done
+          docker logs minio; exit 1
+
       - name: Apply migrations (banco de teste)
         env:
           DB_HOST: localhost
@@ -97,7 +113,7 @@ jobs:
         # produzem nos módulos.
         run: |
           cd backend
-          go test -race -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./... 2>&1 | tee test.log
+          go test -race -p 1 -coverpkg=./internal/...,./pkg/... -coverprofile=coverage.out ./... 2>&1 | tee test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             echo "::group::Resumo das falhas"
@@ -107,10 +123,11 @@ jobs:
           fi
           go tool cover -func=coverage.out | tail -1
 
-      - name: Coverage gate — 100% por módulo (internal/modules/* + auditoria)
-        # Cada plugin tem de manter 100% de cobertura de instruções (regras de
-        # negócio, falhas de banco/armazenamento e handlers). Falha listando
-        # as linhas descobertas.
+      - name: Coverage gate — 100% por pacote (plugins, plataforma, app, pkg)
+        # Cada plugin, cada pacote de internal/platform, a composição
+        # (internal/app) e pkg/ mantêm 100% de cobertura de instruções
+        # (regras de negócio, falhas de banco/broker/armazenamento e
+        # handlers). Falha listando as linhas descobertas.
         run: ./scripts/coverage-gate.sh backend/coverage.out 100
 
       - name: Verify Go Build (API & Worker)

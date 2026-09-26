@@ -8,7 +8,6 @@ package telemetry
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"go.opentelemetry.io/otel"
@@ -23,12 +22,20 @@ import (
 // mesmo quando o tracing nunca foi habilitado (nesse caso, é um no-op).
 type Shutdown func(context.Context) error
 
+// newExporter cria o exporter OTLP/HTTP (variável para os testes simularem
+// a falha).
+var newExporter = func(ctx context.Context, endpoint string) (sdktrace.SpanExporter, error) {
+	return otlptracehttp.New(ctx, otlptracehttp.WithEndpoint(endpoint), otlptracehttp.WithInsecure())
+}
+
 // Setup configura o tracer provider global e o propagador de contexto
 // (text-map propagator). serviceName/environment são anexados a todo span
 // como atributos de resource. endpoint é o endereço do collector
 // OTLP/HTTP (host:porta, sem esquema) — tipicamente
-// OTEL_EXPORTER_OTLP_ENDPOINT.
-func Setup(ctx context.Context, serviceName, environment, endpoint string, logger *slog.Logger) (Shutdown, error) {
+// OTEL_EXPORTER_OTLP_ENDPOINT. Tracing é opcional: se o exporter não puder
+// ser criado, o erro é registrado e o processo segue com o no-op — a
+// observabilidade nunca derruba a API.
+func Setup(ctx context.Context, serviceName, environment, endpoint string, logger *slog.Logger) Shutdown {
 	// Todo serviço que fala com outro (chamadas de cliente HTTP,
 	// publish/consume no RabbitMQ) deve propagar o contexto de trace da
 	// mesma forma, independentemente de um exporter estar configurado ou
@@ -42,24 +49,24 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, logge
 
 	if endpoint == "" {
 		logger.Info("telemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set, tracing is a no-op")
-		return func(context.Context) error { return nil }, nil
+		return noop
 	}
 
-	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpoint(endpoint), otlptracehttp.WithInsecure())
+	exporter, err := newExporter(ctx, endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: create OTLP exporter: %w", err)
+		logger.Error("telemetry: falha ao criar o exporter OTLP, tracing desligado", slog.Any("error", err))
+		return noop
 	}
 
-	res, err := resource.Merge(
+	// Merge só falha com schema URLs conflitantes; um resource sem schema
+	// nunca conflita.
+	res, _ := resource.Merge(
 		resource.Default(),
 		resource.NewSchemaless(
 			semconv.ServiceName(serviceName),
 			semconv.DeploymentEnvironmentNameKey.String(environment),
 		),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("telemetry: build resource: %w", err)
-	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
@@ -68,5 +75,7 @@ func Setup(ctx context.Context, serviceName, environment, endpoint string, logge
 	otel.SetTracerProvider(tp)
 
 	logger.Info("telemetry: tracing enabled", slog.String("endpoint", endpoint))
-	return tp.Shutdown, nil
+	return tp.Shutdown
 }
+
+func noop(context.Context) error { return nil }

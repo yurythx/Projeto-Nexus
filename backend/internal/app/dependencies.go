@@ -90,6 +90,12 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 	if err != nil {
 		return nil, fmt.Errorf("app: load config: %w", err)
 	}
+	return build(ctx, cfg, component)
+}
+
+// build monta as dependências a partir de uma configuração já carregada.
+func build(ctx context.Context, cfg *config.Config, component string) (*Dependencies, error) {
+	var err error
 	serviceName := cfg.App.Name + "-" + component
 	logger := logging.New(logging.Options{Level: cfg.App.LogLevel, Format: cfg.App.LogFormat, Service: serviceName, Environment: cfg.App.Env})
 
@@ -99,9 +105,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 		return nil, fmt.Errorf("app: %s: %w", step, err)
 	}
 
-	if d.telemetryShutdown, err = telemetry.Setup(ctx, serviceName, cfg.App.Env, cfg.OTELExporterOTLPURL, logger); err != nil {
-		return fail("setup telemetry", err)
-	}
+	d.telemetryShutdown = telemetry.Setup(ctx, serviceName, cfg.App.Env, cfg.OTELExporterOTLPURL, logger)
 	if d.DB, err = database.New(ctx, cfg.Database); err != nil {
 		return fail("connect database", err)
 	}
@@ -182,17 +186,21 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 	d.Transparency = transparency.NewService(d.DB, logger, d.moduleInfo)
 	wireWebSocket(d)
 
-	topologyCh, err := d.Messaging.Channel()
-	if err != nil {
-		return fail("open channel to declare topology", err)
-	}
-	queues := append(messaging.PlatformQueues(), d.Kernel.Queues()...)
-	if err := messaging.DeclareTopology(topologyCh, queues); err != nil {
-		_ = topologyCh.Close()
+	if err := declareTopology(d.Messaging, append(messaging.PlatformQueues(), d.Kernel.Queues()...)); err != nil {
 		return fail("declare rabbitmq topology", err)
 	}
-	_ = topologyCh.Close()
 	return d, nil
+}
+
+// declareTopology declara exchanges e filas (núcleo + plugins) num canal
+// próprio, fechado ao fim.
+func declareTopology(conn *messaging.Connection, queues []messaging.QueueSpec) error {
+	ch, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("open channel: %w", err)
+	}
+	defer func() { _ = ch.Close() }()
+	return messaging.DeclareTopology(ch, queues)
 }
 
 func (d *Dependencies) moduleInfo() []transparency.ModuleInfo {

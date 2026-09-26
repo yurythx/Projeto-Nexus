@@ -54,8 +54,13 @@ var (
 // subir (retry com backoff até initialConnectBudget), e então inicia um
 // supervisor em background que redisca com backoff exponencial em
 // qualquer desconexão subsequente. Uma URL de fato inválida ou um broker
-// ausente após o orçamento ainda param o startup (erro retornado).
+// ausente após o orçamento ainda param o startup (erro retornado); uma URL
+// malformada falha na hora.
 func Connect(ctx context.Context, url string, logger *slog.Logger) (*Connection, error) {
+	// URL malformada não melhora esperando: falha na hora.
+	if _, err := amqp.ParseURI(url); err != nil {
+		return nil, fmt.Errorf("messaging: RABBITMQ_URL inválida: %w", err)
+	}
 	dialCtx, cancel := context.WithTimeout(ctx, initialConnectBudget)
 	defer cancel()
 

@@ -13,6 +13,8 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -75,27 +77,39 @@ var (
 	}, []string{"outcome"})
 )
 
-// RegisterPostgresPoolMetrics registra os gauges
-// nexus_postgres_connections{state=...} baseados nas estatísticas ao vivo do
-// pool (acquired/idle/max — §53). Valores de GaugeFunc são calculados de
-// forma preguiçosa no momento do scrape, então isso não adiciona nenhuma
-// goroutine em segundo plano própria. Chamar exatamente uma vez por pool.
+// poolStats é o pool observado pelos gauges nexus_postgres_connections.
+var (
+	poolMu       sync.RWMutex
+	observedPool *pgxpool.Pool
+	registerOnce sync.Once
+)
+
+// RegisterPostgresPoolMetrics expõe os gauges
+// nexus_postgres_connections{state=acquired|idle|max} com as estatísticas
+// ao vivo do pool (§53). Os valores são calculados no scrape (GaugeFunc),
+// sem goroutine própria. Os gauges são registrados uma única vez; chamar
+// de novo (ex.: um segundo NewDependencies no mesmo processo, nos testes)
+// só troca o pool observado, em vez de entrar em pânico com o registro
+// duplicado.
 func RegisterPostgresPoolMetrics(pool *pgxpool.Pool) {
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "acquired"},
-	}, func() float64 { return float64(pool.Stat().AcquiredConns()) })
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "idle"},
-	}, func() float64 { return float64(pool.Stat().IdleConns()) })
-
-	promauto.NewGaugeFunc(prometheus.GaugeOpts{
-		Name:        "nexus_postgres_connections",
-		Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
-		ConstLabels: prometheus.Labels{"state": "max"},
-	}, func() float64 { return float64(pool.Stat().MaxConns()) })
+	poolMu.Lock()
+	observedPool = pool
+	poolMu.Unlock()
+	registerOnce.Do(func() {
+		for state, value := range map[string]func(*pgxpool.Stat) float64{
+			"acquired": func(s *pgxpool.Stat) float64 { return float64(s.AcquiredConns()) },
+			"idle":     func(s *pgxpool.Stat) float64 { return float64(s.IdleConns()) },
+			"max":      func(s *pgxpool.Stat) float64 { return float64(s.MaxConns()) },
+		} {
+			promauto.NewGaugeFunc(prometheus.GaugeOpts{
+				Name:        "nexus_postgres_connections",
+				Help:        "PostgreSQL pool connections, by state (acquired/idle/max).",
+				ConstLabels: prometheus.Labels{"state": state},
+			}, func() float64 {
+				poolMu.RLock()
+				defer poolMu.RUnlock()
+				return value(observedPool.Stat())
+			})
+		}
+	})
 }
