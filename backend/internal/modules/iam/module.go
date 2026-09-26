@@ -45,6 +45,7 @@ func (m *Module) Manifest() kernel.Manifest {
 			{Key: "keycloak:manage", Description: "Configurar o provedor de identidade (Keycloak)"},
 			{Key: "branding:manage", Description: "Editar identidade visual (white-label)"},
 			{Key: "monitoring:read", Description: "Painel de monitoramento da plataforma"},
+			{Key: "monitoring:manage", Description: "Reprocessar eventos do outbox que falharam"},
 		},
 	}
 }

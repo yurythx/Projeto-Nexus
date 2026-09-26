@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/events"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // Publisher faz polling de outbox_events buscando linhas pendentes e as
@@ -28,14 +29,22 @@ type Publisher struct {
 	pollInterval time.Duration
 	batchSize    int
 	maxAttempts  int
+	// retryBase/retryMax: backoff exponencial entre tentativas de UM evento
+	// (base, 2×base, 4×base… até retryMax).
+	retryBase, retryMax time.Duration
+	// listenMin/listenMax: reconexão do LISTEN.
+	listenMin, listenMax time.Duration
+	channel              string
+	begin                func(context.Context) (pgx.Tx, error)
 }
 
 // NewPublisher constrói um Publisher de outbox com padrões razoáveis: é
 // dirigido por LISTEN/NOTIFY no canal outbox.Channel (latência ~zero) com
 // um polling de segurança a cada 15s como rede contra um NOTIFY perdido
-// (ex.: janela de reconexão do listener). Até 20 linhas por lote,
-// desistindo (marcando "failed" em vez de tentar para sempre) depois de
-// 10 tentativas de publicação falhas.
+// (ex.: janela de reconexão do listener). Até 20 linhas por lote. Uma
+// publicação que falha reagenda o evento com backoff exponencial (1s, 2s,
+// 4s… até 1h) e só o marca "failed" depois de 20 tentativas — cerca de 9h
+// de broker fora do ar. Eventos "failed" voltam à fila por Requeue.
 func NewPublisher(pool *pgxpool.Pool, eventPublisher events.EventPublisher, logger *slog.Logger) *Publisher {
 	return &Publisher{
 		pool:           pool,
@@ -43,7 +52,13 @@ func NewPublisher(pool *pgxpool.Pool, eventPublisher events.EventPublisher, logg
 		logger:         logger,
 		pollInterval:   15 * time.Second,
 		batchSize:      20,
-		maxAttempts:    10,
+		maxAttempts:    20,
+		retryBase:      time.Second,
+		retryMax:       time.Hour,
+		listenMin:      time.Second,
+		listenMax:      30 * time.Second,
+		channel:        Channel,
+		begin:          pool.Begin,
 	}
 }
 
@@ -87,15 +102,14 @@ func (p *Publisher) Run(ctx context.Context) error {
 // signal() para o loop de Run() despachar. Retorna só quando ctx é
 // cancelado.
 func (p *Publisher) listenLoop(ctx context.Context, signal func()) {
-	backoff := time.Second
-	const maxBackoff = 30 * time.Second
+	backoff := p.listenMin
 	for {
+		listening, err := p.listenOnce(ctx, signal)
 		if ctx.Err() != nil {
 			return
 		}
-		err := p.listenOnce(ctx, signal)
-		if ctx.Err() != nil {
-			return
+		if listening {
+			backoff = p.listenMin // caiu depois de conectado: reconecta rápido
 		}
 		p.logger.Warn("outbox: LISTEN encerrou, reconectando",
 			slog.Any("error", err), slog.Duration("retry_in", backoff))
@@ -104,19 +118,15 @@ func (p *Publisher) listenLoop(ctx context.Context, signal func()) {
 			return
 		case <-time.After(backoff):
 		}
-		if backoff < maxBackoff {
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
-			}
-		}
+		backoff = min(backoff*2, p.listenMax)
 	}
 }
 
-func (p *Publisher) listenOnce(ctx context.Context, signal func()) error {
+// listenOnce devolve listening=true se o LISTEN chegou a ser estabelecido.
+func (p *Publisher) listenOnce(ctx context.Context, signal func()) (bool, error) {
 	poolConn, err := p.pool.Acquire(ctx)
 	if err != nil {
-		return fmt.Errorf("acquire listen conn: %w", err)
+		return false, fmt.Errorf("acquire listen conn: %w", err)
 	}
 	// Hijack: tira a conexão do pool em definitivo — uma conexão com LISTEN
 	// pendente não pode voltar ao pool para servir queries comuns. Nós
@@ -124,10 +134,10 @@ func (p *Publisher) listenOnce(ctx context.Context, signal func()) error {
 	conn := poolConn.Hijack()
 	defer conn.Close(context.Background())
 
-	if _, err := conn.Exec(ctx, "LISTEN "+Channel); err != nil {
-		return fmt.Errorf("LISTEN %s: %w", Channel, err)
+	if _, err := conn.Exec(ctx, "LISTEN "+p.channel); err != nil {
+		return false, fmt.Errorf("LISTEN %s: %w", p.channel, err)
 	}
-	p.logger.Info("outbox: publisher escutando LISTEN/NOTIFY", slog.String("channel", Channel))
+	p.logger.Info("outbox: publisher escutando LISTEN/NOTIFY", slog.String("channel", p.channel))
 
 	// Após (re)conectar, força um poll — um NOTIFY pode ter ocorrido
 	// enquanto não havia listener.
@@ -135,7 +145,7 @@ func (p *Publisher) listenOnce(ctx context.Context, signal func()) error {
 
 	for {
 		if _, err := conn.WaitForNotification(ctx); err != nil {
-			return err
+			return true, err
 		}
 		signal()
 	}
@@ -153,7 +163,7 @@ type outboxRow struct {
 // sem duas réplicas processarem a mesma linha) e, para cada uma, publica
 // e atualiza seu status dentro da mesma transação.
 func (p *Publisher) publishPendingBatch(ctx context.Context) error {
-	tx, err := p.pool.Begin(ctx)
+	tx, err := p.begin(ctx)
 	if err != nil {
 		return fmt.Errorf("outbox: begin transaction: %w", err)
 	}
@@ -162,7 +172,7 @@ func (p *Publisher) publishPendingBatch(ctx context.Context) error {
 	const selectQ = `
 		SELECT id, payload, attempts
 		FROM outbox_events
-		WHERE status = 'pending'
+		WHERE status = 'pending' AND next_attempt_at <= now()
 		ORDER BY created_at
 		LIMIT $1
 		FOR UPDATE SKIP LOCKED
@@ -187,7 +197,16 @@ func (p *Publisher) publishPendingBatch(ctx context.Context) error {
 	}
 
 	for _, row := range pending {
-		p.publishRow(ctx, tx, row)
+		stop, err := p.publishRow(ctx, tx, row)
+		if err != nil {
+			// A transação ficou inutilizável: reverte o lote inteiro (as
+			// linhas já publicadas voltam a pendentes e são reenviadas —
+			// os consumidores deduplicam por event_id).
+			return err
+		}
+		if stop {
+			break
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -196,17 +215,20 @@ func (p *Publisher) publishPendingBatch(ctx context.Context) error {
 	return nil
 }
 
-// publishRow tenta publicar uma única linha do outbox e ajusta seu status
-// de acordo com o resultado: envelope ilegível vai direto para "failed"
-// (nunca teria sucesso numa nova tentativa); falha de publicação soma uma
-// tentativa e, se ainda não estourou maxAttempts, fica "pending" para a
-// próxima rodada de polling tentar de novo; sucesso marca "published".
-func (p *Publisher) publishRow(ctx context.Context, tx pgx.Tx, row outboxRow) {
+// publishRow tenta publicar uma linha e ajusta seu status:
+//   - envelope ilegível vai direto para "failed" (nunca teria sucesso);
+//   - sucesso marca "published";
+//   - falha de publicação soma uma tentativa e reagenda com backoff; no
+//     limite, "failed". Devolve stop=true: se o broker recusou este
+//     evento, provavelmente recusará os próximos — o lote para em vez de
+//     queimar uma tentativa de cada linha pendente.
+//
+// Um erro devolvido é do banco (UPDATE do status) e aborta o lote.
+func (p *Publisher) publishRow(ctx context.Context, tx database.DBTX, row outboxRow) (stop bool, err error) {
 	var event events.Event
 	if err := json.Unmarshal(row.payload, &event); err != nil {
 		p.logger.Error("outbox: undecodable envelope, marking failed", slog.String("outbox_id", row.id.String()), slog.Any("error", err))
-		p.markFailed(ctx, tx, row.id, "undecodable envelope: "+err.Error())
-		return
+		return false, p.markFailed(ctx, tx, row.id, "undecodable envelope: "+err.Error())
 	}
 
 	if err := p.eventPublisher.Publish(ctx, event); err != nil {
@@ -214,35 +236,48 @@ func (p *Publisher) publishRow(ctx context.Context, tx pgx.Tx, row outboxRow) {
 		if attempts >= p.maxAttempts {
 			p.logger.Error("outbox: exceeded max publish attempts, marking failed",
 				slog.String("outbox_id", row.id.String()), slog.String("event_type", event.Type), slog.Any("error", err))
-			p.markFailed(ctx, tx, row.id, err.Error())
-			return
+			return true, p.markFailed(ctx, tx, row.id, err.Error())
 		}
-		p.logger.Warn("outbox: publish attempt failed, will retry next poll",
-			slog.String("outbox_id", row.id.String()), slog.String("event_type", event.Type), slog.Int("attempts", attempts), slog.Any("error", err))
-		p.markAttemptFailed(ctx, tx, row.id, attempts, err.Error())
-		return
+		retryIn := p.retryDelay(attempts)
+		p.logger.Warn("outbox: publish attempt failed, rescheduled",
+			slog.String("outbox_id", row.id.String()), slog.String("event_type", event.Type),
+			slog.Int("attempts", attempts), slog.Duration("retry_in", retryIn), slog.Any("error", err))
+		return true, p.markAttemptFailed(ctx, tx, row.id, attempts, retryIn, err.Error())
 	}
 
-	p.markPublished(ctx, tx, row.id)
+	return false, p.markPublished(ctx, tx, row.id)
 }
 
-func (p *Publisher) markPublished(ctx context.Context, tx pgx.Tx, id uuid.UUID) {
+// retryDelay é o backoff da n-ésima tentativa falha: base·2^(n-1), até retryMax.
+func (p *Publisher) retryDelay(attempts int) time.Duration {
+	d := p.retryBase
+	for i := 1; i < attempts && d < p.retryMax; i++ {
+		d *= 2
+	}
+	return min(d, p.retryMax)
+}
+
+func (p *Publisher) markPublished(ctx context.Context, tx database.DBTX, id uuid.UUID) error {
 	const q = `UPDATE outbox_events SET status = 'published', published_at = now() WHERE id = $1`
 	if _, err := tx.Exec(ctx, q, id); err != nil {
-		p.logger.Error("outbox: failed to mark row published", slog.String("outbox_id", id.String()), slog.Any("error", err))
+		return fmt.Errorf("outbox: mark %s published: %w", id, err)
 	}
+	return nil
 }
 
-func (p *Publisher) markAttemptFailed(ctx context.Context, tx pgx.Tx, id uuid.UUID, attempts int, lastError string) {
-	const q = `UPDATE outbox_events SET attempts = $2, last_error = $3 WHERE id = $1`
-	if _, err := tx.Exec(ctx, q, id, attempts, lastError); err != nil {
-		p.logger.Error("outbox: failed to record attempt", slog.String("outbox_id", id.String()), slog.Any("error", err))
+func (p *Publisher) markAttemptFailed(ctx context.Context, tx database.DBTX, id uuid.UUID, attempts int, retryIn time.Duration, lastError string) error {
+	const q = `UPDATE outbox_events SET attempts = $2, last_error = $3,
+		next_attempt_at = now() + $4 * interval '1 millisecond' WHERE id = $1`
+	if _, err := tx.Exec(ctx, q, id, attempts, lastError, retryIn.Milliseconds()); err != nil {
+		return fmt.Errorf("outbox: record attempt for %s: %w", id, err)
 	}
+	return nil
 }
 
-func (p *Publisher) markFailed(ctx context.Context, tx pgx.Tx, id uuid.UUID, lastError string) {
+func (p *Publisher) markFailed(ctx context.Context, tx database.DBTX, id uuid.UUID, lastError string) error {
 	const q = `UPDATE outbox_events SET status = 'failed', attempts = attempts + 1, last_error = $2 WHERE id = $1`
 	if _, err := tx.Exec(ctx, q, id, lastError); err != nil {
-		p.logger.Error("outbox: failed to mark row failed", slog.String("outbox_id", id.String()), slog.Any("error", err))
+		return fmt.Errorf("outbox: mark %s failed: %w", id, err)
 	}
+	return nil
 }

@@ -3617,7 +3617,7 @@ paths:
     /api/v1/monitoring/outbox-stats:
         get:
             description: |
-                Restrito a `audit:read`. Consulta o Postgres diretamente a cada chamada, sem cache (mesmo espírito de configflags/ratelimit) — usado pelo painel de Monitoramento do frontend para mostrar a fila do Transactional Outbox de verdade, em vez do "0 Pendentes" fixo no código-fonte que existia antes deste endpoint (achado de auditoria).
+                Restrito a `monitoring:read`. Consulta o Postgres diretamente a cada chamada, sem cache (mesmo espírito de configflags/ratelimit) — usado pelo painel de Monitoramento do frontend para mostrar a fila do Transactional Outbox de verdade, em vez do "0 Pendentes" fixo no código-fonte que existia antes deste endpoint (achado de auditoria).
             operationId: getOutboxStats
             responses:
                 "200":
@@ -3650,6 +3650,41 @@ paths:
                 - bearerAuth:
                     - audit:read
             summary: Contagem de outbox_events por status
+            tags:
+                - monitoring
+    /api/v1/monitoring/outbox/requeue:
+        post:
+            description: |
+                Restrito a `monitoring:manage`. Devolve à fila todos os eventos do Transactional Outbox com status `failed` (tentativas zeradas, elegíveis na hora) e acorda o Relay por NOTIFY — usado depois de uma queda prolongada do RabbitMQ. Auditado (`outbox.requeued`) na mesma transação. Sem corpo.
+            operationId: postMonitoringOutboxRequeue
+            parameters:
+                - $ref: '#/components/parameters/IdempotencyKey'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: '#/components/schemas/Envelope'
+                                    - properties:
+                                        data:
+                                            properties:
+                                                requeued:
+                                                    type: integer
+                                            required:
+                                                - requeued
+                                            type: object
+                                      type: object
+                    description: Quantos eventos voltaram à fila.
+                "401":
+                    $ref: '#/components/responses/Unauthorized'
+                "403":
+                    $ref: '#/components/responses/Forbidden'
+                "429":
+                    $ref: '#/components/responses/TooManyRequests'
+            security:
+                - bearerAuth: []
+            summary: Reprocessar eventos do outbox que falharam
             tags:
                 - monitoring
     /api/v1/search:

@@ -51,10 +51,8 @@ func (w *Writer) Write(ctx context.Context, tx pgx.Tx, eventType, aggregateType,
 		return fmt.Errorf("outbox: build event envelope: %w", err)
 	}
 
-	envelope, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("outbox: marshal event envelope: %w", err)
-	}
+	// Não falha: events.New já serializou o payload (json.RawMessage válido).
+	envelope, _ := json.Marshal(event)
 
 	// Validado depois de serializar, contra o MESMO JSON que será
 	// gravado — não contra o struct Go em memória — para pegar qualquer

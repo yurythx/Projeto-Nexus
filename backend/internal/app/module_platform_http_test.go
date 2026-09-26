@@ -271,3 +271,17 @@ func TestExampleBlueprintHTTP(t *testing.T) {
 		t.Fatal("blueprint grava o evento no outbox na mesma transação")
 	}
 }
+
+func TestOutboxMonitoringHTTP(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	_, plain := h.user("nexus-user")
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/monitoring/outbox-stats", plain, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/monitoring/outbox/requeue", plain, "")
+	if body := h.expect(http.StatusOK, http.MethodGet, "/api/v1/monitoring/outbox-stats", admin, "").Body.String(); !strings.Contains(body, `"pending"`) {
+		t.Fatalf("estatísticas do outbox: %s", body)
+	}
+	if body := h.expect(http.StatusOK, http.MethodPost, "/api/v1/monitoring/outbox/requeue", admin, "").Body.String(); !strings.Contains(body, `"requeued"`) {
+		t.Fatalf("reprocessamento: %s", body)
+	}
+}

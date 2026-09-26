@@ -168,6 +168,7 @@ func TestPublisher_ExhaustsAttemptsAndMarksFailed(t *testing.T) {
 	fp := &failingPublisher{}
 	pub := NewPublisher(pool, fp, testLogger())
 	pub.maxAttempts = 3
+	pub.retryBase = 0 // sem espera entre as tentativas deste teste
 
 	ctx := context.Background()
 	for i := 0; i < pub.maxAttempts; i++ {
