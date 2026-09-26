@@ -35,6 +35,7 @@ import (
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/redisx"
 )
 
@@ -53,9 +54,11 @@ type cached struct {
 
 // Resolver implementa auth.Enricher.
 type Resolver struct {
-	pool   *pgxpool.Pool
+	db     database.DBTX // o pool, em produção
 	redis  *redis.Client
 	logger *slog.Logger
+	// subscribe abre a assinatura do canal de invalidação (substituível em teste).
+	subscribe func(ctx context.Context) (<-chan *redis.Message, func() error)
 
 	mu    sync.Mutex
 	cache map[string]cached
@@ -64,7 +67,12 @@ type Resolver struct {
 // NewResolver constrói o resolvedor. redis pode ser nil (sem invalidação
 // entre réplicas — só o TTL).
 func NewResolver(pool *pgxpool.Pool, rdb *redis.Client, logger *slog.Logger) *Resolver {
-	return &Resolver{pool: pool, redis: rdb, logger: logger, cache: make(map[string]cached)}
+	r := &Resolver{db: pool, redis: rdb, logger: logger, cache: make(map[string]cached)}
+	r.subscribe = func(ctx context.Context) (<-chan *redis.Message, func() error) {
+		sub := r.redis.Subscribe(ctx, redisx.Key(invalidateChannel))
+		return sub.Channel(), sub.Close
+	}
+	return r
 }
 
 // Enrich implementa auth.Enricher.
@@ -130,7 +138,7 @@ func (r *Resolver) resolveUser(ctx context.Context, identity auth.Identity) (uui
 		if err != nil {
 			return uuid.Nil, apperrors.Unauthorized("token local com subject inválido")
 		}
-		err = r.pool.QueryRow(ctx, `SELECT id, active FROM users WHERE id = $1`, parsed).Scan(&id, &active)
+		err = r.db.QueryRow(ctx, `SELECT id, active FROM users WHERE id = $1`, parsed).Scan(&id, &active)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return uuid.Nil, apperrors.Unauthorized("conta inexistente")
 		}
@@ -181,7 +189,7 @@ func (r *Resolver) provision(ctx context.Context, identity auth.Identity) (uuid.
 		id     uuid.UUID
 		active bool
 	)
-	err := r.pool.QueryRow(ctx, q, uuid.New(), identity.Subject, username, email, identity.Name, groups).Scan(&id, &active)
+	err := r.db.QueryRow(ctx, q, uuid.New(), identity.Subject, username, email, identity.Name, groups).Scan(&id, &active)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -209,7 +217,7 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 		SELECT p.slug, p.permissoes, m.entidade_id, m.unidade_id, m.departamento_id, 'ad'
 		  FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo
 		 WHERE lower(m.ad_group) = ANY($2)`
-	rows, err := r.pool.Query(ctx, q, userID, groups)
+	rows, err := r.db.Query(ctx, q, userID, groups)
 	if err != nil {
 		return nil, nil, fmt.Errorf("iam: load grants: %w", err)
 	}
@@ -269,9 +277,8 @@ func (r *Resolver) RunInvalidationListener(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
 	}
-	sub := r.redis.Subscribe(ctx, redisx.Key(invalidateChannel))
-	defer sub.Close()
-	ch := sub.Channel()
+	ch, closeSub := r.subscribe(ctx)
+	defer func() { _ = closeSub() }()
 	for {
 		select {
 		case <-ctx.Done():
