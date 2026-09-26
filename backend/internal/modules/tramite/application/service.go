@@ -63,8 +63,11 @@ func MapError(err error) error {
 		return apperrors.NotFound("processo ou documento não encontrado")
 	case errors.Is(err, domain.ErrForbidden):
 		return apperrors.Forbidden("sem acesso a este processo (sigilo ou unidade)")
-	case errors.Is(err, domain.ErrInvalidState), errors.Is(err, domain.ErrDocumentState):
+	case errors.Is(err, domain.ErrInvalidState), errors.Is(err, domain.ErrDocumentState),
+		errors.Is(err, domain.ErrClosed), errors.Is(err, domain.ErrPendingSignature):
 		return apperrors.Conflict(err.Error())
+	case errors.Is(err, domain.ErrPublicGrant), errors.Is(err, domain.ErrInactiveTipo):
+		return apperrors.Validation(err.Error())
 	case errors.Is(err, domain.ErrSignatureOff):
 		return apperrors.FeatureDisabled(err.Error())
 	}
@@ -133,6 +136,13 @@ func (s *Service) Abrir(ctx context.Context, identity auth.Identity, in AbrirInp
 	}
 	var out domain.Processo
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
+		ativo, err := s.repo.TipoAtivo(ctx, tx, in.TipoID)
+		if err != nil {
+			return err
+		}
+		if !ativo {
+			return domain.ErrInactiveTipo
+		}
 		ano := time.Now().Year()
 		seq, err := s.repo.NextNumero(ctx, tx, ano)
 		if err != nil {
@@ -185,7 +195,10 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 	if err != nil {
 		return View{}, MapError(err)
 	}
-	info, _ := s.accessInfo(ctx, s.pool, identity, p)
+	info, err := s.accessInfo(ctx, s.pool, identity, p)
+	if err != nil {
+		return View{}, err
+	}
 	v := View{Processo: p, CanAct: domain.CanAct(identity, info)}
 	v.CanRoute = v.CanAct && auth.HasPermission(identity, auth.PermTramiteRoute)
 	if v.Documentos, err = s.repo.Documentos(ctx, s.pool, id); err != nil {
@@ -208,7 +221,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 // transition aplica uma mudança de estado/unidade com movimento, evento e
 // auditoria na mesma transação.
 func (s *Service) transition(ctx context.Context, identity auth.Identity, id uuid.UUID, acao, eventType, despacho string,
-	mutate func(p *domain.Processo) error) (domain.Processo, error) {
+	mutate func(ctx context.Context, tx pgx.Tx, p *domain.Processo) error) (domain.Processo, error) {
 	var out domain.Processo
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		p, err := s.load(ctx, tx, identity, id, true, true)
@@ -216,7 +229,7 @@ func (s *Service) transition(ctx context.Context, identity auth.Identity, id uui
 			return err
 		}
 		prev := p
-		if err := mutate(&p); err != nil {
+		if err := mutate(ctx, tx, &p); err != nil {
 			return err
 		}
 		if err := s.repo.Update(ctx, tx, p); err != nil {
@@ -248,8 +261,8 @@ func (s *Service) transition(ctx context.Context, identity auth.Identity, id uui
 
 // Tramitar encaminha o processo a outra unidade (tramite:route na rota).
 func (s *Service) Tramitar(ctx context.Context, identity auth.Identity, id, para uuid.UUID, despacho string) (domain.Processo, error) {
-	return s.transition(ctx, identity, id, "tramitacao", EventTramitado, despacho, func(p *domain.Processo) error {
-		if p.Status == domain.StatusConcluido || p.Status == domain.StatusArquivado {
+	return s.transition(ctx, identity, id, "tramitacao", EventTramitado, despacho, func(_ context.Context, _ pgx.Tx, p *domain.Processo) error {
+		if domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
 		}
 		if p.UnidadeAtualID == para {
@@ -262,9 +275,16 @@ func (s *Service) Tramitar(ctx context.Context, identity auth.Identity, id, para
 
 // Concluir encerra o processo.
 func (s *Service) Concluir(ctx context.Context, identity auth.Identity, id uuid.UUID, despacho string) (domain.Processo, error) {
-	return s.transition(ctx, identity, id, "conclusao", EventConcluido, despacho, func(p *domain.Processo) error {
-		if p.Status == domain.StatusConcluido || p.Status == domain.StatusArquivado {
+	return s.transition(ctx, identity, id, "conclusao", EventConcluido, despacho, func(ctx context.Context, tx pgx.Tx, p *domain.Processo) error {
+		if domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
+		}
+		pending, err := s.repo.PendingSignatures(ctx, tx, p.ID)
+		if err != nil {
+			return err
+		}
+		if pending > 0 {
+			return domain.ErrPendingSignature
 		}
 		now := time.Now().UTC()
 		p.Status, p.ConcluidoAt = domain.StatusConcluido, &now
@@ -274,7 +294,7 @@ func (s *Service) Concluir(ctx context.Context, identity auth.Identity, id uuid.
 
 // Arquivar arquiva um processo concluído.
 func (s *Service) Arquivar(ctx context.Context, identity auth.Identity, id uuid.UUID, despacho string) (domain.Processo, error) {
-	return s.transition(ctx, identity, id, "arquivamento", EventArquivado, despacho, func(p *domain.Processo) error {
+	return s.transition(ctx, identity, id, "arquivamento", EventArquivado, despacho, func(_ context.Context, _ pgx.Tx, p *domain.Processo) error {
 		if p.Status != domain.StatusConcluido {
 			return domain.ErrInvalidState
 		}
@@ -285,8 +305,8 @@ func (s *Service) Arquivar(ctx context.Context, identity auth.Identity, id uuid.
 
 // Reabrir reabre um processo concluído/arquivado (tramite:manage na rota).
 func (s *Service) Reabrir(ctx context.Context, identity auth.Identity, id uuid.UUID, despacho string) (domain.Processo, error) {
-	return s.transition(ctx, identity, id, "reabertura", "", despacho, func(p *domain.Processo) error {
-		if p.Status != domain.StatusConcluido && p.Status != domain.StatusArquivado {
+	return s.transition(ctx, identity, id, "reabertura", "", despacho, func(_ context.Context, _ pgx.Tx, p *domain.Processo) error {
+		if !domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
 		}
 		p.Status, p.ConcluidoAt = domain.StatusEmTramitacao, nil
@@ -300,6 +320,9 @@ func (s *Service) ConcederAcesso(ctx context.Context, identity auth.Identity, id
 		p, err := s.load(ctx, tx, identity, id, true, true)
 		if err != nil {
 			return err
+		}
+		if p.Sigilo == domain.SigiloPublico {
+			return domain.ErrPublicGrant
 		}
 		if err := s.repo.Grant(ctx, tx, id, userID, identity.UserID); err != nil {
 			if database.IsForeignKeyViolation(err) {
@@ -317,6 +340,45 @@ func (s *Service) ConcederAcesso(ctx context.Context, identity auth.Identity, id
 	}))
 }
 
+// RevogarAcesso retira a credencial de um usuário (quem pode movimentar o
+// processo decide quem mais o lê). O autor não perde o acesso: a regra de
+// sigilo sempre o inclui.
+func (s *Service) RevogarAcesso(ctx context.Context, identity auth.Identity, id, userID uuid.UUID) error {
+	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
+		p, err := s.load(ctx, tx, identity, id, true, true)
+		if err != nil {
+			return err
+		}
+		existed, err := s.repo.Revoke(ctx, tx, id, userID)
+		if err != nil {
+			return err
+		}
+		if !existed {
+			return domain.ErrNotFound
+		}
+		uid := identity.UserID
+		if err := s.repo.AddMovimento(ctx, tx, domain.Movimento{ProcessoID: id, Acao: "acesso_revogado",
+			Despacho: "Credencial de acesso revogada", ActorID: &uid}); err != nil {
+			return err
+		}
+		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "tramite.processo.acesso_revogado", "tramite_processo", id.String(),
+			map[string]string{"user_id": userID.String()}, map[string]string{"sigilo": p.Sigilo}))
+	}))
+}
+
+// loadAberto carrega o processo para movimentação e exige que ainda esteja
+// em curso (documentos e assinaturas só em processo aberto).
+func (s *Service) loadAberto(ctx context.Context, db database.DBTX, identity auth.Identity, id uuid.UUID, forUpdate bool) (domain.Processo, error) {
+	p, err := s.load(ctx, db, identity, id, true, forUpdate)
+	if err != nil {
+		return p, err
+	}
+	if !domain.Aberto(p.Status) {
+		return domain.Processo{}, domain.ErrClosed
+	}
+	return p, nil
+}
+
 // ------------------------------------------------------------- documentos
 
 // NovoDocumentoInput cria um documento redigido ou anexado.
@@ -329,7 +391,7 @@ type NovoDocumentoInput struct {
 
 // UploadAnexo emite a URL de upload direto de um anexo.
 func (s *Service) UploadAnexo(ctx context.Context, identity auth.Identity, id uuid.UUID, filename, contentType string) (modkit.UploadTicket, error) {
-	if _, err := s.load(ctx, s.pool, identity, id, true, false); err != nil {
+	if _, err := s.loadAberto(ctx, s.pool, identity, id, false); err != nil {
 		return modkit.UploadTicket{}, MapError(err)
 	}
 	return modkit.NewUpload(ctx, s.store, s.bucket, attachmentPrefix+"/"+id.String(), filename, contentType, modkit.DocumentTypes, s.expiry)
@@ -355,6 +417,11 @@ func (s *Service) AdicionarDocumento(ctx context.Context, identity auth.Identity
 	if d.Tipo == "" {
 		d.Tipo = "despacho"
 	}
+	// Autoriza antes de tocar no armazenamento (a checagem se repete sob
+	// lock na transação).
+	if _, err := s.loadAberto(ctx, s.pool, identity, id, false); err != nil {
+		return domain.Documento{}, MapError(err)
+	}
 	if in.ObjectKey != "" {
 		info, err := modkit.ConfirmUpload(ctx, s.store, s.bucket, in.ObjectKey, attachmentPrefix+"/"+id.String(), s.maxBytes, modkit.DocumentTypes)
 		if err != nil {
@@ -369,12 +436,8 @@ func (s *Service) AdicionarDocumento(ctx context.Context, identity auth.Identity
 		d.Origem, d.Conteudo = "redigido", in.Conteudo
 	}
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
-		p, err := s.load(ctx, tx, identity, id, true, true)
-		if err != nil {
+		if _, err := s.loadAberto(ctx, tx, identity, id, true); err != nil {
 			return err
-		}
-		if p.Status == domain.StatusArquivado {
-			return domain.ErrInvalidState
 		}
 		if err := s.repo.InsertDocumento(ctx, tx, d); err != nil {
 			return err
@@ -402,7 +465,7 @@ func (s *Service) EditarDocumento(ctx context.Context, identity auth.Identity, d
 		if err != nil {
 			return err
 		}
-		if _, err := s.load(ctx, tx, identity, d.ProcessoID, true, true); err != nil {
+		if _, err := s.loadAberto(ctx, tx, identity, d.ProcessoID, true); err != nil {
 			return err
 		}
 		if d.Status != "rascunho" || d.Origem != "redigido" {
@@ -456,7 +519,7 @@ func (s *Service) SolicitarAssinatura(ctx context.Context, identity auth.Identit
 		if err != nil {
 			return err
 		}
-		p, err := s.load(ctx, tx, identity, d.ProcessoID, true, true)
+		p, err := s.loadAberto(ctx, tx, identity, d.ProcessoID, true)
 		if err != nil {
 			return err
 		}

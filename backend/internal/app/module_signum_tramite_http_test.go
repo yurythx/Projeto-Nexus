@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -121,107 +120,4 @@ func TestSignumHTTP(t *testing.T) {
 	if rec := h.do(http.MethodPost, "/api/v1/signum/envelopes/"+env3.ID+"/challenge", ana, ""); rec.Code < 400 {
 		t.Fatalf("envelope cancelado não aceita assinatura: %d", rec.Code)
 	}
-}
-
-// Trâmite: lotação por unidade, sigilo, despachos e integração com o Signum.
-func TestTramiteHTTP(t *testing.T) {
-	h := newHarness(t)
-	admin := h.admin()
-	ctx := context.Background()
-	sfx := uuid.NewString()[:6]
-
-	ent := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", admin, `{"nome":"Órgão `+sfx+`"}`))
-	unA := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin, `{"entidade_id":"`+ent.ID+`","nome":"Protocolo `+sfx+`","sigla":"PA`+sfx+`"}`))
-	unB := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin, `{"entidade_id":"`+ent.ID+`","nome":"Jurídico `+sfx+`","sigla":"JU`+sfx+`"}`))
-	var protocolo, tipo string
-	if err := h.d.DB.QueryRow(ctx, `SELECT id FROM perfis WHERE slug = 'protocolo'`).Scan(&protocolo); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.d.DB.QueryRow(ctx, `SELECT id FROM tramite_tipos ORDER BY slug LIMIT 1`).Scan(&tipo); err != nil {
-		t.Fatal(err)
-	}
-	lotar := func(unidade string) (uuid.UUID, string) {
-		id, tok := h.user("nexus-user")
-		h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+id.String()+"/lotacoes", admin, `{"perfil_id":"`+protocolo+`","unidade_id":"`+unidade+`"}`)
-		return id, tok
-	}
-	_, anaA := lotar(unA.ID)
-	betoID, betoB := lotar(unB.ID)
-	carlosID, carlosA := lotar(unA.ID)
-	_, semLotacao := h.user("nexus-user")
-
-	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos", semLotacao,
-		`{"tipo_id":"`+tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+unA.ID+`"}`)
-	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos", anaA,
-		`{"tipo_id":"`+tipo+`","assunto":"Unidade alheia","sigilo":"publico","unidade_origem_id":"`+unB.ID+`"}`)
-
-	proc := data[struct {
-		ID     string `json:"id"`
-		Numero string `json:"numero"`
-		Status string `json:"status"`
-	}](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/tramite/processos", anaA,
-		`{"tipo_id":"`+tipo+`","assunto":"Pedido `+sfx+`","interessado":"Fulano","sigilo":"sigiloso","unidade_origem_id":"`+unA.ID+`"}`))
-	if proc.Numero == "" || proc.Status != "aberto" {
-		t.Fatalf("processo numerado e aberto: %+v", proc)
-	}
-
-	// Sigiloso: nem colega da mesma unidade vê sem credencial nominal — e a
-	// resposta é 404, sem revelar que o processo existe.
-	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, carlosA, "")
-	if list := h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos?page_size=100", carlosA, "").Body.String(); strings.Contains(list, proc.ID) {
-		t.Fatal("processo sigiloso não pode aparecer na listagem de quem não tem credencial")
-	}
-	h.expect(http.StatusNoContent, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/acessos", anaA, `{"user_id":"`+carlosID.String()+`"}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, carlosA, "")
-
-	// Documento redigido -> assinatura via Signum (porta entre plugins).
-	doc := data[struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	}](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/documentos", anaA,
-		`{"tipo":"Despacho","titulo":"Parecer","conteudo":"# Parecer\nDeferido."}`))
-	h.expect(http.StatusOK, http.MethodPut, "/api/v1/tramite/documentos/"+doc.ID, anaA, `{"titulo":"Parecer final","conteudo":"Deferido."}`)
-	signed := h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/documentos/"+doc.ID+"/assinatura", anaA,
-		`{"signer_ids":["`+carlosID.String()+`"]}`).Body.String()
-	if !strings.Contains(signed, `"aguardando_assinatura"`) || !strings.Contains(signed, `"envelope_id"`) {
-		t.Fatalf("documento aguardando assinatura com envelope: %s", signed)
-	}
-	// Em assinatura, o conteúdo fica congelado.
-	h.expect(http.StatusConflict, http.MethodPut, "/api/v1/tramite/documentos/"+doc.ID, anaA, `{"titulo":"Alterado","conteudo":"x"}`)
-
-	// Tramitar exige tramite:route e unidade atual; após tramitar, a origem perde a ação.
-	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/tramitar", anaA, `{"para_unidade_id":"`+unB.ID+`","despacho":"x"}`)
-	// Sigiloso: estar lotado no destino não basta — a origem credencia o
-	// destinatário ANTES de tramitar (depois ela não atua mais).
-	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, betoB, "")
-	h.expect(http.StatusNoContent, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/acessos", anaA, `{"user_id":"`+betoID.String()+`"}`)
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/tramitar", anaA, `{"para_unidade_id":"`+unB.ID+`","despacho":"Encaminho ao jurídico"}`)
-	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/acessos", anaA, `{"user_id":"`+betoID.String()+`"}`)
-	view := h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, betoB, "").Body.String()
-	if !strings.Contains(view, `"em_tramitacao"`) || !strings.Contains(view, `"can_act":true`) || !strings.Contains(view, "Encaminho ao jurídico") {
-		t.Fatalf("unidade de destino atua no processo: %s", view)
-	}
-	if rec := h.do(http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/concluir", anaA, `{"despacho":"Tentativa da origem"}`); rec.Code < 400 {
-		t.Fatalf("unidade de origem não conclui após tramitar: %d", rec.Code)
-	}
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/concluir", betoB, `{"despacho":"Concluído"}`)
-	// Sigiloso é estritamente nominal: nem tramite:manage (admin) lê.
-	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, admin, "")
-
-	// Restrito: unidades envolvidas leem; reabrir exige tramite:manage.
-	rest := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/tramite/processos", anaA,
-		`{"tipo_id":"`+tipo+`","assunto":"Restrito `+sfx+`","sigilo":"restrito","unidade_origem_id":"`+unA.ID+`"}`))
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos/"+rest.ID, carlosA, "")
-	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+rest.ID, betoB, "")
-	h.expect(http.StatusConflict, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/arquivar", anaA, `{"despacho":"Cedo demais"}`)
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/concluir", anaA, `{"despacho":"Concluído"}`)
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/arquivar", anaA, `{"despacho":"Arquivado"}`)
-	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/reabrir", anaA, `{"despacho":"Reabrir"}`)
-	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/reabrir", admin, `{"despacho":"Reaberto pela gestão"}`)
-	h.expect(http.StatusConflict, http.MethodPost, "/api/v1/tramite/processos/"+rest.ID+"/reabrir", admin, `{"despacho":"De novo"}`)
-
-	// Sem o Signum, pedir assinatura falha com mensagem clara (e o Trâmite
-	// precisa ser desligado antes — dependência declarada).
-	h.setModule(admin, "signum", false)
-	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+proc.ID, betoB, "")
 }

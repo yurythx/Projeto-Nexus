@@ -7,12 +7,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/yurythx/projeto-nexus/internal/domain/events"
+	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
 	"github.com/yurythx/projeto-nexus/internal/platform/passwords"
+	"github.com/yurythx/projeto-nexus/internal/platform/storage/storagetest"
 )
 
 // apiHarness é o sistema completo (router real + Postgres de teste) com
@@ -60,7 +64,7 @@ func (h *apiHarness) user(roles ...string) (uuid.UUID, string) {
 // upload simula o PUT direto do navegador no MinIO (URL pré-assinada).
 func (h *apiHarness) upload(objectKey, contentType string, body []byte) {
 	h.t.Helper()
-	st := h.d.Storage.(*memStorage)
+	st := h.d.Storage.(*storagetest.Memory)
 	if err := st.Put(context.Background(), h.d.Config.MinIO.Bucket, objectKey, bytes.NewReader(body), int64(len(body)), contentType); err != nil {
 		h.t.Fatal(err)
 	}
@@ -166,4 +170,49 @@ func boolStr(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// deliver faz o papel do worker: lê do outbox os eventos eventType do
+// agregado e os entrega a todo consumidor de plug-in inscrito naquela
+// routing key. Devolve quantas entregas foram feitas.
+func (h *apiHarness) deliver(eventType, aggregateID string) int {
+	h.t.Helper()
+	ctx := context.Background()
+	rows, err := h.d.DB.Query(ctx, `SELECT payload FROM outbox_events WHERE event_type = $1 AND aggregate_id = $2 ORDER BY created_at`,
+		eventType, aggregateID)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var envelopes [][]byte
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			h.t.Fatal(err)
+		}
+		envelopes = append(envelopes, raw)
+	}
+	rows.Close()
+	n := 0
+	for _, raw := range envelopes {
+		var ev events.Event
+		if err := json.Unmarshal(raw, &ev); err != nil {
+			h.t.Fatal(err)
+		}
+		for _, p := range h.d.Kernel.Plugins() {
+			cp, ok := p.(kernel.ConsumerProvider)
+			if !ok {
+				continue
+			}
+			for _, c := range cp.Consumers() {
+				if !slices.Contains(c.Queue.RoutingKeys, eventType) {
+					continue
+				}
+				if err := c.Handler(ctx, ev); err != nil {
+					h.t.Fatalf("consumidor %s falhou em %s: %v", c.Queue.Name, eventType, err)
+				}
+				n++
+			}
+		}
+	}
+	return n
 }

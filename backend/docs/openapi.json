@@ -6545,6 +6545,55 @@
         ]
       }
     },
+    "/api/v1/tramite/processos/{id}/acessos/{userID}": {
+      "delete": {
+        "operationId": "deleteTramiteProcessosIdAcessosUserID",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Sem conteúdo."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/ModuleDisabledOrNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Trâmite — Excluir /tramite/processos/{id}/acessos/{userID}",
+        "tags": [
+          "tramite"
+        ]
+      }
+    },
     "/api/v1/tramite/processos/{id}/arquivar": {
       "post": {
         "operationId": "postTramiteProcessosIdArquivar",

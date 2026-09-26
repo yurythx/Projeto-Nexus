@@ -37,6 +37,7 @@ func (h *Handlers) RegisterRoutes(r chi.Router) {
 	r.Post("/tramite/processos/{id}/arquivar", h.Arquivar)
 	r.With(auth.RequirePermission(h.logger, auth.PermTramiteManage)).Post("/tramite/processos/{id}/reabrir", h.Reabrir)
 	r.Post("/tramite/processos/{id}/acessos", h.ConcederAcesso)
+	r.Delete("/tramite/processos/{id}/acessos/{userID}", h.RevogarAcesso)
 	r.Post("/tramite/processos/{id}/uploads", h.Upload)
 	r.Post("/tramite/processos/{id}/documentos", h.AdicionarDocumento)
 	r.Get("/tramite/documentos/{docID}", h.GetDocumento)
@@ -187,6 +188,24 @@ func (h *Handlers) ConcederAcesso(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.ConcederAcesso(r.Context(), identity(r), id, req.UserID); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httputil.WriteNoContent(w)
+}
+
+func (h *Handlers) RevogarAcesso(w http.ResponseWriter, r *http.Request) {
+	id, err := httputil.UUIDParam(r, "id")
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	userID, err := httputil.UUIDParam(r, "userID")
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	if err := h.svc.RevogarAcesso(r.Context(), identity(r), id, userID); err != nil {
 		h.fail(w, r, err)
 		return
 	}
