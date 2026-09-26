@@ -74,3 +74,61 @@ func (r *rows) Next() bool {
 	r.left--
 	return true
 }
+
+// NoRows é um resultado vazio e sem erro.
+func NoRows() pgx.Rows { return &rows{} }
+
+// BadRows tem uma linha ilegível (Scan falha).
+func BadRows() pgx.Rows { return &rows{left: 1} }
+
+// ErrRows não tem linhas e falha em rows.Err().
+func ErrRows() pgx.Rows { return &rows{err: ErrInjected} }
+
+// QueryResult e ExecResult roteirizam as respostas de Seq.
+type (
+	QueryResult struct {
+		Rows pgx.Rows
+		Err  error
+	}
+	ExecResult struct {
+		Tag pgconn.CommandTag
+		Err error
+	}
+)
+
+// OK é um Exec bem-sucedido que afetou uma linha.
+var OK = ExecResult{Tag: pgconn.NewCommandTag("UPDATE 1")}
+
+// Seq responde em ordem às chamadas de Query e Exec (a última resposta se
+// repete); QueryRow devolve Row (por padrão, uma linha que falha).
+type Seq struct {
+	Queries []QueryResult
+	Execs   []ExecResult
+	Row     pgx.Row
+	qi, ei  int
+}
+
+func (s *Seq) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	if len(s.Queries) == 0 {
+		return nil, ErrInjected
+	}
+	r := s.Queries[min(s.qi, len(s.Queries)-1)]
+	s.qi++
+	return r.Rows, r.Err
+}
+
+func (s *Seq) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	if len(s.Execs) == 0 {
+		return pgconn.CommandTag{}, ErrInjected
+	}
+	r := s.Execs[min(s.ei, len(s.Execs)-1)]
+	s.ei++
+	return r.Tag, r.Err
+}
+
+func (s *Seq) QueryRow(context.Context, string, ...any) pgx.Row {
+	if s.Row != nil {
+		return s.Row
+	}
+	return row{}
+}

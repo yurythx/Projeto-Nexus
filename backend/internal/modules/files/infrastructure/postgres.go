@@ -79,10 +79,13 @@ func (r *Repository) Chain(ctx context.Context, db database.DBTX, folderID uuid.
 			out[i].ACL = append(out[i].ACL, domain.ACLEntry{SubjectType: *sType, Subject: *subject, CanWrite: *canWrite})
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap(err)
+	}
 	if len(out) == 0 {
 		return nil, domain.ErrNotFound
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (r *Repository) RootFolders(ctx context.Context, db database.DBTX) ([]domain.Folder, map[uuid.UUID][]domain.ACLEntry, error) {
@@ -329,6 +332,6 @@ func (r *Repository) StalePending(ctx context.Context, db database.DBTX, olderTh
 func (r *Repository) SearchFiles(ctx context.Context, db database.DBTX, query string, limit int) ([]domain.File, error) {
 	return r.listFiles(ctx, db, ` WHERE o.status = 'ready'
 		AND (o.search @@ websearch_to_tsquery('simple', nexus_unaccent($1))
-		     OR nexus_unaccent(lower(o.name)) LIKE '%' || nexus_unaccent(lower($1)) || '%')
+		     OR strpos(nexus_unaccent(lower(o.name)), nexus_unaccent(lower($1))) > 0)
 		ORDER BY o.updated_at DESC LIMIT $2`, query, limit)
 }

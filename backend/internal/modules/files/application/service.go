@@ -72,6 +72,8 @@ func cleanName(n string) (string, error) {
 	return n, nil
 }
 
+// access avalia a ACL herdada (pasta inexistente: o repositório devolve
+// ErrNotFound, não "sem acesso").
 func (s *Service) access(ctx context.Context, db database.DBTX, identity auth.Identity, folderID uuid.UUID) (domain.Access, error) {
 	chain, err := s.repo.Chain(ctx, db, folderID)
 	if err != nil {
@@ -185,7 +187,11 @@ func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id u
 				if *newParent == id {
 					return domain.ErrCycle
 				}
-				if desc, err := s.repo.IsDescendant(ctx, tx, *newParent, id); err != nil || desc {
+				desc, err := s.repo.IsDescendant(ctx, tx, *newParent, id)
+				if err != nil {
+					return err
+				}
+				if desc {
 					return domain.ErrCycle
 				}
 				dst, err := s.access(ctx, tx, identity, *newParent)
@@ -195,6 +201,10 @@ func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id u
 				if !dst.Write {
 					return domain.ErrForbidden
 				}
+			} else if prev.OwnerID != identity.UserID && !auth.HasPermission(identity, auth.PermFilesManage) {
+				// Na raiz a pasta perde a ACL herdada: quem a gerencia só por
+				// ser dono de uma pasta acima perderia o controle dela.
+				return domain.ErrForbidden
 			}
 			next.ParentID = newParent
 		}
@@ -264,7 +274,8 @@ func (s *Service) ACL(ctx context.Context, identity auth.Identity, id uuid.UUID)
 	return s.repo.ACL(ctx, s.pool, id)
 }
 
-// SetACL substitui a ACL própria da pasta (manage).
+// SetACL substitui a ACL própria da pasta (manage). Entradas repetidas
+// para o mesmo sujeito viram uma só (com escrita se qualquer uma tiver).
 func (s *Service) SetACL(ctx context.Context, identity auth.Identity, id uuid.UUID, entries []domain.ACLEntry) ([]domain.ACLEntry, error) {
 	for i := range entries {
 		entries[i].Subject = strings.TrimSpace(entries[i].Subject)
@@ -279,6 +290,7 @@ func (s *Service) SetACL(ctx context.Context, identity auth.Identity, id uuid.UU
 			}
 		}
 	}
+	entries = dedupeACL(entries)
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		acc, err := s.access(ctx, tx, identity, id)
 		if err != nil {
@@ -300,6 +312,21 @@ func (s *Service) SetACL(ctx context.Context, identity auth.Identity, id uuid.UU
 		return nil, MapError(err)
 	}
 	return entries, nil
+}
+
+func dedupeACL(entries []domain.ACLEntry) []domain.ACLEntry {
+	out := make([]domain.ACLEntry, 0, len(entries))
+	index := map[[2]string]int{}
+	for _, e := range entries {
+		k := [2]string{e.SubjectType, strings.ToLower(e.Subject)}
+		if i, ok := index[k]; ok {
+			out[i].CanWrite = out[i].CanWrite || e.CanWrite
+			continue
+		}
+		index[k] = len(out)
+		out = append(out, e)
+	}
+	return out
 }
 
 // UploadResult é o ticket de upload + o registro pendente.
@@ -374,7 +401,10 @@ func (s *Service) ConfirmUpload(ctx context.Context, identity auth.Identity, id 
 // DownloadURL devolve uma URL pré-assinada de leitura (curta).
 func (s *Service) DownloadURL(ctx context.Context, identity auth.Identity, id uuid.UUID) (string, domain.File, error) {
 	f, err := s.repo.GetFile(ctx, s.pool, id)
-	if err != nil || f.Status != "ready" {
+	if err != nil {
+		return "", domain.File{}, MapError(err)
+	}
+	if f.Status != "ready" {
 		return "", domain.File{}, MapError(domain.ErrNotFound)
 	}
 	acc, err := s.access(ctx, s.pool, identity, f.FolderID)
@@ -404,12 +434,22 @@ func (s *Service) UpdateFile(ctx context.Context, identity auth.Identity, id uui
 		if err != nil {
 			return err
 		}
-		for _, folder := range []uuid.UUID{prev.FolderID, folderID} {
-			acc, err := s.access(ctx, tx, identity, folder)
+		// Origem: escrita, ou ser o dono do arquivo. Destino (se mudar):
+		// escrita SEMPRE — ser dono do arquivo não dá direito de colocá-lo
+		// numa pasta em que não se pode escrever.
+		src, err := s.access(ctx, tx, identity, prev.FolderID)
+		if err != nil {
+			return err
+		}
+		if !src.Write && prev.OwnerID != identity.UserID {
+			return domain.ErrForbidden
+		}
+		if folderID != prev.FolderID {
+			dst, err := s.access(ctx, tx, identity, folderID)
 			if err != nil {
 				return err
 			}
-			if !acc.Write && prev.OwnerID != identity.UserID {
+			if !dst.Write {
 				return domain.ErrForbidden
 			}
 		}
@@ -477,16 +517,15 @@ func (s *Service) Search(ctx context.Context, identity auth.Identity, q string, 
 
 // CollectStaleUploads remove uploads pendentes abandonados (>24h) — worker.
 func (s *Service) CollectStaleUploads(ctx context.Context) error {
-	t := time.NewTicker(time.Hour)
+	return s.collectEvery(ctx, time.Hour)
+}
+
+func (s *Service) collectEvery(ctx context.Context, every time.Duration) error {
+	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		stale, err := s.repo.StalePending(ctx, s.pool, time.Now().Add(-24*time.Hour), 200)
-		if err != nil && ctx.Err() == nil {
+		if _, err := s.CollectStaleOnce(ctx, time.Now().Add(-24*time.Hour)); err != nil && ctx.Err() == nil {
 			s.logger.Warn("files: varredura de uploads pendentes falhou", slog.Any("error", err))
-		}
-		for _, f := range stale {
-			_ = s.store.Delete(ctx, s.bucket, f.ObjectKey)
-			_ = s.repo.DeleteFile(ctx, s.pool, f.ID)
 		}
 		select {
 		case <-ctx.Done():
@@ -494,4 +533,26 @@ func (s *Service) CollectStaleUploads(ctx context.Context) error {
 		case <-t.C:
 		}
 	}
+}
+
+// CollectStaleOnce apaga os pendentes criados antes de olderThan. O
+// registro só sai do banco depois que o objeto saiu do armazenamento (ou
+// nem chegou a ser enviado) — senão o objeto ficaria órfão e invisível.
+func (s *Service) CollectStaleOnce(ctx context.Context, olderThan time.Time) (int, error) {
+	stale, err := s.repo.StalePending(ctx, s.pool, olderThan, 200)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, f := range stale {
+		if err := s.store.Delete(ctx, s.bucket, f.ObjectKey); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
+			s.logger.Warn("files: objeto pendente não removido; tenta na próxima varredura", slog.String("key", f.ObjectKey), slog.Any("error", err))
+			continue
+		}
+		if err := s.repo.DeleteFile(ctx, s.pool, f.ID); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
