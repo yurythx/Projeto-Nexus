@@ -45,8 +45,8 @@ homologação junto à Secretaria de Governo Digital.
 |---|---|
 | backend-ci | `govulncheck`, `staticcheck`, `gosec` (bloqueante), `go vet`, `go test -race -p 1` |
 | migrations-reversibility | `goose up → down-to 0 → up` |
-| frontend-ci | ESLint (jsx-a11y), `tsc --noEmit`, `vitest`, `next build` |
-| docker-build-healthcheck | build das imagens + todos os serviços `healthy` |
+| frontend-ci | `npm audit --audit-level=high` (bloqueante), ESLint (jsx-a11y), `tsc --noEmit`, `vitest` com pisos de cobertura, `next build` |
+| docker-build-healthcheck | build das imagens + todos os serviços `healthy` + E2E Playwright dos fluxos críticos |
 
 ## 5. Evidências operacionais a anexar (execução)
 

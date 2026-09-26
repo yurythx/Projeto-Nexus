@@ -190,6 +190,11 @@ jobs:
       - name: Install Frontend Dependencies
         run: cd frontend && npm ci
 
+      # Equivalente ao govulncheck do backend: dependência com CVE alta ou
+      # crítica quebra o build (ex.: RCE do Next 16.3.2, GHSA-2xp9-vwfh-vxw4).
+      - name: Vulnerability audit (npm audit) — bloqueante
+        run: cd frontend && npm audit --audit-level=high
+
       - name: ESLint & e-MAG Accessibility Check (jsx-a11y via eslint-config-next)
         run: cd frontend && npm run lint
 
