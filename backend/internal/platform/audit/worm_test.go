@@ -61,13 +61,66 @@ func (s *wormStore) EnsureBucket(context.Context, string) error {
 // plainStore só tem Put comum: nem object-lock nem EnsureBucket.
 type plainStore struct{ *storagetest.Memory }
 
-// hookDB envolve o banco real e troca a resposta da n-ésima chamada.
+// hookDB envolve o banco real e troca a resposta da n-ésima chamada. As
+// transações abertas por Begin passam pelos mesmos ganchos e contadores.
 type hookDB struct {
 	database.DBTX
-	row        func(n int) pgx.Row
-	query      func(n int) (pgx.Rows, error)
-	exec       func(n int) error
-	nr, nq, ne int
+	row                 func(n int) pgx.Row
+	query               func(n int) (pgx.Rows, error)
+	exec                func(n int) error
+	beginErr, commitErr error
+	nr, nq, ne          int
+}
+
+// Begin abre um savepoint quando o banco envolvido é uma transação real;
+// sobre um dublê sem Begin, a transação é só os ganchos.
+func (h *hookDB) Begin(ctx context.Context) (pgx.Tx, error) {
+	if h.beginErr != nil {
+		return nil, h.beginErr
+	}
+	tx := &hookTx{h: h}
+	if b, ok := h.DBTX.(txBeginner); ok {
+		inner, err := b.Begin(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tx.Tx = inner
+	}
+	return tx, nil
+}
+
+type hookTx struct {
+	pgx.Tx
+	h *hookDB
+}
+
+func (t *hookTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return t.h.QueryRow(ctx, sql, args...)
+}
+
+func (t *hookTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return t.h.Query(ctx, sql, args...)
+}
+
+func (t *hookTx) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return t.h.Exec(ctx, sql, args...)
+}
+
+func (t *hookTx) Commit(ctx context.Context) error {
+	if t.h.commitErr != nil {
+		return t.h.commitErr
+	}
+	if t.Tx == nil {
+		return nil
+	}
+	return t.Tx.Commit(ctx)
+}
+
+func (t *hookTx) Rollback(ctx context.Context) error {
+	if t.Tx == nil {
+		return nil
+	}
+	return t.Tx.Rollback(ctx)
 }
 
 func (h *hookDB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
@@ -106,6 +159,11 @@ func (f scanRow) Scan(dest ...any) error { return f(dest...) }
 
 var noRows = scanRow(func(...any) error { return pgx.ErrNoRows })
 
+// lockRow responde ao pg_try_advisory_xact_lock.
+func lockRow(got bool) pgx.Row {
+	return scanRow(func(dest ...any) error { *(dest[0].(*bool)) = got; return nil })
+}
+
 // wormTx abre uma transação que é sempre revertida: audit_worm_exports é
 // append-only, então o teste não pode deixar marcas d'água no banco.
 func wormTx(t *testing.T) pgx.Tx {
@@ -140,7 +198,7 @@ func TestWORMExportChainsDaysAndResumesFromWatermark(t *testing.T) {
 	ctx := context.Background()
 	store := &wormStore{Memory: storagetest.New()}
 	e := newWORMExporter(tx, store, "worm", 30, quietLogger())
-	day0, prev, err := e.nextDay(ctx)
+	day0, prev, err := e.nextDay(ctx, tx)
 	if err != nil || day0.IsZero() || prev != "" {
 		t.Fatalf("primeiro dia sem exportação: %v %q %v", day0, prev, err)
 	}
@@ -196,7 +254,7 @@ func TestWORMExportChainsDaysAndResumesFromWatermark(t *testing.T) {
 	if store.puts != 6 {
 		t.Fatalf("só o dia novo deveria sair: puts=%d", store.puts)
 	}
-	if next, prev, err := e.nextDay(ctx); err != nil || !next.Equal(day0.Add(3*d)) {
+	if next, prev, err := e.nextDay(ctx, tx); err != nil || !next.Equal(day0.Add(3*d)) {
 		t.Fatalf("próximo dia: %v %v", next, err)
 	} else {
 		var p string
@@ -219,7 +277,7 @@ func TestWORMExportChainsDaysAndResumesFromWatermark(t *testing.T) {
 func TestWORMExportBucketFallbacks(t *testing.T) {
 	tx := wormTx(t)
 	ctx := context.Background()
-	day0, _, err := newWORMExporter(tx, plainStore{storagetest.New()}, "worm", 1, quietLogger()).nextDay(ctx)
+	day0, _, err := newWORMExporter(tx, plainStore{storagetest.New()}, "worm", 1, quietLogger()).nextDay(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,17 +320,33 @@ func TestWORMExportStopsOnEveryFailure(t *testing.T) {
 		store *wormStore
 		saved bool // a marca d'água do dia fica gravada?
 	}{
-		"marca d'água ilegível": {db: func(tx pgx.Tx) *hookDB {
+		"begin": {db: func(tx pgx.Tx) *hookDB { return &hookDB{DBTX: tx, beginErr: fail} }},
+		"advisory lock ilegível": {db: func(tx pgx.Tx) *hookDB {
 			return &hookDB{DBTX: tx, row: func(int) pgx.Row { return scanRow(func(...any) error { return fail }) }}
+		}},
+		"lock com outra réplica": {db: func(tx pgx.Tx) *hookDB {
+			return &hookDB{DBTX: tx, row: func(n int) pgx.Row { return lockRow(false) }}
+		}},
+		"marca d'água ilegível": {db: func(tx pgx.Tx) *hookDB {
+			return &hookDB{DBTX: tx, row: func(n int) pgx.Row {
+				if n == 2 {
+					return scanRow(func(...any) error { return fail })
+				}
+				return nil
+			}}
 		}},
 		"início da trilha ilegível": {db: func(tx pgx.Tx) *hookDB {
 			return &hookDB{DBTX: tx, row: func(n int) pgx.Row {
-				if n == 1 {
+				switch n {
+				case 1:
+					return nil
+				case 2:
 					return noRows
 				}
 				return scanRow(func(...any) error { return fail })
 			}}
 		}},
+		"commit": {db: func(tx pgx.Tx) *hookDB { return &hookDB{DBTX: tx, commitErr: fail} }},
 		"consulta do dia": {db: func(tx pgx.Tx) *hookDB {
 			return &hookDB{DBTX: tx, query: func(int) (pgx.Rows, error) { return nil, fail }}
 		}},
@@ -304,7 +378,7 @@ func TestWORMExportStopsOnEveryFailure(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			tx := wormTx(t)
-			day0, _, err := newWORMExporter(tx, plainStore{storagetest.New()}, "worm", 1, quietLogger()).nextDay(ctx)
+			day0, _, err := newWORMExporter(tx, plainStore{storagetest.New()}, "worm", 1, quietLogger()).nextDay(ctx, tx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -329,7 +403,10 @@ func TestWORMExportStopsOnEveryFailure(t *testing.T) {
 	// Trilha vazia: nada a exportar.
 	store := &wormStore{Memory: storagetest.New()}
 	e := newWORMExporter(&hookDB{DBTX: dbtest.Fail{}, row: func(n int) pgx.Row {
-		if n == 1 {
+		switch n {
+		case 1:
+			return lockRow(true)
+		case 2:
 			return noRows
 		}
 		return scanRow(func(dest ...any) error { *(dest[0].(**time.Time)) = nil; return nil })
@@ -340,9 +417,47 @@ func TestWORMExportStopsOnEveryFailure(t *testing.T) {
 	}
 }
 
+// Duas réplicas: enquanto uma segura o advisory lock (outra conexão), a
+// outra não exporta nada e desiste até o próximo tick.
+func TestWORMExportSkipsWhileAnotherReplicaHoldsTheLock(t *testing.T) {
+	ctx := context.Background()
+	tx := wormTx(t)
+	day0, _, err := newWORMExporter(tx, plainStore{storagetest.New()}, "worm", 1, quietLogger()).nextDay(ctx, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := testPool(t).Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Rollback(ctx) }()
+	if _, err := other.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, wormLockKey); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &wormStore{Memory: storagetest.New()}
+	e := newWORMExporter(tx, store, "worm", 1, quietLogger())
+	e.now = func() time.Time { return day0.Add(49 * time.Hour) }
+	e.run(ctx)
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM audit_worm_exports`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if store.puts != 0 || n != 0 {
+		t.Fatalf("com o lock em outra réplica nada sai: puts=%d marcas=%d", store.puts, n)
+	}
+
+	// Liberado o lock, a mesma réplica exporta no tick seguinte.
+	_ = other.Rollback(ctx)
+	e.run(ctx)
+	if store.puts != 4 {
+		t.Fatalf("lock livre: os dois dias pendentes saem: puts=%d", store.puts)
+	}
+}
+
 func TestWORMExporterLoopTicksUntilCancelled(t *testing.T) {
 	store := &wormStore{Memory: storagetest.New(), failBucket: true, failLock: true}
-	e := newWORMExporter(dbtest.Fail{}, store, "worm", 1, quietLogger())
+	e := newWORMExporter(&hookDB{DBTX: dbtest.Fail{}}, store, "worm", 1, quietLogger())
 	e.interval = 5 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()
