@@ -44,9 +44,12 @@ func TestPostgresStoreRoundTripAndNotify(t *testing.T) {
 	// Conexão de LISTEN derrubada: reconecta e recarrega de novo.
 	s.minBackoff = time.Millisecond
 	before := changes.Load()
-	if _, err := pool.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-		WHERE pid <> pg_backend_pid() AND query = 'LISTEN '||$1`, ModulesChannel); err != nil {
-		t.Fatal(err)
+	// pg_stat_activity cobre o cluster todo: filtra este banco, para não
+	// derrubar o LISTEN de outro ambiente (e não passar sem derrubar nada).
+	var killed int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE pg_terminate_backend(pid)) FROM pg_stat_activity
+		WHERE pid <> pg_backend_pid() AND datname = current_database() AND query = 'LISTEN '||$1`, ModulesChannel).Scan(&killed); err != nil || killed != 1 {
+		t.Fatalf("derrubar o LISTEN do Kernel: %d conexões, %v", killed, err)
 	}
 	waitFor(t, func() bool { return changes.Load() > before })
 	cancel()

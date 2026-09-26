@@ -241,21 +241,36 @@ func TestRunDispatchesOnNotifyTickerAndReconnects(t *testing.T) {
 	truncateOutbox(t, pool)
 	fp := &flakyPublisher{}
 	pub := NewPublisher(pool, fp, quiet())
-	pub.pollInterval = 20 * time.Millisecond
+	// Sem polling: tudo o que sai depois vem do NOTIFY, o que prova que o
+	// LISTEN está de pé (e, depois de derrubado, que reconectou).
+	pub.pollInterval = time.Hour
 	pub.listenMin = time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- pub.Run(ctx) }()
 
+	// pid da conexão deste banco em LISTEN (0 se ainda não há).
+	// pg_stat_activity cobre o cluster todo, daí o filtro por datname.
+	listener := func() int32 {
+		var pid int32
+		_ = pool.QueryRow(context.Background(), `SELECT pid FROM pg_stat_activity
+			WHERE pid <> pg_backend_pid() AND datname = current_database() AND query = 'LISTEN '||$1
+			ORDER BY backend_start DESC LIMIT 1`, Channel).Scan(&pid)
+		return pid
+	}
+	var first int32
+	waitUntil(t, func() bool { first = listener(); return first != 0 })
+
 	writeEvents(t, pool, 1)
 	waitUntil(t, func() bool { return fp.calls.Load() == 1 })
 
-	// LISTEN derrubado: reconecta e segue despachando.
-	if _, err := pool.Exec(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-		WHERE pid <> pg_backend_pid() AND query = 'LISTEN '||$1`, Channel); err != nil {
-		t.Fatal(err)
+	// LISTEN derrubado depois de estabelecido: reconecta com o backoff
+	// mínimo e segue despachando.
+	var killed bool
+	if err := pool.QueryRow(context.Background(), `SELECT pg_terminate_backend($1)`, first).Scan(&killed); err != nil || !killed {
+		t.Fatalf("derrubar o LISTEN (pid %d): %v %v", first, killed, err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	waitUntil(t, func() bool { pid := listener(); return pid != 0 && pid != first })
 	writeEvents(t, pool, 1)
 	waitUntil(t, func() bool { return fp.calls.Load() == 2 })
 	cancel()
