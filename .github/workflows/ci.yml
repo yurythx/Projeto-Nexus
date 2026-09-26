@@ -172,6 +172,10 @@ jobs:
           cp .env.example .env
           mkdir -p secrets
           openssl genrsa -out secrets/local_auth_private_key.pem 2048
+          # O container roda como usuário não-root (nix), com outro uid:
+          # sem leitura para "outros" a API/worker falham com
+          # "permission denied" (mesmo passo do README).
+          chmod 644 secrets/local_auth_private_key.pem
 
       - name: Build all images
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml build
@@ -181,7 +185,7 @@ jobs:
 
       - name: Wait for every service to report healthy
         run: |
-          services="postgres rabbitmq minio backend-api backend-worker frontend"
+          services="postgres rabbitmq redis minio backend-api backend-worker frontend"
           deadline=$((SECONDS + 180))
           for svc in $services; do
             while true; do

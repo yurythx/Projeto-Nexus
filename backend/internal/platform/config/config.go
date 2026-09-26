@@ -542,6 +542,9 @@ func Load() (*Config, error) {
 		if strings.Contains(cfg.RabbitMQ.URL, exampleRabbitMQPassword) {
 			weak = append(weak, "RABBITMQ_URL (RABBITMQ_DEFAULT_PASS)")
 		}
+		if strings.Contains(cfg.Redis.URL, exampleRedisPassword) {
+			weak = append(weak, "REDIS_URL (REDIS_PASSWORD)")
+		}
 		if cfg.Security.ConfigEncryptionKey == insecureConfigEncryptionKey {
 			weak = append(weak, "CONFIG_ENCRYPTION_KEY")
 		}
@@ -571,6 +574,7 @@ const (
 	// MinIO acima. Ver o comentário em Load().
 	exampleDBPassword       = "dev-change-this-db-password"
 	exampleRabbitMQPassword = "dev-change-this-rabbitmq-password"
+	exampleRedisPassword    = "dev-change-this-redis-password"
 
 	// insecureConfigEncryptionKey é uma chave AES-256 FIXA e PÚBLICA (só
 	// para o processo conseguir subir em dev/test sem exigir mais uma

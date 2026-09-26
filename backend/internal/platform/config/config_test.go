@@ -221,6 +221,24 @@ func TestLoad_ProductionRejectsExampleRabbitMQPassword(t *testing.T) {
 	}
 }
 
+// A senha de Redis de .env.example (usada pelo docker-compose) também fica
+// embutida na URL; mesma checagem por substring do RabbitMQ.
+func TestLoad_ProductionRejectsExampleRedisPassword(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("MINIO_ACCESS_KEY", "nexus-prod-access")
+	t.Setenv("MINIO_SECRET_KEY", "nexus-prod-secret-strong-value")
+	t.Setenv("REDIS_URL", "redis://:"+exampleRedisPassword+"@redis:6379/0")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() deveria recusar produção com a senha de Redis de .env.example")
+	}
+	if !contains(err.Error(), "REDIS_URL") {
+		t.Errorf("erro deveria citar REDIS_URL: %v", err)
+	}
+}
+
 // TestLoad_ProductionRejectsInsecureConfigEncryptionKey cobre a nova chave
 // de cifragem (ver internal/platform/secretcrypto e keycloakconfig): sem
 // CONFIG_ENCRYPTION_KEY definida, o processo cairia no default público

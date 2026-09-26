@@ -60,7 +60,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 │   │   ├── hooks/             # Custom React Hooks
 │   │   ├── lib/               # Clientes API / WS / Auth
 │   │   └── types/             # TypeScript DTOs
-├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, MinIO, API, Worker, Frontend)
+├── docker-compose.yml         # Serviços Docker (PostgreSQL, RabbitMQ, Redis, MinIO, API, Worker, Frontend)
 ├── docker-compose.dev.yml     # Exposição de portas em desenvolvimento
 └── Makefile                   # Atalhos de build, testes, lint e migrations
 ```
