@@ -118,7 +118,7 @@ function UserDetail({ userId, onChanged }: { userId: string; onChanged: () => vo
               </Button>
             )}
           </div>
-          {!u.federated || u.local_login ? (
+          {!u.federated ? (
             <form
               className="flex flex-col gap-2 sm:flex-row sm:items-end"
               onSubmit={(e) => {
@@ -134,7 +134,10 @@ function UserDetail({ userId, onChanged }: { userId: string; onChanged: () => vo
               </Button>
             </form>
           ) : (
-            <p className="text-xs text-muted">Senha gerida pelo Active Directory.</p>
+            <p className="text-xs text-muted">
+              Senha gerida pelo Active Directory: contas federadas não recebem senha local (seria uma entrada que ignora a política e a
+              desativação do diretório).
+            </p>
           )}
         </section>
       )}
