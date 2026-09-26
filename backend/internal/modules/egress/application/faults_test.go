@@ -411,9 +411,18 @@ func TestWorkerSurvivesRepositoryFailures(t *testing.T) {
 	if err := e.real().Dispatch(ctx, e.event("race.x")); err != nil {
 		t.Fatal(err)
 	}
+	// As entregas que sobraram dos passos anteriores ficam para depois: a
+	// reserva tem de trazer justamente a do destino que será desativado.
+	if _, err := e.pool.Exec(ctx, `UPDATE egress_deliveries SET next_attempt_at = now() + interval '1 hour'
+		WHERE target_id <> $1 AND status IN ('pending', 'failed')`, racing.ID); err != nil {
+		t.Fatal(err)
+	}
 	flip := &flipOnClaim{faultRepo: faultRepo{inner: infrastructure.NewRepository()}, pool: e.pool, target: racing.ID}
 	e.dlv.calls = nil
 	e.runOnce(e.svc(flip, 3))
+	if !flip.claimed {
+		t.Fatal("a reserva não trouxe a entrega do destino (o teste não exercitaria a corrida)")
+	}
 	for _, c := range e.dlv.calls {
 		if c == racing.ID {
 			t.Fatal("destino desativado depois da reserva não recebe a entrega")
@@ -431,12 +440,16 @@ func TestWorkerSurvivesRepositoryFailures(t *testing.T) {
 // flipOnClaim desativa o destino logo depois da reserva.
 type flipOnClaim struct {
 	faultRepo
-	pool   *pgxpool.Pool
-	target uuid.UUID
+	pool    *pgxpool.Pool
+	target  uuid.UUID
+	claimed bool // a reserva trouxe uma entrega do destino
 }
 
 func (f *flipOnClaim) ClaimDue(ctx context.Context, db database.DBTX, limit int) ([]domain.Delivery, error) {
 	out, err := f.faultRepo.ClaimDue(ctx, db, limit)
+	for _, d := range out {
+		f.claimed = f.claimed || d.TargetID == f.target
+	}
 	if _, uerr := f.pool.Exec(ctx, `UPDATE egress_targets SET active = false WHERE id = $1`, f.target); uerr != nil {
 		return nil, uerr
 	}
