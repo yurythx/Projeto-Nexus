@@ -23,7 +23,8 @@ type Module struct {
 // New constrói o módulo. catalog lista as permissões de todos os plugins
 // (fornecido pelo Kernel, que conhece os manifestos).
 func New(deps modkit.Deps, catalog transport.PermissionCatalog) *Module {
-	svc := application.NewService(deps.Pool, infrastructure.NewRepository(), deps.InvalidatePermissions)
+	svc := application.NewService(deps.Pool, infrastructure.NewRepository(), deps.InvalidatePermissions).
+		WithLoginLockoutReset(deps.ResetLoginLockout)
 	return &Module{handlers: transport.NewHandlers(svc, catalog, deps.Logger, deps.Config.MaxPageSize)}
 }
 

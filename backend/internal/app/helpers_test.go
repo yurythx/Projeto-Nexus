@@ -62,13 +62,18 @@ func (h *apiHarness) admin() string {
 }
 
 func (h *apiHarness) do(method, path, token, body string) *httptest.ResponseRecorder {
+	return h.doFrom("203.0.113.10:1234", method, path, token, body)
+}
+
+// doFrom faz a requisição a partir de um IP de origem específico.
+func (h *apiHarness) doFrom(remote, method, path, token, body string) *httptest.ResponseRecorder {
 	var r io.Reader
 	if body != "" {
 		r = strings.NewReader(body)
 	}
 	req := httptest.NewRequest(method, path, r)
 	req.Header.Set("Content-Type", "application/json")
-	req.RemoteAddr = "203.0.113.10:1234"
+	req.RemoteAddr = remote
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

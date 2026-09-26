@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -41,6 +42,12 @@ func registerPlugins(d *Dependencies) {
 		PublicLimiter:         d.RateLimiters.Public,
 		ContactLimiter:        d.RateLimiters.Contact,
 		InvalidatePermissions: d.IAM.Invalidate,
+		ResetLoginLockout: func(ctx context.Context, username string) error {
+			if d.RateLimiters == nil || d.RateLimiters.Lockout == nil {
+				return nil
+			}
+			return d.RateLimiters.Lockout.Reset(ctx, "user:"+strings.ToLower(username))
+		},
 	}
 
 	signumModule := signum.New(deps, d.keycloakCredentials, d.RateLimiters.Lockout)

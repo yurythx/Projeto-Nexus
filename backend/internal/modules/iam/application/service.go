@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,9 +28,10 @@ import (
 
 // Service implementa os casos de uso do IAM.
 type Service struct {
-	pool       *pgxpool.Pool
-	repo       *infrastructure.Repository
-	invalidate func(ctx context.Context)
+	pool         *pgxpool.Pool
+	repo         *infrastructure.Repository
+	invalidate   func(ctx context.Context)
+	resetLockout func(ctx context.Context, username string) error
 }
 
 // NewService cria o serviço.
@@ -40,6 +42,44 @@ func NewService(pool *pgxpool.Pool, repo *infrastructure.Repository, invalidate 
 	return &Service{pool: pool, repo: repo, invalidate: invalidate}
 }
 
+// WithLoginLockoutReset conecta a limpeza do bloqueio progressivo de login
+// (Redis) ao desbloqueio administrativo.
+func (s *Service) WithLoginLockoutReset(fn func(ctx context.Context, username string) error) *Service {
+	s.resetLockout = fn
+	return s
+}
+
+// guardGrant aplica "ninguém concede o que não tem" (A01): cada permissão
+// nova (ausente em before) precisa estar coberta pelas permissões efetivas
+// de quem está concedendo — senão um detentor de iam:manage criaria um
+// perfil "*" e se lotaria nele.
+func guardGrant(ctx context.Context, before, after []string) error {
+	identity, _ := auth.IdentityFromContext(ctx)
+	for _, p := range after {
+		if slices.Contains(before, p) {
+			continue
+		}
+		if !auth.HasPermission(identity, auth.Permission(p)) {
+			return apperrors.Forbidden("você não pode conceder a permissão " + p + ", que não possui")
+		}
+	}
+	return nil
+}
+
+// guardAdminRole impede escalada de privilégio (A01): só quem já detém
+// acesso total ("*") concede ou retira o papel de administrador da
+// plataforma (nexus-admin equivale a "*").
+func guardAdminRole(ctx context.Context, before, after []string) error {
+	if slices.Contains(before, auth.RoleAdmin) == slices.Contains(after, auth.RoleAdmin) {
+		return nil
+	}
+	identity, _ := auth.IdentityFromContext(ctx)
+	if !auth.HasPermission(identity, "*") {
+		return apperrors.Forbidden("apenas administradores com acesso total podem conceder ou retirar o papel " + auth.RoleAdmin)
+	}
+	return nil
+}
+
 // MapError traduz erros de domínio em erros HTTP.
 func MapError(err error) error {
 	switch {
@@ -47,6 +87,8 @@ func MapError(err error) error {
 		return apperrors.NotFound("registro não encontrado")
 	case errors.Is(err, domain.ErrConflict):
 		return apperrors.Conflict("já existe um registro com esses dados (slug, grupo ou vínculo duplicado)")
+	case errors.Is(err, domain.ErrInUse):
+		return apperrors.Conflict("registro em uso: remova antes a estrutura abaixo, as lotações e os mapeamentos do AD que o referenciam")
 	case errors.Is(err, domain.ErrSystemProfile):
 		return apperrors.Conflict("perfis de sistema não podem ser removidos")
 	case errors.Is(err, domain.ErrInvalidPermision):
@@ -266,6 +308,7 @@ func (s *Service) SavePerfil(ctx context.Context, in domain.Perfil) (domain.Perf
 	var out domain.Perfil
 	err = s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		var before any
+		var prevPerms []string
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
 		} else {
@@ -284,6 +327,10 @@ func (s *Service) SavePerfil(ctx context.Context, in domain.Perfil) (domain.Perf
 				in.Slug = prev.Slug
 			}
 			before = prev
+			prevPerms = prev.Permissoes
+		}
+		if err := guardGrant(ctx, prevPerms, in.Permissoes); err != nil {
+			return audit.Entry{}, err
 		}
 		var err error
 		out, err = s.repo.UpsertPerfil(ctx, tx, in)
@@ -317,6 +364,9 @@ func (s *Service) CreateMapping(ctx context.Context, in domain.ADMapping) (uuid.
 	in.CreatedBy = identity.Username
 	var id uuid.UUID
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		if err := s.guardPerfilGrant(ctx, tx, in.PerfilID); err != nil {
+			return audit.Entry{}, err
+		}
 		scope, err := s.repo.ScopeConsistent(ctx, tx, in.Scope)
 		if err != nil {
 			return audit.Entry{}, err
@@ -370,6 +420,9 @@ func (s *Service) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUserInp
 		if err != nil {
 			return audit.Entry{}, err
 		}
+		if err := guardAdminRole(ctx, prev.Roles, in.Roles); err != nil {
+			return audit.Entry{}, err
+		}
 		if err := s.repo.UpdateUser(ctx, tx, id, in.DisplayName, in.Active, in.Roles); err != nil {
 			return audit.Entry{}, err
 		}
@@ -395,6 +448,9 @@ func (s *Service) CreateLocalUser(ctx context.Context, in CreateLocalUserInput) 
 		return domain.User{}, apperrors.Validation("username deve ter 3 a 80 caracteres: letras, dígitos, ponto, hífen ou sublinhado")
 	}
 	if err := ValidatePasswordStrength(in.Password); err != nil {
+		return domain.User{}, err
+	}
+	if err := guardAdminRole(ctx, nil, in.Roles); err != nil {
 		return domain.User{}, err
 	}
 	hash, err := passwords.Hash(in.Password)
@@ -432,10 +488,26 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, password stri
 	})
 }
 
+// Unlock zera o bloqueio da conta (banco) E o bloqueio progressivo de
+// login distribuído (Redis) — sem o segundo, o login continuaria
+// recusado até a janela expirar.
 func (s *Service) Unlock(ctx context.Context, id uuid.UUID) error {
-	return s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+	var username string
+	err := s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		u, err := s.repo.GetUser(ctx, tx, id)
+		if err != nil {
+			return audit.Entry{}, err
+		}
+		username = u.Username
 		return audit.Meta(ctx, "user.unlocked", "user", id.String(), nil, nil), s.repo.Unlock(ctx, tx, id)
 	})
+	if err != nil || s.resetLockout == nil {
+		return err
+	}
+	if err := s.resetLockout(ctx, username); err != nil {
+		return apperrors.DependencyUnavailable("conta desbloqueada, mas o bloqueio de login distribuído não pôde ser limpo — tente novamente").WithCause(err)
+	}
+	return nil
 }
 
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{3,80}$`)
@@ -472,6 +544,16 @@ func ValidatePasswordStrength(p string) error {
 
 // ---------------------------------------------------------------- lotações
 
+// guardPerfilGrant: atribuir um perfil (lotação ou mapeamento do AD)
+// concede todas as permissões dele.
+func (s *Service) guardPerfilGrant(ctx context.Context, tx pgx.Tx, perfilID uuid.UUID) error {
+	p, err := s.repo.GetPerfil(ctx, tx, perfilID)
+	if err != nil {
+		return err
+	}
+	return guardGrant(ctx, nil, p.Permissoes)
+}
+
 func (s *Service) ListLotacoes(ctx context.Context, userID uuid.UUID) ([]domain.Lotacao, error) {
 	return s.repo.ListLotacoes(ctx, s.pool, userID)
 }
@@ -481,6 +563,9 @@ func (s *Service) CreateLotacao(ctx context.Context, in domain.Lotacao) (uuid.UU
 	in.CreatedBy = identity.Username
 	var id uuid.UUID
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		if err := s.guardPerfilGrant(ctx, tx, in.PerfilID); err != nil {
+			return audit.Entry{}, err
+		}
 		scope, err := s.repo.ScopeConsistent(ctx, tx, in.Scope)
 		if err != nil {
 			return audit.Entry{}, err

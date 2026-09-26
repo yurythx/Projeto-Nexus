@@ -17,6 +17,7 @@ var (
 	ErrSystemProfile    = errors.New("iam: perfil de sistema não pode ser removido")
 	ErrInvalidPermision = errors.New("iam: permissão inválida")
 	ErrInvalidScope     = errors.New("iam: escopo organizacional inconsistente")
+	ErrInUse            = errors.New("iam: registro em uso")
 )
 
 // Entidade é o tenant (órgão/empresa).

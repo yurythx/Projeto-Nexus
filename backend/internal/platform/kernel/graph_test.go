@@ -167,7 +167,9 @@ func (n namedProvider) Search(context.Context, auth.Identity, string, int) ([]se
 	return nil, nil
 }
 
-func (p *searchPlugin) SearchProviders() []search.Provider { return []search.Provider{namedProvider(p.name)} }
+func (p *searchPlugin) SearchProviders() []search.Provider {
+	return []search.Provider{namedProvider(p.name)}
+}
 
 func TestSearchProvidersFollowActivation(t *testing.T) {
 	k, _ := newKernel(t,
