@@ -73,6 +73,11 @@ func (k *Kernel) Supervise(ctx context.Context, process Process, consume Consume
 		}(u)
 	}
 	k.logger.Info("kernel: supervisor iniciado", slog.String("process", string(process)), slog.Int("units", len(units)))
+	// Sem unidades (ex.: nenhum plugin tem worker no processo da API),
+	// wg.Wait() voltaria na hora — e o wrapper supervised() reiniciava o
+	// supervisor com WARN a cada backoff, para sempre. Cada unidade só
+	// termina com ctx, então esperar ctx primeiro não muda o caso normal.
+	<-ctx.Done()
 	wg.Wait()
 	return nil
 }

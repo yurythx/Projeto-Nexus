@@ -305,6 +305,24 @@ func TestSuperviseWaitsWhileDisabledUntilShutdown(t *testing.T) {
 	<-done
 }
 
+// Sem nenhuma unidade, Supervise ainda bloqueia até ctx acabar — antes
+// voltava na hora e o processo da API o reiniciava em loop com WARN.
+func TestSuperviseWithoutUnitsBlocksUntilShutdown(t *testing.T) {
+	k, _ := newKernel(t, &fakePlugin{m: Manifest{Key: "sem-workers"}})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- k.Supervise(ctx, ProcessAPI, nil, nil) }()
+	select {
+	case err := <-done:
+		t.Fatalf("Supervise voltou antes do shutdown: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Supervise: %v", err)
+	}
+}
+
 func TestSuperviseRunsConsumersWithDedup(t *testing.T) {
 	pool := dbtest.Pool(t)
 	var handled atomic.Int32

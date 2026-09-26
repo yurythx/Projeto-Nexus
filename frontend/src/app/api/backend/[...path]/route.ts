@@ -116,7 +116,17 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   if (contentDisposition) {
     headers["Content-Disposition"] = contentDisposition;
   }
-  return new NextResponse(body, { status: backendResponse.status, headers });
+  // 204/205/304 não podem ter corpo — nem string vazia: o construtor de
+  // Response lança TypeError e a chamada virava 500 (ex.: POST
+  // .../mercurio/rooms/{id}/read, que responde 204).
+  return new NextResponse(isNullBodyStatus(backendResponse.status) ? null : body, {
+    status: backendResponse.status,
+    headers,
+  });
+}
+
+function isNullBodyStatus(status: number): boolean {
+  return status === 204 || status === 205 || status === 304;
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {

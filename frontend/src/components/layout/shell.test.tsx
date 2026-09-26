@@ -20,7 +20,7 @@ vi.mock("next/script", () => ({ default: ({ onLoad }: { onLoad?: () => void }) =
 import { Providers } from "@/app/providers";
 import { AccessibilityShortcuts, focusSkipTarget } from "./AccessibilityShortcuts";
 import { DashboardShell } from "./DashboardShell";
-import { PublicShell } from "./PublicShell";
+import { PublicShellClient as PublicShell } from "./PublicShellClient";
 import { SectionTabs } from "./SectionTabs";
 import { PwaInstallPrompt } from "@/components/pwa/PwaInstallPrompt";
 import { Section } from "@/components/ui/Section";
@@ -94,6 +94,32 @@ describe("PublicShell", () => {
     expect(screen.getByRole("button", { name: "Acessar o painel" }).closest("a")).toHaveAttribute("href", "/dashboard");
     // sem saber o estado dos módulos, esconde os de plugin
     await waitFor(() => expect(screen.queryByRole("link", { name: "Serviços" })).not.toBeInTheDocument());
+    vi.unstubAllGlobals();
+  });
+
+  it("com o estado vindo do servidor, plugin desativado nunca pisca no menu", async () => {
+    session.status = "unauthenticated";
+    let answer: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((r) => (answer = r))));
+    render(withBrand(<PublicShell initialEnabled={{ catalog: false, directory: false, calendar: false, contact: true }}><p>página</p></PublicShell>));
+    const nav = screen.getByRole("navigation", { name: "Menu principal" });
+    // 1º render, antes de qualquer resposta do fetch do navegador
+    expect(within(nav).queryByRole("link", { name: "Serviços" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Agenda" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Contato" })).toBeInTheDocument();
+    // o fetch do navegador atualiza um estado em cache no servidor
+    await act(async () => answer(new Response(JSON.stringify({ data: [{ key: "catalog", enabled: true }], error: null }))));
+    expect(await within(nav).findByRole("link", { name: "Serviços" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("sem estado inicial, links de plugin só aparecem depois do fetch", () => {
+    session.status = "unauthenticated";
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    render(withBrand(<PublicShell><p>página</p></PublicShell>));
+    const nav = screen.getByRole("navigation", { name: "Menu principal" });
+    expect(within(nav).queryByRole("link", { name: "Serviços" })).not.toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Sobre" })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });

@@ -74,6 +74,13 @@ describe("proxy BFF autenticado", () => {
     expect(upstream.mock.calls[0]![1].body).toBeInstanceOf(ArrayBuffer);
   });
 
+  it("204 da API passa como 204 sem corpo (antes: TypeError → 500)", async () => {
+    upstream.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const res = await POST(new NextRequest("http://app/x", { method: "POST", body: "{}" }), params("v1", "mercurio", "rooms", "r1", "read"));
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+  });
+
   it("resposta sem content-type é tratada como JSON; GET sem corpo", async () => {
     upstream.mockResolvedValueOnce(new Response("{}", { status: 200 }));
     const res = await GET(new NextRequest("http://app/x"), params("v1", "x"));

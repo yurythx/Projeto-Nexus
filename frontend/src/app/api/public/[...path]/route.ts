@@ -39,7 +39,9 @@ async function forward(req: NextRequest, path: string[]): Promise<NextResponse> 
       body: req.method === "GET" ? undefined : await req.arrayBuffer(),
       signal: AbortSignal.timeout(10000),
     });
-    return new NextResponse(await res.text(), {
+    // 204/205/304 não podem ter corpo (o construtor de Response lança).
+    const noBody = res.status === 204 || res.status === 205 || res.status === 304;
+    return new NextResponse(noBody ? null : await res.text(), {
       status: res.status,
       headers: { "Content-Type": res.headers.get("content-type") ?? "application/json" },
     });
