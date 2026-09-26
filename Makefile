@@ -1,6 +1,6 @@
 .PHONY: dev up down logs build test lint format \
 	deploy prod-seed-admin prod-ps prod-logs prod-down \
-	demo-keycloak demo-generate demo-seed \
+	demo-keycloak demo-generate demo-seed demo-test \
 	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
 	backend-build backend-test backend-lint backend-sec backend-format \
@@ -56,6 +56,10 @@ demo-generate: ## Regera realm do Keycloak + SQL + CSV a partir de scripts/demo-
 
 demo-seed: ## Aplica (idempotente) a estrutura organizacional e os usuários fictícios no Postgres
 	$(COMPOSE_PROD) exec -T postgres psql -q -v ON_ERROR_STOP=1 -U $(DB_USER) -d $(DB_NAME) < deploy/demo/seed-demo.sql
+
+demo-test: ## Cenários ponta a ponta com os usuários fictícios (login real pelo Keycloak)
+	python3 scripts/demo-data/cenarios/tramite.py
+	python3 scripts/demo-data/cenarios/modulos.py
 
 down: ## Para e remove todos os serviços
 	$(COMPOSE) down

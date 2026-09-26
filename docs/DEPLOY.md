@@ -91,6 +91,16 @@ Mudar a estrutura: edite `scripts/demo-data/generate.mjs`, rode
 para reimportar, `docker compose rm -sf keycloak && docker volume rm
 projeto-nexus_keycloak_data` e `make deploy`.
 
+### Cenários ponta a ponta
+
+`make demo-test` (no servidor, com o Keycloak de teste no ar) faz login
+**de verdade** pelo Keycloak com usuários fictícios de lotações diferentes
+e exercita, pelo mesmo BFF do navegador: Trâmite entre unidades (perfil,
+escopo, sigilo, tramitação, conclusão), Signum (reautenticação no
+Keycloak), Mercúrio, Agenda, Arquivos (upload/download real no MinIO),
+Diretório, IAM, Busca, Auditoria e LGPD — casos permitidos e negados.
+Para chamadas avulsas: `scripts/demo-data/cenarios/nx <usuario> GET me`.
+
 Trocar pelo Keycloak oficial: aponte `KEYCLOAK_ISSUER_URL` (e o client
 secret) para ele, tire `docker-compose.keycloak.yml` do `COMPOSE_FILE` no
 `.env` e rode `make deploy`.
