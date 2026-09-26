@@ -50,7 +50,10 @@ services:
       retries: 5
       start_period: 30s
   minio:
-    image: minio/minio:latest
+    # minio/minio saiu do Docker Hub e a MinIO parou de publicar imagens da
+    # edição comunitária. pgsty/minio é um fork mantido e compatível (mesmo
+    # entrypoint, inclui curl/mc). Versão fixada para builds reproduzíveis.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
