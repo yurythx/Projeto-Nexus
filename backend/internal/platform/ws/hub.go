@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -72,11 +73,17 @@ type Hub struct {
 	hmu         sync.RWMutex
 	authorizers map[string]Authorizer
 	inbound     map[string]InboundHandler
+
+	// subscribe abre a assinatura do backplane (substituível em teste).
+	subscribe func(ctx context.Context) (<-chan *redis.Message, func() error)
+	// pongWait: sem pong nesse prazo a conexão é dada como morta;
+	// pingPeriod: intervalo dos pings (sempre menor que pongWait).
+	pongWait, pingPeriod time.Duration
 }
 
 // NewHub cria o Hub. rdb nil = entrega só local (uma réplica).
 func NewHub(logger *slog.Logger, rdb *redis.Client) *Hub {
-	return &Hub{
+	h := &Hub{
 		logger:      logger,
 		redis:       rdb,
 		gate:        func(string) bool { return true },
@@ -84,7 +91,14 @@ func NewHub(logger *slog.Logger, rdb *redis.Client) *Hub {
 		topics:      make(map[string]map[*Client]struct{}),
 		authorizers: make(map[string]Authorizer),
 		inbound:     make(map[string]InboundHandler),
+		pongWait:    pongWait,
+		pingPeriod:  pingPeriod,
 	}
+	h.subscribe = func(ctx context.Context) (<-chan *redis.Message, func() error) {
+		sub := h.redis.Subscribe(ctx, redisx.Key("ws"))
+		return sub.Channel(), sub.Close
+	}
+	return h
 }
 
 // SetModuleGate conecta o Hub ao estado de ativação do Kernel.
@@ -120,9 +134,8 @@ func (h *Hub) Run(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
 	}
-	sub := h.redis.Subscribe(ctx, redisx.Key("ws"))
-	defer sub.Close()
-	ch := sub.Channel()
+	ch, closeSub := h.subscribe(ctx)
+	defer func() { _ = closeSub() }()
 	for {
 		select {
 		case <-ctx.Done():
@@ -148,10 +161,7 @@ func (h *Hub) Publish(ctx context.Context, topic, frameType string, data any) er
 	if err != nil {
 		return fmt.Errorf("ws: marshal data: %w", err)
 	}
-	frame, err := json.Marshal(Frame{Type: frameType, Topic: topic, Data: raw})
-	if err != nil {
-		return fmt.Errorf("ws: marshal frame: %w", err)
-	}
+	frame, _ := json.Marshal(Frame{Type: frameType, Topic: topic, Data: raw}) // Data já é JSON válido
 	return h.PublishRaw(ctx, topic, frame)
 }
 
@@ -321,13 +331,21 @@ func (h *Hub) closeAll() {
 }
 
 // DropTopic remove todos os assinantes locais de um tópico (ex.: sala
-// arquivada). Outras réplicas convergem na próxima tentativa de assinatura,
-// que o autorizador passa a recusar.
+// arquivada) e os avisa com {"type":"topic.dropped"} — antes a assinatura
+// sumia em silêncio e a tela simplesmente parava de receber. Outras
+// réplicas convergem na próxima tentativa de assinatura, que o autorizador
+// passa a recusar.
 func (h *Hub) DropTopic(topic string) {
+	notice, _ := json.Marshal(Frame{Type: "topic.dropped", Topic: topic})
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	affected := make([]*Client, 0, len(h.topics[topic]))
 	for c := range h.topics[topic] {
 		delete(c.topics, topic)
+		affected = append(affected, c)
 	}
 	delete(h.topics, topic)
+	h.mu.Unlock()
+	for _, c := range affected {
+		c.enqueue(notice)
+	}
 }

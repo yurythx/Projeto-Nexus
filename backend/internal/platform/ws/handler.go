@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
@@ -35,7 +36,7 @@ func TicketHandler(store *TicketStore, logger *slog.Logger) http.HandlerFunc {
 			Permissions: identity.Permissions,
 			Scopes:      identity.Scopes,
 		}
-		if identity.UserID.String() != "00000000-0000-0000-0000-000000000000" {
+		if identity.UserID != uuid.Nil {
 			info.UserID = identity.UserID.String()
 		}
 		ticket, err := store.Issue(r.Context(), info)

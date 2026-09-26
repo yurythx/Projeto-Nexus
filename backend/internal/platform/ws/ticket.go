@@ -45,14 +45,9 @@ func NewTicketStore(rdb *redis.Client, ttl time.Duration) *TicketStore {
 // Issue emite um ticket para info.
 func (s *TicketStore) Issue(ctx context.Context, info ClientInfo) (*Ticket, error) {
 	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return nil, fmt.Errorf("ws: gerar ticket: %w", err)
-	}
+	_, _ = rand.Read(raw) // não falha (Go 1.24+: aborta o processo se o SO não tiver entropia)
 	value := hex.EncodeToString(raw)
-	body, err := json.Marshal(info)
-	if err != nil {
-		return nil, fmt.Errorf("ws: serializar ticket: %w", err)
-	}
+	body, _ := json.Marshal(info) // ClientInfo só tem tipos serializáveis
 	if err := s.redis.Set(ctx, redisx.Key("ws", "ticket", value), body, s.ttl).Err(); err != nil {
 		return nil, fmt.Errorf("ws: gravar ticket: %w", err)
 	}
