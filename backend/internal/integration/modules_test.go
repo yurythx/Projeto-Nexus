@@ -535,6 +535,15 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if total != 1 || len(dels) != 1 {
 			t.Fatalf("1 entrega esperada (padrão blog.# + dedup), veio %d", total)
 		}
+		// Isolamento: entregas pendentes deixadas por execuções anteriores no
+		// mesmo banco (destinos de servidores de teste já encerrados) não
+		// podem disputar o lote do worker com a entrega deste teste.
+		if _, err := e.pool.Exec(ctx, `UPDATE egress_targets SET active = false WHERE id <> $1`, target.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.pool.Exec(ctx, `UPDATE egress_deliveries SET status = 'dead' WHERE target_id <> $1 AND status IN ('pending','failed')`, target.ID); err != nil {
+			t.Fatal(err)
+		}
 		runCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 		_ = svc.RunDeliveries(runCtx)
 		cancel()

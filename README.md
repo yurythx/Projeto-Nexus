@@ -86,7 +86,7 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 | Signum | Plug-in | `/signum` | `/verificar/{id}` |
 | Trâmite | Plug-in | `/tramite` | — |
 
-Os plug-ins são ativados e desativados em runtime em **Configurações → Módulos**: o menu, as páginas públicas e o sitemap acompanham o estado do Kernel.
+Os plug-ins são ativados e desativados em runtime em **Configurações → Módulos**: o menu, as páginas públicas e o sitemap acompanham o estado do Kernel. A tela mostra o grafo de dependências (hoje, **Trâmite depende de Signum**): desligar um módulo pede para desligar antes quem depende dele, e ligar pede para ligar antes as dependências.
 
 ---
 
@@ -129,18 +129,21 @@ make seed-admin
 
 ## 🧪 Testes e Qualidade de Código
 
-Para executar as suítes de teste automatizadas do backend e frontend:
-
 ```bash
-# Executar todos os testes
-make test
+make test                 # backend + frontend
 
-# Testes do Backend
-cd backend && go test ./... -p 1
+# Backend com os testes de integração (Postgres real, como no CI)
+cd backend
+TEST_DATABASE_URL="postgres://nexus:SENHA@localhost:5432/nexus_test?sslmode=disable" \
+  go test -race -p 1 -coverpkg=./internal/... ./...
 
-# Testes do Frontend
-cd frontend && npm test
+cd frontend && npm test   # Vitest + Testing Library
 ```
+
+- **Todos os módulos** são exercitados pela API real (`backend/internal/app/*_http_test.go`): permissões, validação, fluxos e auditoria.
+- **Ativar/desativar**: um teste descobre todas as rotas de cada plug-in e exige `404 MODULE_DISABLED` com o módulo desligado; o grafo de dependências é aplicado e exibido.
+- **Contrato**: `docs/openapi.yaml` é verificado contra as rotas montadas.
+- Detalhes em [`docs/GUIDE_DESENVOLVEDOR.md`](docs/GUIDE_DESENVOLVEDOR.md#-6-testes) e no [ADR 008](docs/adr/008-kernel-grafo-de-modulos-e-estrategia-de-testes.md).
 
 ---
 

@@ -68,6 +68,19 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | F5.3 | RIPD / DPIA | 🟡 `docs/RIPD_MODELO.md` (minuta técnica); 🔒 versão oficial pelo DPO |
 | F5.4 | Dossiê de conformidade SGD/MGI | ✅ `docs/DOSSIE_CONFORMIDADE.md` (índice); itens de execução marcados nele |
 
+## Fase 6 — Revisão do Microkernel (ADR 008)
+
+| # | Item | Estado |
+|---|---|---|
+| F6.1 | Grafo de módulos (`depends_on`/`dependents`/`blocked_by`) na API e na tela de Módulos, cascata confirmada | ✅ |
+| F6.2 | Teste automático de ativação: toda rota de cada plug-in responde 404 `MODULE_DISABLED` desligado | ✅ `internal/app/modules_toggle_test.go` |
+| F6.3 | A01 — IAM: ninguém concede permissão/papel que não possui | ✅ |
+| F6.4 | Estrutura organizacional e perfis com `ON DELETE RESTRICT` (409 em uso) | ✅ migration 000121 |
+| F6.5 | Auditoria com IP e User-Agent em toda entrada (proveniência skill §5) | ✅ `audit.CaptureOrigin` |
+| F6.6 | LGPD — consentimento de usuários federados e versão vigente obrigatória | ✅ |
+| F6.7 | Testes de integração no CI (Postgres real), cobertura 46,5% → 70% | ✅ |
+| F6.8 | OpenAPI sincronizado com o roteador (teste de contrato) | ✅ `internal/app/openapi_test.go` |
+
 ---
 
 ## Parâmetros novos e como são usados
