@@ -132,14 +132,15 @@ export const authOptions: NextAuthOptions = {
           console.error("Login local: backend inacessível");
           return null;
         }
+        // Antes do corpo: o 429 do rate limiter nem sempre vem em JSON.
+        if (res.status === 429) {
+          throw new Error("TooManyAttempts");
+        }
         let body: LocalLoginResponse;
         try {
           body = await res.json();
         } catch {
           return null;
-        }
-        if (res.status === 429) {
-          throw new Error("TooManyAttempts");
         }
         if (!res.ok || !body.data) return null;
         return {

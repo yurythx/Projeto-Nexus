@@ -42,6 +42,11 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
   while (cleanPathSegments.length > 0 && (cleanPathSegments[0] === "api" || cleanPathSegments[0] === "backend")) {
     cleanPathSegments.shift();
   }
+  // ".." normalizaria para fora de /api (ex.: /api/../metrics vira /metrics)
+  // levando o bearer do usuário junto — mesma guarda do proxy público.
+  if (cleanPathSegments.some((seg) => seg === ".." || seg === "." || seg.includes("/") || seg.includes("\\"))) {
+    return NextResponse.json({ data: null, error: { code: "NOT_FOUND", message: "rota inexistente" } }, { status: 404 });
+  }
   const targetUrl = new URL(`/api/${cleanPathSegments.join("/")}`, BACKEND_URL);
   targetUrl.search = req.nextUrl.search;
 
