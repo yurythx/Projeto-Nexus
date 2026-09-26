@@ -10,13 +10,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	"golang.org/x/time/rate"
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/platform/logging"
@@ -204,80 +202,16 @@ func requireMetricsToken(token string) func(http.Handler) http.Handler {
 }
 
 // Limiter decide se uma requisição identificada por key é permitida agora.
-// RateLimit é deliberadamente desacoplado de qualquer implementação
-// específica: o InMemoryLimiter abaixo funciona para um único processo,
-// enquanto internal/platform/ratelimit.PostgresLimiter compartilha o
-// estado entre todas as réplicas da API — trocar um pelo outro não exige
-// tocar neste middleware.
+// RateLimit é desacoplado da implementação: a plataforma usa
+// ratelimit.RedisLimiter, que compartilha o estado entre as réplicas.
 type Limiter interface {
 	Allow(ctx context.Context, key string) (bool, error)
 }
 
-// InMemoryLimiter é um limitador de token bucket por chave, com remoção
-// preguiçosa de entradas obsoletas. É deliberadamente single-instance: com
-// mais de uma réplica da API, cada uma tem seu próprio balde independente,
-// então o limite *efetivo* vira N × o configurado. Serve bem para
-// desenvolvimento local ou um deployment de réplica única; produção deve
-// usar internal/platform/ratelimit.PostgresLimiter, que é compartilhado
-// por todas as réplicas: internal/platform/ratelimit.RedisLimiter (padrão)
-// ou PostgresLimiter.
-type InMemoryLimiter struct {
-	mu       sync.Mutex
-	limiters map[string]*rateEntry
-	rps      rate.Limit
-	burst    int
-}
-
-type rateEntry struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
-
-func NewInMemoryLimiter(rps float64, burst int) *InMemoryLimiter {
-	cl := &InMemoryLimiter{
-		limiters: make(map[string]*rateEntry),
-		rps:      rate.Limit(rps),
-		burst:    burst,
-	}
-	go cl.evictLoop()
-	return cl
-}
-
-// evictLoop remove periodicamente os buckets de chaves que não aparecem
-// há mais de 10 minutos — sem isso, o mapa cresceria indefinidamente com
-// uma entrada por IP/usuário já visto, mesmo que nunca mais volte.
-func (cl *InMemoryLimiter) evictLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		cl.mu.Lock()
-		for key, entry := range cl.limiters {
-			if time.Since(entry.lastSeen) > 10*time.Minute {
-				delete(cl.limiters, key)
-			}
-		}
-		cl.mu.Unlock()
-	}
-}
-
-func (cl *InMemoryLimiter) Allow(_ context.Context, key string) (bool, error) {
-	cl.mu.Lock()
-	entry, ok := cl.limiters[key]
-	if !ok {
-		entry = &rateEntry{limiter: rate.NewLimiter(cl.rps, cl.burst)}
-		cl.limiters[key] = entry
-	}
-	entry.lastSeen = time.Now()
-	limiter := entry.limiter
-	cl.mu.Unlock()
-
-	return limiter.Allow(), nil
-}
-
 // RateLimit retorna um middleware que limita cada cliente (identificado
 // por keyFunc, tipicamente o id do usuário autenticado ou o IP remoto) de
-// acordo com limiter. Um erro do Limiter (ex.: o banco por trás de um
-// PostgresLimiter fica brevemente inalcançável) falha ABERTO — a
+// acordo com limiter. Um erro do Limiter (ex.: o Redis por trás do
+// RedisLimiter fica brevemente inalcançável) falha ABERTO — a
 // requisição é deixada passar e o erro é apenas logado — em vez de deixar
 // uma instabilidade do rate limiter virar uma indisponibilidade completa
 // do endpoint que ele protege.
