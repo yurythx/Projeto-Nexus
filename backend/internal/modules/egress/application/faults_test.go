@@ -114,13 +114,10 @@ func (e *env) status(targetID uuid.UUID) (string, int) {
 }
 
 // runOnce roda o worker de entrega por uma rodada.
+// runOnce roda uma rodada completa do worker (o laço do RunDeliveries em si
+// é coberto por TestWorkerStopsMidBatch).
 func (e *env) runOnce(s *application.Service) {
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { _ = s.RunDeliveries(ctx); close(done) }()
-	time.Sleep(60 * time.Millisecond)
-	cancel()
-	<-done
+	s.DeliverBatch(context.Background())
 }
 
 // Ciclo de vida de uma entrega: dispatcher por padrão de evento, entrega,

@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -154,7 +155,8 @@ func TestLifecycleHooksAndFailuresAreLogged(t *testing.T) {
 
 func TestWatchPollingAndReloadFailures(t *testing.T) {
 	st := &failStore{memStore: newMemStore()}
-	k := New(st, quiet())
+	logs := &logRecorder{}
+	k := New(st, slog.New(logs))
 	k.pollInterval = 5 * time.Millisecond
 	k.MustRegister(&fakePlugin{m: Manifest{Key: "blog", DefaultEnabled: true}})
 	if err := k.Start(context.Background()); err != nil {
@@ -173,9 +175,39 @@ func TestWatchPollingAndReloadFailures(t *testing.T) {
 	// Store fora: polling e reload pós-NOTIFY só registram o aviso.
 	st.failLoad.Store(true)
 	st.notify <- struct{}{}
-	time.Sleep(20 * time.Millisecond)
+	waitFor(t, func() bool {
+		return logs.has("kernel: polling de estado falhou") && logs.has("kernel: reload após NOTIFY falhou")
+	})
 	cancel()
 	<-done
+}
+
+// logRecorder é um slog.Handler que guarda as mensagens registradas: o
+// teste espera o que o código de fato fez, em vez de um tempo fixo que
+// depende da velocidade da máquina.
+type logRecorder struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (l *logRecorder) Enabled(context.Context, slog.Level) bool { return true }
+func (l *logRecorder) Handle(_ context.Context, r slog.Record) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.msgs = append(l.msgs, r.Message)
+	return nil
+}
+func (l *logRecorder) WithAttrs([]slog.Attr) slog.Handler { return l }
+func (l *logRecorder) WithGroup(string) slog.Handler      { return l }
+func (l *logRecorder) has(msg string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, m := range l.msgs {
+		if m == msg {
+			return true
+		}
+	}
+	return false
 }
 
 func TestQueuesAndMountSkipPluginsWithoutCapabilities(t *testing.T) {
@@ -224,12 +256,17 @@ func TestSuperviseShutdownDuringBackoff(t *testing.T) {
 		{Name: "erro", Process: ProcessWorker, Run: func(context.Context) error { runs.Add(1); return errors.New("caiu") }},
 	}}
 	k, _ := newKernel(t, p)
+	logs := &logRecorder{}
+	k.logger = slog.New(logs)
 	k.minBackoff, k.maxBackoff = time.Hour, time.Hour
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = k.Supervise(ctx, ProcessWorker, nil, nil); close(done) }()
-	waitFor(t, func() bool { return runs.Load() == 1 })
-	time.Sleep(10 * time.Millisecond)
+	// o log sai logo antes da espera do backoff: daqui em diante o
+	// supervisor está (ou vai estar) esperando o backoff de 1 h
+	waitFor(t, func() bool {
+		return runs.Load() == 1 && logs.has("kernel: unidade terminou inesperadamente, reiniciando")
+	})
 	cancel()
 	select {
 	case <-done:
@@ -238,8 +275,9 @@ func TestSuperviseShutdownDuringBackoff(t *testing.T) {
 	}
 
 	// Unidade que termina junto com o shutdown não é tratada como falha.
+	started := make(chan struct{})
 	p2 := &fakePlugin{m: Manifest{Key: "egress", DefaultEnabled: true}, workers: []Worker{
-		{Name: "fim", Process: ProcessWorker, Run: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }},
+		{Name: "fim", Process: ProcessWorker, Run: func(ctx context.Context) error { close(started); <-ctx.Done(); return ctx.Err() }},
 	}}
 	k2, _ := newKernel(t, p2)
 	ctx2, cancel2 := context.WithCancel(context.Background())
@@ -248,7 +286,7 @@ func TestSuperviseShutdownDuringBackoff(t *testing.T) {
 		k2.superviseUnit(ctx2, unit{module: "egress", name: "fim", run: p2.workers[0].Run})
 		close(done2)
 	}()
-	time.Sleep(10 * time.Millisecond)
+	<-started
 	cancel2()
 	<-done2
 }
@@ -261,7 +299,8 @@ func TestSuperviseWaitsWhileDisabledUntilShutdown(t *testing.T) {
 		k.superviseUnit(ctx, unit{module: "desligado", name: "w", run: func(context.Context) error { return nil }})
 		close(done)
 	}()
-	time.Sleep(10 * time.Millisecond)
+	// inscrito em mudanças = já passou do início e vai esperar a ativação
+	waitFor(t, func() bool { k.subsMu.Lock(); defer k.subsMu.Unlock(); return len(k.subs) > 0 })
 	cancel()
 	<-done
 }

@@ -239,15 +239,41 @@ func TestCollectStaleUploads(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("worker encerra limpo: %v", err)
 	}
-	failing := e.svc(&faultRepo{inner: infrastructure.NewRepository(), failAt: 1})
+	// Falha na varredura: só vira aviso no log, e o worker segue. Espera o
+	// aviso em vez de um tempo fixo (numa máquina lenta a varredura podia
+	// nem ter começado quando o contexto era cancelado).
+	warned := make(chan struct{}, 1)
+	failing := application.NewService(e.pool, &faultRepo{inner: infrastructure.NewRepository(), failAt: 1}, outbox.NewWriter("test"),
+		e.store, bucket, 1<<20, time.Minute, slog.New(warnSignal{warned}))
 	wctx, cancel = context.WithCancel(ctx)
 	go func() { done <- failing.CollectStaleUploads(wctx) }()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-warned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a falha da varredura não foi registrada")
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("falha na varredura só é registrada: %v", err)
 	}
 }
+
+// warnSignal é um slog.Handler que avisa (sem bloquear) a cada registro de
+// nível Warn ou acima.
+type warnSignal struct{ ch chan struct{} }
+
+func (h warnSignal) Enabled(context.Context, slog.Level) bool { return true }
+func (h warnSignal) Handle(_ context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelWarn {
+		select {
+		case h.ch <- struct{}{}:
+		default:
+		}
+	}
+	return nil
+}
+func (h warnSignal) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h warnSignal) WithGroup(string) slog.Handler      { return h }
 
 // Armazenamento: URL de download indisponível e objetos órfãos logados.
 func TestStorageFailures(t *testing.T) {
