@@ -38,6 +38,17 @@ describe("brandingStore", () => {
     expect(snap.highContrast).toBe(true);
   });
 
+  it("prime não desfaz uma atualização local; identidade nova do servidor prevalece", async () => {
+    const store = await freshStore();
+    const server = { ...DEFAULT_BRANDING, appName: "Órgão X" };
+    store.primeBrandingStore(server);
+    store.updateBrandingStore({ appName: "Órgão Y" });
+    store.primeBrandingStore(server); // novo render com o mesmo snapshot do layout
+    expect(store.getBrandingSnapshot().appName).toBe("Órgão Y");
+    store.primeBrandingStore({ ...server, appName: "Órgão Z" }); // layout releu a API
+    expect(store.getBrandingSnapshot().appName).toBe("Órgão Z");
+  });
+
   it("update grava SÓ as preferências de acessibilidade no cookie", async () => {
     const store = await freshStore();
     store.updateBrandingStore({ highContrast: true, fontSizeScale: 120 });

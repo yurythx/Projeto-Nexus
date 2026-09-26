@@ -4,17 +4,40 @@ import { useState } from "react";
 import { Building2, Save, RotateCcw, ShieldCheck } from "lucide-react";
 
 import { useBranding, DEFAULT_BRANDING, type SystemBrandingConfig } from "@/components/branding/BrandingContext";
+import { mergeServerBranding } from "@/components/branding/brandingConfig";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { useToast } from "@/components/notifications/ToastProvider";
+import { apiClient, ApiError } from "@/lib/api/client";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import type { Branding } from "@/lib/nexus/types";
 import { safeResourceUrl } from "@/lib/security/safe-url";
 
+/** Formato do PUT /admin/branding. Os design tokens de cor não são
+ * editados aqui e seguem como estão (o reset os limpa). */
+function toApi(c: SystemBrandingConfig): Omit<Branding, "updated_at"> {
+  return {
+    app_name: c.appName.trim(),
+    app_description: c.appDescription.trim(),
+    org_name: c.orgName.trim(),
+    logo_url: c.logoUrl.trim(),
+    favicon_url: c.faviconUrl.trim(),
+    support_email: c.supportEmail.trim(),
+    support_phone: c.supportPhone.trim(),
+    support_hours: c.supportHours.trim(),
+    tokens: c.tokens ?? {},
+  };
+}
+
 export function BrandingSettingsForm() {
-  const { branding, updateBranding, resetBranding } = useBranding();
+  const { branding, updateBranding } = useBranding();
   const { showToast } = useToast();
+  const { can } = useNexus();
+  const canManage = can("branding:manage");
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<SystemBrandingConfig>(branding);
   const [logoPreviewError, setLogoPreviewError] = useState(false);
@@ -35,25 +58,47 @@ export function BrandingSettingsForm() {
     if (field === "faviconUrl") setFaviconPreviewError(false);
   };
 
+  // A identidade é da ORGANIZAÇÃO: grava no backend (validação de URL e
+  // de contraste WCAG, auditoria) e só então atualiza a tela. Antes o
+  // formulário mudava apenas o estado desta aba e anunciava "salvo" — um
+  // recarregamento, ou qualquer outro usuário, via o branding antigo.
+  async function persist(config: SystemBrandingConfig, success: { title: string; description: string; tone: "success" | "info" }) {
+    setSaving(true);
+    try {
+      const { data } = await apiClient.put<Branding>("v1/admin/branding", toApi(config));
+      const saved = mergeServerBranding(data, branding);
+      updateBranding(saved);
+      setForm(saved);
+      showToast(success);
+      return true;
+    } catch (err) {
+      showToast({
+        title: "Não foi possível salvar",
+        description: err instanceof ApiError ? err.message : "Tente novamente.",
+        tone: "danger",
+      });
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateBranding(form);
-    showToast({
+    void persist(form, {
       title: "Configurações salvas",
-      description: "A identidade visual e os metadados da aplicação foram atualizados.",
+      description: "A identidade visual foi atualizada para todos os usuários (as páginas abertas atualizam em até 1 minuto).",
       tone: "success",
     });
   };
 
-  const doReset = () => {
-    resetBranding();
-    setForm(DEFAULT_BRANDING);
-    setConfirmResetOpen(false);
-    showToast({
+  const doReset = async () => {
+    const ok = await persist({ ...branding, ...DEFAULT_BRANDING, highContrast: branding.highContrast, fontSizeScale: branding.fontSizeScale }, {
       title: "Padrões restaurados",
       description: "A identidade visual padrão foi reestabelecida.",
       tone: "info",
     });
+    if (ok) setConfirmResetOpen(false);
   };
 
   // S-03: só usa a URL da logo/favicon como <img src>/<link href> se for
@@ -74,7 +119,13 @@ export function BrandingSettingsForm() {
       </CardHeader>
 
       <CardContent className="p-6">
+        {!canManage && (
+          <p role="note" className="mb-4 rounded-md bg-warning/10 p-3 text-xs">
+            Somente leitura: alterar a identidade visual exige a permissão <code className="font-mono">branding:manage</code>.
+          </p>
+        )}
         <form onSubmit={handleSave} className="flex flex-col gap-6 text-xs">
+          <fieldset disabled={!canManage || saving} className="contents">
           {/* Seção 1: Identificação */}
           <div className="flex flex-col gap-4">
             <h3 className="border-b border-surface-border pb-1 text-xs font-bold uppercase tracking-wider text-primary">
@@ -128,7 +179,7 @@ export function BrandingSettingsForm() {
                   placeholder="https://exemplo.gov.br/logo.png"
                 />
                 <p className="text-[11px] text-muted">
-                  Apenas URLs <code className="font-mono">https://</code> são aceitas.
+                  Apenas URLs <code className="font-mono">https://</code> ou caminhos locais (<code className="font-mono">/logo.svg</code>) são aceitos.
                 </p>
               </div>
 
@@ -239,17 +290,19 @@ export function BrandingSettingsForm() {
             </div>
           </div>
 
+          </fieldset>
           <div className="flex items-center justify-between border-t border-surface-border pt-4">
             <Button
               type="button"
               variant="ghost"
               onClick={() => setConfirmResetOpen(true)}
+              disabled={!canManage || saving}
               className="text-danger hover:bg-danger/10"
             >
               <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Restaurar padrões
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" disabled={!canManage} loading={saving}>
               <Save className="mr-1.5 h-4 w-4" aria-hidden="true" />
               Salvar alterações
             </Button>
@@ -268,7 +321,7 @@ export function BrandingSettingsForm() {
             <Button variant="ghost" onClick={() => setConfirmResetOpen(false)}>
               Cancelar
             </Button>
-            <Button variant="danger" className="ml-auto" onClick={doReset}>
+            <Button variant="danger" className="ml-auto" loading={saving} onClick={() => void doReset()}>
               Restaurar padrões
             </Button>
           </>
