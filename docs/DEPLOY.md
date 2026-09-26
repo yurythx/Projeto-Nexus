@@ -57,6 +57,22 @@ sozinhas (serviço `migrate`) antes da API e do worker.
 - A stack é servida em HTTP puro; para expor fora da rede interna, coloque
   um proxy reverso com TLS na frente e ajuste as URLs e `TRUSTED_PROXIES`.
 
+## Backup e restauração
+
+```bash
+scripts/backup.sh                    # agora, em /root/backups/nexus/<data-hora>
+scripts/backup.sh --install-cron     # todo dia às 02:30 (log: /var/log/nexus-backup.log)
+scripts/restore.sh --verify <dir>    # testa o backup sem alterar nada
+scripts/restore.sh --yes <dir> --minio   # SUBSTITUI banco (e objetos) pelo backup
+```
+
+Cada backup tem o dump do Postgres, o espelho dos buckets do MinIO, o
+volume do Keycloak de teste, `.env` + `secrets/` e `SHA256SUMS`. Retenção de
+`BACKUP_KEEP_DAYS` (7) dias. **O `.env` do backup é indispensável** (senha do
+banco e `CONFIG_ENCRYPTION_KEY`): numa máquina nova, copie
+`<dir>/config/.env` e `<dir>/config/secrets` antes de restaurar. Os backups
+ficam no mesmo disco — copie-os para fora do servidor.
+
 ## Ambiente de teste: Keycloak + dados fictícios
 
 Enquanto não há um Keycloak oficial, `make demo-keycloak` (depois do
