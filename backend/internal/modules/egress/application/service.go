@@ -23,7 +23,6 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/domain/events"
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/egress/domain"
-	"github.com/yurythx/projeto-nexus/internal/modules/egress/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/netguard"
@@ -37,19 +36,27 @@ type Config struct {
 	PollInterval time.Duration
 }
 
+// Deliverer é a porta de entrega HTTP (implementada pelo cliente anti-SSRF
+// da infraestrutura).
+type Deliverer interface {
+	Deliver(ctx context.Context, t domain.Target, d domain.Delivery) (int, error)
+	Policy() netguard.Policy
+}
+
 // Service implementa os casos de uso.
 type Service struct {
 	pool      *pgxpool.Pool
 	repo      domain.Repository
-	deliverer *infrastructure.Deliverer
+	deliverer Deliverer
 	cipher    *secretcrypto.Cipher
+	encrypt   func(plaintext string) (string, error)
 	cfg       Config
 	logger    *slog.Logger
 }
 
 // NewService cria o serviço.
-func NewService(pool *pgxpool.Pool, repo domain.Repository, deliverer *infrastructure.Deliverer, cipher *secretcrypto.Cipher, cfg Config, logger *slog.Logger) *Service {
-	return &Service{pool: pool, repo: repo, deliverer: deliverer, cipher: cipher, cfg: cfg, logger: logger}
+func NewService(pool *pgxpool.Pool, repo domain.Repository, deliverer Deliverer, cipher *secretcrypto.Cipher, cfg Config, logger *slog.Logger) *Service {
+	return &Service{pool: pool, repo: repo, deliverer: deliverer, cipher: cipher, encrypt: cipher.Encrypt, cfg: cfg, logger: logger}
 }
 
 // MapError traduz erros de domínio.
@@ -110,7 +117,7 @@ func (s *Service) SaveTarget(ctx context.Context, id uuid.UUID, in TargetInput) 
 	if in.Secret != nil {
 		v := ""
 		if *in.Secret != "" {
-			if v, err = s.cipher.Encrypt(*in.Secret); err != nil {
+			if v, err = s.encrypt(*in.Secret); err != nil {
 				return domain.Target{}, apperrors.Internal(err)
 			}
 		}
@@ -270,30 +277,49 @@ func (s *Service) deliverBatch(ctx context.Context) {
 		t, ok := targets[d.TargetID]
 		if !ok {
 			if t, err = s.repo.Target(ctx, s.pool, d.TargetID); err != nil {
+				// A reserva expira e a entrega volta na próxima rodada.
+				s.logger.Warn("egress: destino da entrega indisponível", slog.String("delivery", d.ID.String()), slog.Any("error", err))
 				continue
 			}
 			if t, err = s.withSecret(ctx, t); err != nil {
-				s.logger.Error("egress: segredo do destino indecifrável", slog.String("target", t.ID.String()))
+				s.fail(ctx, d, 0, errors.New("segredo do destino indecifrável (chave de cifragem trocada?)"))
 				continue
 			}
 			targets[d.TargetID] = t
 		}
-		code, derr := s.deliverer.Deliver(ctx, t, d)
-		if derr == nil {
-			_ = s.repo.MarkDelivered(ctx, s.pool, d.ID, code)
+		// Destino desativado depois da reserva: a entrega espera a
+		// reativação (sem tentar nem gastar tentativas).
+		if !t.Active {
 			continue
 		}
-		attempts := d.Attempts + 1
-		dead := attempts >= s.cfg.MaxAttempts || errors.Is(derr, netguard.ErrBlockedDestination)
-		var sc *int
-		if code > 0 {
-			sc = &code
+		code, derr := s.deliverer.Deliver(ctx, t, d)
+		if derr != nil {
+			s.fail(ctx, d, code, derr)
+			continue
 		}
-		msg := derr.Error()
-		if len(msg) > 500 {
-			msg = msg[:500]
+		if err := s.repo.MarkDelivered(ctx, s.pool, d.ID, code); err != nil {
+			s.logger.Error("egress: entrega feita mas não registrada (será reenviada; o destino deduplica pelo X-Idempotency-Key)",
+				slog.String("delivery", d.ID.String()), slog.Any("error", err))
 		}
-		_ = s.repo.MarkFailed(ctx, s.pool, d.ID, attempts, sc, msg, time.Now().Add(domain.Backoff(attempts)), dead)
-		s.logger.Warn("egress: entrega falhou", slog.String("delivery", d.ID.String()), slog.Int("attempt", attempts), slog.Bool("dead", dead))
 	}
+}
+
+// fail registra a tentativa falha com retentativa exponencial; vira "dead"
+// (DLQ lógica, reprocessável) no limite de tentativas ou se o destino foi
+// bloqueado pela política anti-SSRF.
+func (s *Service) fail(ctx context.Context, d domain.Delivery, code int, derr error) {
+	attempts := d.Attempts + 1
+	dead := attempts >= s.cfg.MaxAttempts || errors.Is(derr, netguard.ErrBlockedDestination)
+	var sc *int
+	if code > 0 {
+		sc = &code
+	}
+	msg := derr.Error()
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	if err := s.repo.MarkFailed(ctx, s.pool, d.ID, attempts, sc, msg, time.Now().Add(domain.Backoff(attempts)), dead); err != nil {
+		s.logger.Error("egress: falha de entrega não registrada", slog.String("delivery", d.ID.String()), slog.Any("error", err))
+	}
+	s.logger.Warn("egress: entrega falhou", slog.String("delivery", d.ID.String()), slog.Int("attempt", attempts), slog.Bool("dead", dead))
 }

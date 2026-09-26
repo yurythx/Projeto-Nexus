@@ -97,15 +97,16 @@ func (r *Repository) EnqueueDelivery(ctx context.Context, db database.DBTX, d do
 	return wrap(err)
 }
 
-// ClaimDue reserva entregas vencidas (SKIP LOCKED: várias réplicas de
-// worker nunca entregam a mesma linha) empurrando next_attempt_at para
+// ClaimDue reserva entregas vencidas de destinos ATIVOS (as de destino
+// desativado esperam a reativação) — SKIP LOCKED: várias réplicas de
+// worker nunca entregam a mesma linha — empurrando next_attempt_at para
 // frente como "lease" enquanto a tentativa acontece.
 func (r *Repository) ClaimDue(ctx context.Context, db database.DBTX, limit int) ([]domain.Delivery, error) {
 	rows, err := db.Query(ctx, `
 		WITH due AS (
-			SELECT id FROM egress_deliveries
-			WHERE status IN ('pending','failed') AND next_attempt_at <= now()
-			ORDER BY next_attempt_at LIMIT $1 FOR UPDATE SKIP LOCKED
+			SELECT d.id FROM egress_deliveries d JOIN egress_targets t ON t.id = d.target_id AND t.active
+			WHERE d.status IN ('pending','failed') AND d.next_attempt_at <= now()
+			ORDER BY d.next_attempt_at LIMIT $1 FOR UPDATE OF d SKIP LOCKED
 		)
 		UPDATE egress_deliveries d SET next_attempt_at = now() + interval '2 minutes'
 		FROM due WHERE d.id = due.id
