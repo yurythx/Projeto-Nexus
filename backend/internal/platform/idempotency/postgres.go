@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
 // PostgresStore implementa Store sobre a tabela idempotency_keys
@@ -14,12 +16,19 @@ import (
 // toda réplica da API via o mesmo Postgres — a plataforma não usa Redis
 // por design (§7).
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	db database.DBTX // o pool, em produção
 }
 
+// NewPostgresStore cria o store.
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
-	return &PostgresStore{pool: pool}
+	return &PostgresStore{db: pool}
 }
+
+// abandonedAfter: uma chave em "processing" sem atualização há mais que
+// isso foi abandonada (a réplica caiu no meio da requisição — o
+// WriteTimeout do servidor é 10s). Sem isto, o retry do cliente recebia
+// 409 "em andamento" por até 24h, até a limpeza apagar a chave.
+const abandonedAfter = 5 * time.Minute
 
 var _ Store = (*PostgresStore)(nil)
 
@@ -49,7 +58,10 @@ func (s *PostgresStore) Claim(ctx context.Context, key, requestHash string) (*Re
 				response_body = NULL,
 				content_type = NULL,
 				updated_at = now()
-			WHERE idempotency_keys.status = 'failed' AND idempotency_keys.request_hash = EXCLUDED.request_hash
+			WHERE idempotency_keys.request_hash = EXCLUDED.request_hash
+			  AND (idempotency_keys.status = 'failed'
+			       OR (idempotency_keys.status = 'processing'
+			           AND idempotency_keys.updated_at < now() - make_interval(secs => $3)))
 			RETURNING key, request_hash, status, response_status, response_body, content_type, true AS claimed
 		)
 		SELECT key, request_hash, status, response_status, response_body, content_type, claimed FROM ins
@@ -66,7 +78,7 @@ func (s *PostgresStore) Claim(ctx context.Context, key, requestHash string) (*Re
 		contentType    *string
 		claimed        bool
 	)
-	err := s.pool.QueryRow(ctx, q, key, requestHash).Scan(
+	err := s.db.QueryRow(ctx, q, key, requestHash, abandonedAfter.Seconds()).Scan(
 		&rec.Key, &rec.RequestHash, &rec.Status, &responseStatus, &responseBody, &contentType, &claimed,
 	)
 	if err != nil {
@@ -95,7 +107,7 @@ func (s *PostgresStore) Complete(ctx context.Context, key string, responseStatus
 		SET status = 'completed', response_status = $2, response_body = $3, content_type = $4, updated_at = now()
 		WHERE key = $1
 	`
-	if _, err := s.pool.Exec(ctx, q, key, responseStatus, responseBody, contentType); err != nil {
+	if _, err := s.db.Exec(ctx, q, key, responseStatus, responseBody, contentType); err != nil {
 		return fmt.Errorf("idempotency: complete key %q: %w", key, err)
 	}
 	return nil
@@ -105,7 +117,7 @@ func (s *PostgresStore) Complete(ctx context.Context, key string, responseStatus
 // completa com o mesmo request_hash (ver Store.Fail).
 func (s *PostgresStore) Fail(ctx context.Context, key string) error {
 	const q = `UPDATE idempotency_keys SET status = 'failed', updated_at = now() WHERE key = $1`
-	if _, err := s.pool.Exec(ctx, q, key); err != nil {
+	if _, err := s.db.Exec(ctx, q, key); err != nil {
 		return fmt.Errorf("idempotency: fail key %q: %w", key, err)
 	}
 	return nil
@@ -122,8 +134,12 @@ const retention = 24 * time.Hour
 // espírito de internal/platform/ratelimit.Cleanup. Registrado como um
 // processor do worker.
 func Cleanup(pool *pgxpool.Pool) func(ctx context.Context) error {
+	return cleanup(pool, 15*time.Minute)
+}
+
+func cleanup(db database.DBTX, every time.Duration) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(every)
 		defer ticker.Stop()
 
 		for {
@@ -137,7 +153,7 @@ func Cleanup(pool *pgxpool.Pool) func(ctx context.Context) error {
 				// que o parser de interval do Postgres aceita hoje, mas
 				// depender disso seria frágil; segundos como float é
 				// inequívoco.
-				_, err := pool.Exec(ctx, `DELETE FROM idempotency_keys WHERE updated_at < now() - make_interval(secs => $1)`, retention.Seconds())
+				_, err := db.Exec(ctx, `DELETE FROM idempotency_keys WHERE updated_at < now() - make_interval(secs => $1)`, retention.Seconds())
 				if err != nil {
 					return fmt.Errorf("idempotency: cleanup: %w", err)
 				}
