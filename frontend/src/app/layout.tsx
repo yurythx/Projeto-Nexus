@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Newsreader } from "next/font/google";
+import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
@@ -9,9 +9,30 @@ import { publicGetOr } from "@/lib/api/publicServer";
 import type { Branding } from "@/lib/nexus/types";
 import { Providers } from "./providers";
 
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
-const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"], weight: ["500", "600"], display: "swap" });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"], display: "swap" });
+// Fontes servidas localmente (woff2 de @fontsource, licença OFL em
+// ./fonts): o build não depende de baixar do Google Fonts — o download
+// falhava de forma intermitente no CI/Docker e em redes restritas, e
+// evita também chamadas a terceiros na navegação (LGPD).
+const inter = localFont({
+  src: "./fonts/inter-latin-wght-normal.woff2",
+  variable: "--font-inter",
+  weight: "100 900",
+  display: "swap",
+});
+const newsreader = localFont({
+  src: [
+    { path: "./fonts/newsreader-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/newsreader-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-newsreader",
+  display: "swap",
+});
+const geistMono = localFont({
+  src: "./fonts/geist-mono-latin-wght-normal.woff2",
+  variable: "--font-geist-mono",
+  weight: "100 900",
+  display: "swap",
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const b = await publicGetOr<Branding | null>("branding", null, 60);
