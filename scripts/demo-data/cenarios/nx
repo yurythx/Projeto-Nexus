@@ -6,6 +6,8 @@
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/../../.."
 FE=$(grep ^FRONTEND_URL= .env | cut -d= -f2-)
+# HTTPS com a CA interna (scripts/enable-https.sh): curl confia nela.
+[ -f secrets/ca/nexus-ca.crt ] && export CURL_CA_BUNDLE="$PWD/secrets/ca/nexus-ca.crt"
 PW=$(grep ^DEMO_USER_PASSWORD= .env | cut -d= -f2-)
 user="$1"; method="$2"; path="${3#/}"; body="${4:-}"
 SESS=${NX_SESSIONS:-$HOME/.cache/nexus-nx}; mkdir -p "$SESS"; J=$SESS/$user.jar

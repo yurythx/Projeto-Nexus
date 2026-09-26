@@ -23,6 +23,10 @@ services:
       # exatamente esta mesma URL (KEYCLOAK_ISSUER_URL).
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?KEYCLOAK_PUBLIC_URL must be set}
       KC_HEALTH_ENABLED: "true"
+      # Atrás do proxy HTTPS (docker-compose.https.yml) esquema/host/porta
+      # reais vêm dos X-Forwarded-*; acessado direto, sem os cabeçalhos,
+      # nada muda.
+      KC_PROXY_HEADERS: xforwarded
       JAVA_OPTS_KC_HEAP: "-Xms256m -Xmx768m"
       # Placeholders do realm-nexus.json, resolvidos no import.
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}

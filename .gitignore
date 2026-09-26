@@ -42,3 +42,10 @@ backend/api
 backend/worker
 backend/migrate
 backend/seedadmin
+
+# CA interna do HTTPS (gerada no servidor por scripts/enable-https.sh)
+secrets/ca/
+.env.bak-*
+
+# Python (cenários de teste)
+__pycache__/

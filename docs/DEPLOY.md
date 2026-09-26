@@ -57,6 +57,40 @@ sozinhas (serviço `migrate`) antes da API e do worker.
 - A stack é servida em HTTP puro; para expor fora da rede interna, coloque
   um proxy reverso com TLS na frente e ajuste as URLs e `TRUSTED_PROXIES`.
 
+## HTTPS (Caddy com CA interna)
+
+```bash
+scripts/enable-https.sh 192.168.1.42
+```
+
+Coloca o Caddy (`docker-compose.https.yml`) na frente da stack e troca as
+URLs do `.env` (cópia em `.env.bak-*`):
+
+| Serviço | Endereço |
+|---|---|
+| Nexus | `https://<host>` |
+| API / WebSocket | `https://<host>:8443` |
+| MinIO (URLs pré-assinadas) | `https://<host>:9443` |
+| Keycloak de teste | `https://<host>:8543` |
+
+Sem domínio público, os certificados vêm de uma **CA interna** do Caddy.
+**Cada máquina de teste instala a raiz uma vez**, baixando
+`http://<host>/nexus-ca.crt`:
+
+- Windows: duplo clique → Instalar certificado → Máquina local →
+  "Autoridades de Certificação Raiz Confiáveis" (ou `certutil -addstore -f
+  Root nexus-ca.crt` como administrador); reabra o navegador.
+- Firefox usa repositório próprio: Configurações → Certificados → Importar.
+- Linux: copie para `/usr/local/share/ca-certificates/` e rode
+  `update-ca-certificates`.
+
+Sem instalar a CA, o navegador bloqueia (e, em portas diferentes, clicar
+em "continuar" numa não libera as outras). A API e o frontend confiam na
+CA sozinhos (`secrets/ca/`). A CA fica no volume `caddy_data`, incluído no
+backup. As portas HTTP antigas (3010/8010/…) continuam publicadas, mas o
+login só funciona pelo endereço https. Com domínio e certificado oficiais,
+troque `tls internal` no `deploy/caddy/Caddyfile`.
+
 ## Backup e restauração
 
 ```bash

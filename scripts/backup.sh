@@ -2,6 +2,7 @@
 # Backup do Projeto Nexus (stack docker compose deste diretório):
 #   db.dump        pg_dump -Fc do banco do Nexus (restaurável com restore.sh)
 #   minio/         espelho de todos os buckets (arquivos, anexos, WORM)
+#   caddy.tgz      CA interna do HTTPS, se existir (chave privada inclusive)
 #   keycloak.tgz   volume do Keycloak de teste, se existir (melhor esforço:
 #                  o realm também é reproduzível por deploy/keycloak)
 #   config/        .env e secrets/ — SEM eles o backup não restaura: a senha
@@ -50,12 +51,16 @@ log "minio: mc mirror de todos os buckets"
 docker compose run --rm --no-deps -T -v "$dest/minio:/out" --entrypoint sh minio -c \
   'export MC_HOST_l="http://$MINIO_ROOT_USER:$MINIO_ROOT_PASSWORD@minio:9000"; mc mirror --quiet --preserve l /out' >/dev/null
 
-if docker volume inspect "${PROJECT}_keycloak_data" >/dev/null 2>&1; then
-  log "keycloak: volume ${PROJECT}_keycloak_data"
-  docker run --rm -v "${PROJECT}_keycloak_data:/data:ro" -v "$dest:/out" postgres:16-bookworm \
-    tar czf /out/keycloak.tgz -C /data .
-  chmod 600 "$dest/keycloak.tgz"
-fi
+# Volumes opcionais: Keycloak de teste e a CA interna do Caddy (HTTPS) —
+# perder a CA obriga toda máquina de teste a instalar uma raiz nova.
+for vol in keycloak caddy; do
+  if docker volume inspect "${PROJECT}_${vol}_data" >/dev/null 2>&1; then
+    log "$vol: volume ${PROJECT}_${vol}_data"
+    docker run --rm -v "${PROJECT}_${vol}_data:/data:ro" -v "$dest:/out" postgres:16-bookworm \
+      tar czf "/out/$vol.tgz" -C /data .
+    chmod 600 "$dest/$vol.tgz"
+  fi
+done
 
 log "config: .env e secrets/"
 cp .env "$dest/config/.env"

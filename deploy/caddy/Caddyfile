@@ -1,0 +1,60 @@
+# Proxy HTTPS do Projeto Nexus (docker-compose.https.yml).
+#
+# Sem domínio público: a CA interna do Caddy emite os certificados para
+# PUBLIC_HOST (IP ou nome da rede interna). Cada máquina de teste instala a
+# raiz uma vez, baixando http://<PUBLIC_HOST>/nexus-ca.crt — ver
+# docs/DEPLOY.md. Com um domínio e certificado oficiais, troque "tls
+# internal" pelo certificado da instituição.
+{
+	# Quem acessa por IP não manda SNI: sem isto o handshake falha.
+	default_sni {$PUBLIC_HOST}
+	skip_install_trust
+	pki {
+		ca local {
+			name "Projeto Nexus - CA de teste"
+		}
+	}
+}
+
+(tls_local) {
+	tls internal
+}
+
+# Frontend (NextAuth, BFF, site público)
+https://{$PUBLIC_HOST} {
+	import tls_local
+	reverse_proxy frontend:3000
+}
+
+# API: WebSocket de notificações (o REST do navegador passa pelo BFF)
+https://{$PUBLIC_HOST}:8443 {
+	import tls_local
+	reverse_proxy backend-api:{$HTTP_PORT}
+}
+
+# MinIO: URLs pré-assinadas. O Host original segue intacto (é parte da
+# assinatura) e não há limite de tamanho do corpo.
+https://{$PUBLIC_HOST}:9443 {
+	import tls_local
+	reverse_proxy minio:9000
+}
+
+# Keycloak de teste (emissor dos tokens: https://<host>:8543/realms/nexus)
+https://{$PUBLIC_HOST}:8543 {
+	import tls_local
+	reverse_proxy keycloak:8080
+}
+
+# HTTP: só entrega a raiz da CA para instalar e redireciona o resto.
+:80 {
+	handle /nexus-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=nexus-ca.crt"
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
