@@ -917,12 +917,15 @@
     },
     {
       "clientId": "nexus-backend",
-      "name": "Projeto Nexus — API (audience)",
+      "name": "Projeto Nexus — API (audience + reautenticação do Signum)",
       "enabled": true,
-      "bearerOnly": true,
       "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
       "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "directAccessGrantsEnabled": true
     }
   ],
   "users": [

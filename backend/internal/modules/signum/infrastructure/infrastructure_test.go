@@ -173,11 +173,13 @@ func TestLocalReauthentication(t *testing.T) {
 func TestFederatedReauthentication(t *testing.T) {
 	var gotForm map[string]string
 	status := http.StatusOK
+	respBody := ""
 	kc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		gotForm = map[string]string{"path": r.URL.Path, "grant_type": r.Form.Get("grant_type"), "username": r.Form.Get("username"),
 			"client_id": r.Form.Get("client_id"), "client_secret": r.Form.Get("client_secret")}
 		w.WriteHeader(status)
+		_, _ = w.Write([]byte(respBody))
 	}))
 	defer kc.Close()
 	ctx := context.Background()
@@ -201,10 +203,22 @@ func TestFederatedReauthentication(t *testing.T) {
 	}
 	for _, code := range []int{http.StatusUnauthorized, http.StatusBadRequest} {
 		status = code
-		if _, err := r.Reauthenticate(ctx, uuid.New(), "joao", true, "errada"); !errors.Is(err, domain.ErrReauth) {
-			t.Errorf("Keycloak %d = senha recusada, veio %v", code, err)
+		for _, b := range []string{"", `{"error":"invalid_grant","error_description":"Invalid user credentials"}`, "não-json"} {
+			respBody = b
+			if _, err := r.Reauthenticate(ctx, uuid.New(), "joao", true, "errada"); !errors.Is(err, domain.ErrReauth) {
+				t.Errorf("Keycloak %d %q = senha recusada, veio %v", code, b, err)
+			}
 		}
 	}
+	// Erro de client (sem Direct Access Grants, segredo errado) é
+	// configuração, não senha errada: 503 em vez de "senha incorreta".
+	for code, errCode := range map[int]string{http.StatusBadRequest: "unauthorized_client", http.StatusUnauthorized: "invalid_client"} {
+		status, respBody = code, `{"error":"`+errCode+`"}`
+		if _, err := r.Reauthenticate(ctx, uuid.New(), "joao", true, "certa"); !unavailable(err) {
+			t.Errorf("Keycloak %d %s = configuração (503), veio %v", code, errCode, err)
+		}
+	}
+	respBody = ""
 	status = http.StatusInternalServerError
 	if _, err := r.Reauthenticate(ctx, uuid.New(), "joao", true, "x"); !unavailable(err) {
 		t.Errorf("Keycloak com erro interno vira 503: %v", err)

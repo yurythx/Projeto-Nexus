@@ -27,6 +27,7 @@ services:
       # Placeholders do realm-nexus.json, resolvidos no import.
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}
       KEYCLOAK_FRONTEND_CLIENT_SECRET: ${KEYCLOAK_FRONTEND_CLIENT_SECRET:?KEYCLOAK_FRONTEND_CLIENT_SECRET must be set}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET must be set}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?DEMO_USER_PASSWORD must be set}
     volumes:
       - keycloak_data:/opt/keycloak/data

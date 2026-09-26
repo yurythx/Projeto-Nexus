@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,11 +82,24 @@ func (r *Reauthenticator) Reauthenticate(ctx context.Context, userID uuid.UUID, 
 		return "", apperrors.DependencyUnavailable("Keycloak indisponível para a reautenticação").WithCause(err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	switch {
 	case resp.StatusCode == http.StatusOK:
 		return "password_reauth:keycloak", nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest:
+		// Só invalid_grant é credencial recusada (senha errada, conta
+		// desativada). Erro de client — sem Direct Access Grants
+		// (unauthorized_client), segredo errado (invalid_client) — é
+		// configuração: antes virava "senha incorreta" para todo mundo e
+		// ninguém conseguia assinar, com a mensagem apontando o usuário.
+		var body struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(raw, &body) == nil && body.Error != "" && body.Error != "invalid_grant" {
+			return "", apperrors.DependencyUnavailable(
+				"reautenticação federada mal configurada no Keycloak: o client "+clientID+" precisa ser confidencial com Direct Access Grants habilitado").
+				WithCause(fmt.Errorf("keycloak: HTTP %d %s", resp.StatusCode, body.Error))
+		}
 		return "", domain.ErrReauth
 	default:
 		return "", apperrors.DependencyUnavailable("resposta inesperada do Keycloak na reautenticação").

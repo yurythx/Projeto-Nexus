@@ -15,7 +15,7 @@
 //   node scripts/demo-data/generate.mjs
 //
 // Segredos NÃO entram nos arquivos: o realm usa placeholders que o
-// Keycloak resolve do ambiente no import (${KEYCLOAK_FRONTEND_CLIENT_SECRET},
+// Keycloak resolve do ambiente no import (${KEYCLOAK_FRONTEND_CLIENT_SECRET}, ${KEYCLOAK_CLIENT_SECRET},
 // ${FRONTEND_URL}, ${DEMO_USER_PASSWORD}).
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -301,13 +301,20 @@ const realm = {
       ],
     },
     {
+      // Audience dos tokens E client da reautenticação do Signum: a API
+      // confere a senha na hora da assinatura com o grant "password"
+      // (KEYCLOAK_CLIENT_ID/SECRET) — por isso confidencial, com Direct
+      // Access Grants e nenhum outro fluxo.
       clientId: "nexus-backend",
-      name: "Projeto Nexus — API (audience)",
+      name: "Projeto Nexus — API (audience + reautenticação do Signum)",
       enabled: true,
-      bearerOnly: true,
       publicClient: false,
+      clientAuthenticatorType: "client-secret",
+      secret: "${KEYCLOAK_CLIENT_SECRET}",
       standardFlowEnabled: false,
-      directAccessGrantsEnabled: false,
+      implicitFlowEnabled: false,
+      serviceAccountsEnabled: false,
+      directAccessGrantsEnabled: true,
     },
   ],
   users: users.map((u) => ({

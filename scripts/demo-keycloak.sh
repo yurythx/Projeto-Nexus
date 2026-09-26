@@ -40,6 +40,8 @@ set_if_missing HOST_KEYCLOAK_PORT "$kc_port"
 set_if_missing KEYCLOAK_PUBLIC_URL "http://$host:$kc_port"
 set_if_missing KEYCLOAK_ISSUER_URL "http://$host:$kc_port/realms/nexus"
 set_if_missing KEYCLOAK_ADMIN_PASSWORD "$(openssl rand -hex 16)"
+# Secret do client nexus-backend (reautenticação do Signum no Keycloak).
+set_if_missing KEYCLOAK_CLIENT_SECRET "$(openssl rand -hex 32)"
 # Senha comum a todos os usuários fictícios (legível, para digitar nos testes).
 set_if_missing DEMO_USER_PASSWORD "Teste-$(openssl rand -hex 3)"
 set_if_missing COMPOSE_FILE "docker-compose.yml:docker-compose.keycloak.yml"
