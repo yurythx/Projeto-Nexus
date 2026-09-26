@@ -127,10 +127,10 @@ func TestFilesACLSubjects(t *testing.T) {
 	h.expect(http.StatusBadRequest, http.MethodGet, "/api/v1/files/browse?folder_id=x", owner, "")
 
 	// Busca global respeita a ACL.
-	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=contrato&modules=files", estranho, "").Body.String(); strings.Contains(res, arquivo) {
+	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=contrato&module=files", estranho, "").Body.String(); strings.Contains(res, arquivo) {
 		t.Fatal("a busca não mostra arquivo de pasta sem acesso")
 	}
-	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=contrato&modules=files", doDep, "").Body.String(); !strings.Contains(res, arquivo) {
+	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=contrato&module=files", doDep, "").Body.String(); !strings.Contains(res, arquivo) {
 		t.Fatalf("a busca mostra o arquivo a quem tem acesso: %s", res)
 	}
 }

@@ -33,7 +33,7 @@ func TestCatalogPublicationRules(t *testing.T) {
 	h.expect(http.StatusConflict, http.MethodDelete, "/api/v1/catalog/admin/services/"+incompleto.ID, admin, "")
 
 	// Busca global (anônima) encontra o publicado.
-	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=Passaporte+"+sfx+"&modules=catalog", admin, "").Body.String(); !strings.Contains(res, incompleto.ID) {
+	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=Passaporte+"+sfx+"&module=catalog", admin, "").Body.String(); !strings.Contains(res, incompleto.ID) {
 		t.Fatalf("serviço publicado na busca global: %s", res)
 	}
 	// Lista de gestão por estado e texto.

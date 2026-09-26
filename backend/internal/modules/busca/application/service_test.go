@@ -61,3 +61,57 @@ func TestSearchRequiresMinimumQuery(t *testing.T) {
 		t.Fatal("consulta de 1 caractere deveria ser recusada")
 	}
 }
+
+// manyProvider devolve n resultados e registra o limite recebido.
+type manyProvider struct {
+	module string
+	n      int
+	got    *int
+}
+
+func (m manyProvider) Module() string { return m.module }
+
+func (m manyProvider) Search(_ context.Context, _ auth.Identity, q string, limit int) ([]search.Result, error) {
+	*m.got = limit
+	out := make([]search.Result, m.n)
+	for i := range out {
+		out[i] = search.Result{Module: m.module, Title: q, Score: float64(i)}
+	}
+	return out, nil
+}
+
+func TestSearchTruncatesFiltersAndDefaultsLimit(t *testing.T) {
+	var gotA, gotB int
+	providers := []search.Provider{
+		manyProvider{module: "blog", n: 30, got: &gotA},
+		manyProvider{module: "wiki", n: 30, got: &gotB},
+	}
+	svc := NewService(func() []search.Provider { return providers }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// Limite fora da faixa cai para 20; o agregado corta em limit*2.
+	for _, limit := range []int{0, 51} {
+		resp, err := svc.Search(context.Background(), auth.Identity{}, "  ata  ", "", limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotA != 20 || gotB != 20 {
+			t.Fatalf("limit %d: providers deveriam receber 20, veio %d/%d", limit, gotA, gotB)
+		}
+		if len(resp.Results) != 40 || resp.Query != "ata" {
+			t.Fatalf("limit %d: esperado 40 resultados e query aparada, veio %d %q", limit, len(resp.Results), resp.Query)
+		}
+		if resp.Results[0].Score < resp.Results[39].Score {
+			t.Fatal("resultados deveriam vir por score decrescente")
+		}
+	}
+
+	// Filtro por módulo consulta só o provider pedido.
+	gotA, gotB = 0, 0
+	resp, err := svc.Search(context.Background(), auth.Identity{}, "ata", "wiki", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotA != 0 || gotB != 50 || len(resp.Modules) != 1 || resp.Modules[0] != "wiki" || len(resp.Results) != 30 {
+		t.Fatalf("filtro por módulo falhou: a=%d b=%d modules=%v n=%d", gotA, gotB, resp.Modules, len(resp.Results))
+	}
+}

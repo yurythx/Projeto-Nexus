@@ -248,14 +248,14 @@ func TestTramiteSigiloECredenciais(t *testing.T) {
 	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/tramite/processos/"+sig.ID+"/acessos/"+f.anaID.String(), f.betoB, "")
 
 	// Busca global: título do sigiloso sem o assunto; público com assunto.
-	res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx+"&modules=tramite", f.anaA, "").Body.String()
+	res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx+"&module=tramite", f.anaA, "").Body.String()
 	if !strings.Contains(res, "Obra pública "+sfx) {
 		t.Fatalf("processo público aparece na busca com o assunto: %s", res)
 	}
 	if strings.Contains(res, "Denúncia") {
 		t.Fatalf("a busca nunca expõe o assunto de processo sigiloso: %s", res)
 	}
-	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx+"&modules=tramite", f.betoB, "").Body.String(); strings.Contains(res, rest.ID) {
+	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx+"&module=tramite", f.betoB, "").Body.String(); strings.Contains(res, rest.ID) {
 		t.Fatal("a busca respeita o sigilo")
 	}
 }

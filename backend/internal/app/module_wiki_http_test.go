@@ -30,7 +30,7 @@ func TestWikiTreeRules(t *testing.T) {
 	if body := h.expect(http.StatusOK, http.MethodGet, "/api/v1/wiki/pages/"+neta.ID, ana, "").Body.String(); !strings.Contains(body, neta.Slug) {
 		t.Fatalf("slug mantido quando não informado: %s", body)
 	}
-	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=Raiz+"+sfx+"&modules=wiki", ana, "").Body.String(); !strings.Contains(res, raiz.ID) {
+	if res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=Raiz+"+sfx+"&module=wiki", ana, "").Body.String(); !strings.Contains(res, raiz.ID) {
 		t.Fatalf("busca global na wiki: %s", res)
 	}
 
