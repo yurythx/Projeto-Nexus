@@ -43,6 +43,10 @@ type Kernel struct {
 
 	hooksMu sync.Mutex
 	hooks   []func(ctx context.Context, key string, enabled bool)
+
+	// pollInterval é o polling de segurança do Watch; min/maxBackoff, o
+	// reinício de unidades supervisionadas que falham.
+	pollInterval, minBackoff, maxBackoff time.Duration
 }
 
 // New cria o Kernel.
@@ -52,6 +56,10 @@ func New(store Store, logger *slog.Logger) *Kernel {
 		logger:  logger,
 		plugins: map[string]Plugin{},
 		state:   map[string]bool{},
+
+		pollInterval: 30 * time.Second,
+		minBackoff:   time.Second,
+		maxBackoff:   30 * time.Second,
 	}
 }
 
@@ -260,7 +268,7 @@ func (k *Kernel) SetEnabled(ctx context.Context, key string, enabled bool, actor
 // a cada 30s. Bloqueia até ctx acabar.
 func (k *Kernel) Watch(ctx context.Context) error {
 	go func() {
-		t := time.NewTicker(30 * time.Second)
+		t := time.NewTicker(k.pollInterval)
 		defer t.Stop()
 		for {
 			select {
@@ -318,6 +326,17 @@ func (k *Kernel) subscribe() chan struct{} {
 	k.subs = append(k.subs, ch)
 	k.subsMu.Unlock()
 	return ch
+}
+
+func (k *Kernel) unsubscribe(ch chan struct{}) {
+	k.subsMu.Lock()
+	defer k.subsMu.Unlock()
+	for i, c := range k.subs {
+		if c == ch {
+			k.subs = append(k.subs[:i], k.subs[i+1:]...)
+			return
+		}
+	}
 }
 
 func (k *Kernel) notify() {

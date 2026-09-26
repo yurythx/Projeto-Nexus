@@ -90,7 +90,7 @@ func testDeps(t *testing.T) *Dependencies {
 			Contact: ratelimit.NewRedisLimiter(rdb, 60, 100, "contact"), Lockout: ratelimit.NewLockout(rdb, 5, time.Minute, time.Hour),
 		},
 	}
-	d.Kernel = kernel.New(kernel.NewPostgresStore(pool), logger)
+	d.Kernel = kernel.New(kernel.NewPostgresStore(pool, logger), logger)
 	registerPlugins(d)
 	if err := d.Kernel.Start(context.Background()); err != nil {
 		t.Fatal(err)

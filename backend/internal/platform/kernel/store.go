@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,16 +31,22 @@ const ModulesChannel = "nexus_modules_channel"
 
 // PostgresStore implementa Store sobre system_modules.
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	db     database.DBTX // leituras/escritas avulsas (o pool, em produção)
+	logger *slog.Logger
+	// backoff inicial e máximo da reconexão do LISTEN.
+	minBackoff, maxBackoff time.Duration
+	channel                string
 }
 
-// NewPostgresStore cria o Store.
-func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
-	return &PostgresStore{pool: pool}
+// NewPostgresStore cria o Store. logger recebe as quedas da conexão de
+// LISTEN (antes eram descartadas em silêncio).
+func NewPostgresStore(pool *pgxpool.Pool, logger *slog.Logger) *PostgresStore {
+	return &PostgresStore{pool: pool, db: pool, logger: logger, minBackoff: time.Second, maxBackoff: 30 * time.Second, channel: ModulesChannel}
 }
 
 func (s *PostgresStore) Ensure(ctx context.Context, key string, enabled bool) error {
-	_, err := s.pool.Exec(ctx,
+	_, err := s.db.Exec(ctx,
 		`INSERT INTO system_modules (key, enabled) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`, key, enabled)
 	if err != nil {
 		return fmt.Errorf("kernel: ensure module %s: %w", key, err)
@@ -48,7 +55,7 @@ func (s *PostgresStore) Ensure(ctx context.Context, key string, enabled bool) er
 }
 
 func (s *PostgresStore) LoadAll(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.pool.Query(ctx, `SELECT key, enabled FROM system_modules`)
+	rows, err := s.db.Query(ctx, `SELECT key, enabled FROM system_modules`)
 	if err != nil {
 		return nil, fmt.Errorf("kernel: load modules: %w", err)
 	}
@@ -58,7 +65,7 @@ func (s *PostgresStore) LoadAll(ctx context.Context) (map[string]bool, error) {
 		var k string
 		var e bool
 		if err := rows.Scan(&k, &e); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("kernel: load modules: %w", err)
 		}
 		out[k] = e
 	}
@@ -77,41 +84,48 @@ func (s *PostgresStore) Set(ctx context.Context, key string, enabled bool, actor
 	})
 }
 
-// Listen mantém uma conexão dedicada em LISTEN e reconecta com backoff.
+// Listen mantém uma conexão dedicada em LISTEN e reconecta com backoff
+// exponencial. O backoff volta ao mínimo sempre que o LISTEN chegou a ser
+// estabelecido — uma queda depois de horas conectado não espera 30s.
 func (s *PostgresStore) Listen(ctx context.Context, onChange func()) error {
-	backoff := time.Second
+	backoff := s.minBackoff
 	for {
-		err := s.listenOnce(ctx, onChange)
+		listening, err := s.listenOnce(ctx, onChange)
 		if ctx.Err() != nil {
 			return nil
 		}
-		_ = err
+		if listening {
+			backoff = s.minBackoff
+		}
+		s.logger.Warn("kernel: conexão de LISTEN caiu, reconectando",
+			slog.Any("error", err), slog.Duration("retry_in", backoff))
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(backoff):
 		}
-		if backoff < 30*time.Second {
-			backoff *= 2
+		if backoff < s.maxBackoff {
+			backoff = min(backoff*2, s.maxBackoff)
 		}
 	}
 }
 
-func (s *PostgresStore) listenOnce(ctx context.Context, onChange func()) error {
+// listenOnce devolve listening=true se o LISTEN foi estabelecido antes do erro.
+func (s *PostgresStore) listenOnce(ctx context.Context, onChange func()) (bool, error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer conn.Release()
-	if _, err := conn.Exec(ctx, "LISTEN "+ModulesChannel); err != nil {
-		return err
+	if _, err := conn.Exec(ctx, "LISTEN "+s.channel); err != nil {
+		return false, err
 	}
 	// Recarrega logo após (re)conectar: pode ter havido mudança enquanto
 	// a conexão estava fora.
 	onChange()
 	for {
 		if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
-			return err
+			return true, err
 		}
 		onChange()
 	}

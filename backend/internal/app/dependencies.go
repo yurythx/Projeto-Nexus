@@ -174,7 +174,7 @@ func NewDependencies(ctx context.Context, component string) (*Dependencies, erro
 	}
 
 	// ---- Kernel: registro dos plugins, estado e topologia ----
-	d.Kernel = kernel.New(kernel.NewPostgresStore(d.DB), logger)
+	d.Kernel = kernel.New(kernel.NewPostgresStore(d.DB, logger), logger)
 	registerPlugins(d)
 	if err := d.Kernel.Start(ctx); err != nil {
 		return fail("kernel start", err)
