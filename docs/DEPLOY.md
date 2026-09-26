@@ -98,7 +98,9 @@ projeto-nexus_keycloak_data` e `make deploy`.
 e exercita, pelo mesmo BFF do navegador: Trâmite entre unidades (perfil,
 escopo, sigilo, tramitação, conclusão), Signum (reautenticação no
 Keycloak), Mercúrio, Agenda, Arquivos (upload/download real no MinIO),
-Diretório, IAM, Busca, Auditoria e LGPD — casos permitidos e negados.
+Diretório, IAM, Busca, Auditoria, LGPD, Blog, Wiki (revisões e conflito
+de edição), Catálogo (publicação no site público), Contato (formulário
+anônimo) e Egress (anti-SSRF) — casos permitidos e negados.
 Para chamadas avulsas: `scripts/demo-data/cenarios/nx <usuario> GET me`.
 
 Trocar pelo Keycloak oficial: aponte `KEYCLOAK_ISSUER_URL` (e o client

@@ -60,6 +60,7 @@ demo-seed: ## Aplica (idempotente) a estrutura organizacional e os usuários fic
 demo-test: ## Cenários ponta a ponta com os usuários fictícios (login real pelo Keycloak)
 	python3 scripts/demo-data/cenarios/tramite.py
 	python3 scripts/demo-data/cenarios/modulos.py
+	python3 scripts/demo-data/cenarios/conteudo.py
 
 down: ## Para e remove todos os serviços
 	$(COMPOSE) down
