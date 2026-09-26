@@ -127,7 +127,7 @@ describe("Arquivos — dentro de uma pasta", () => {
     const api = mockBackend({
       ...identityRoutes(),
       "GET v1/files/browse": listing(true),
-      "POST v1/files/uploads": (req) => {
+      "POST v1/files/uploads": () => {
         n++;
         return { data: { file: file(`up${n}`), upload: { object_key: `k${n}`, upload_url: `http://minio.test/b/k${n}`, method: "PUT", headers: {}, expires_at: "" } } };
       },

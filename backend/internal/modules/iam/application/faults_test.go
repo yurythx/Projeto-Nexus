@@ -382,3 +382,37 @@ func TestMeEndpoint(t *testing.T) {
 		t.Errorf("/me com listas vazias devolve arrays: %d %s", rec.Code, body)
 	}
 }
+
+// Entidade recém-criada, sem unidades nem departamentos, aparece na árvore
+// com listas vazias (nunca null no JSON).
+func TestOrgTreeListsEmptyBranches(t *testing.T) {
+	e := newEnv(t)
+	s := e.real()
+	ent, err := s.SaveEntidade(e.ctx, domain.Entidade{Nome: "Órgão vazio", Slug: slug(), Ativo: true})
+	e.must(err)
+	un, err := s.SaveUnidade(e.ctx, domain.Unidade{EntidadeID: ent.ID, Nome: "Unidade vazia", Slug: slug(), Ativo: true})
+	e.must(err)
+	solo, err := s.SaveEntidade(e.ctx, domain.Entidade{Nome: "Órgão sem unidades", Slug: slug(), Ativo: true})
+	e.must(err)
+
+	tree, err := s.OrgTree(e.ctx)
+	e.must(err)
+	found := 0
+	for _, n := range tree {
+		switch n.Entidade.ID {
+		case solo.ID:
+			found++
+			if n.Unidades == nil || len(n.Unidades) != 0 {
+				t.Fatalf("entidade sem unidades: %+v", n.Unidades)
+			}
+		case ent.ID:
+			found++
+			if len(n.Unidades) != 1 || n.Unidades[0].Unidade.ID != un.ID || n.Unidades[0].Departamentos == nil {
+				t.Fatalf("unidade sem departamentos: %+v", n.Unidades)
+			}
+		}
+	}
+	if found != 2 {
+		t.Fatalf("entidades na árvore: %d", found)
+	}
+}
