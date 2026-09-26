@@ -9,6 +9,7 @@ import { useBranding } from "@/components/branding/BrandingContext";
 import { Button } from "@/components/ui/Button";
 import { ApiError, apiClient } from "@/lib/api/client";
 import { publicPost } from "@/lib/api/publicClient";
+import { randomUUID } from "@/lib/randomUUID";
 
 const CURRENT_TERM_VERSION = "v1.0.0-2026";
 
@@ -20,12 +21,12 @@ function getOrCreateDeviceId(): string {
   try {
     let id = localStorage.getItem("nexus_device_id");
     if (!id) {
-      id = crypto.randomUUID();
+      id = randomUUID();
       localStorage.setItem("nexus_device_id", id);
     }
     return id;
   } catch {
-    return crypto.randomUUID();
+    return randomUUID();
   }
 }
 
