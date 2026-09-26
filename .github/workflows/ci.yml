@@ -205,7 +205,7 @@ jobs:
         run: cd frontend && npm run build
 
   docker-build-healthcheck:
-    name: 🐳 Docker (build + healthcheck de todos os serviços)
+    name: 🐳 Docker (build + healthcheck + E2E Playwright)
     runs-on: ubuntu-latest
     # Roda além de (não em vez de) backend-ci/frontend-ci: `go test`/`npm
     # test` nunca constroem as imagens de runtime nem batem no
@@ -262,6 +262,48 @@ jobs:
               sleep 3
             done
           done
+
+      # ---- E2E (Playwright) contra a stack que acabou de subir ----
+      - name: Set up Go (seed do administrador)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Node.js (Playwright)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Seed do administrador local (senha aleatória)
+        run: |
+          set -a; . ./.env; set +a
+          out=$(cd backend && DB_HOST=localhost DB_PORT=5433 go run ./cmd/seedadmin)
+          pass=$(printf '%s\n' "$out" | sed -n 's/^Senha: //p')
+          echo "::add-mask::$pass"
+          echo "E2E_ADMIN_PASSWORD=$pass" >> "$GITHUB_ENV"
+
+      - name: E2E — fluxos críticos no navegador (Playwright)
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3002
+          E2E_ADMIN_USERNAME: admin
+        run: |
+          cd frontend
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: Relatório do Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7
 
       - name: Dump logs (sempre, ajuda a depurar falhas intermitentes)
         if: always()

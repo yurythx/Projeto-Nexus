@@ -14,6 +14,12 @@ import { defineConfig, devices } from "@playwright/test";
 // deliberado), porque o fluxo real depende de backend-api/postgres/
 // rabbitmq/Keycloak-ou-login-local já no ar, infraestrutura que só o
 // docker-compose sabe montar corretamente (ver docs/e2e.md).
+// Ambientes com o Chromium pré-instalado em outra versão (sandbox, runners
+// corporativos sem download): aponta o executável direto.
+const launchOptions = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+  ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+  : undefined;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -27,9 +33,13 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    // Faz o login UMA vez e guarda a sessão (e2e/.auth): o backend limita
+    // tentativas de login por IP, e logar a cada teste esbarrava nisso.
+    { name: "setup", testMatch: /auth\.setup\.ts/, use: { launchOptions } },
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], launchOptions },
     },
   ],
 });

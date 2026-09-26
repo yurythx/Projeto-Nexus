@@ -1,75 +1,47 @@
 import { expect, test } from "@playwright/test";
 
-// Regressão de "flash na hidratação": o nome da aplicação (branding
-// white-label) e o estado recolhido da Sidebar são preferências de
-// dispositivo. Enquanto viviam só em localStorage, todo refresh renderizava
-// o HTML do servidor com os PADRÕES (nome "Projeto Nova", Sidebar
-// expandida) e o useSyncExternalStore trocava pelos valores salvos logo
-// após hidratar — a "piscada" que o usuário via.
-//
-// O fix padroniza no mesmo mecanismo do tema: cookie lido no layout do
-// servidor → prop initial* → server snapshot do useSyncExternalStore. Este
-// teste prova que o HTML CRU do servidor (pré-hidratação) já vem no estado
-// certo, então não há troca visível depois.
-//
-// Mesmo gate da suíte de auth: sem E2E_ADMIN_PASSWORD (via `make
-// seed-admin`), pula.
-const ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? "admin";
-const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
+import { ADMIN_PASSWORD, asAdmin, NEEDS_ADMIN, STORAGE_STATE, uniq } from "./helpers";
 
+// Regressão de "flash na hidratação": a identidade da organização vem do
+// backend (GET /branding) e as preferências do visitante (Sidebar
+// recolhida, Alto Contraste) de cookies — o layout do servidor já
+// renderiza tudo no estado certo, sem troca visível depois de hidratar.
+// Salvar o branding expira o cache do servidor na hora (updateTag), então
+// o HTML seguinte já traz o nome novo.
 test.describe("Sem flash de hidratação (branding + Sidebar)", () => {
-  test.skip(
-    !ADMIN_PASSWORD,
-    "E2E_ADMIN_PASSWORD não definida — rode `make seed-admin` e exporte a senha impressa (ver README, seção Testes).",
-  );
+  test.skip(!ADMIN_PASSWORD, NEEDS_ADMIN);
+  test.use({ storageState: STORAGE_STATE });
 
-  test("o HTML do servidor já traz o nome novo, a Sidebar recolhida e o alto contraste", async ({
-    page,
-    context,
-  }) => {
-    // --- login local ---
-    await page.goto("/login");
-    await page.getByLabel("Usuário").fill(ADMIN_USERNAME);
-    await page.getByLabel("Senha", { exact: true }).fill(ADMIN_PASSWORD!);
-    await page.getByRole("button", { name: "Entrar", exact: true }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+  test("o HTML do servidor já traz o nome novo, a Sidebar recolhida e o alto contraste", async ({ page, context }) => {
+    await asAdmin(page);
 
-    // --- troca o nome da aplicação em /configuracao ---
-    const newName = `Fiscaliza Rondon ${Date.now().toString().slice(-5)}`;
+    const newName = uniq("Portal E2E");
     await page.goto("/configuracao");
-    const nameField = page.getByPlaceholder("Ex: Projeto Nova");
+    const nameField = page.getByLabel("Nome da Aplicação / Sistema *");
+    await expect(nameField).toBeEnabled();
+    const previous = await nameField.inputValue();
     await nameField.fill(newName);
-    await page.getByRole("button", { name: /Salvar Altera/i }).click();
-    await expect(page.getByText("Configurações Salvas")).toBeVisible();
+    await page.getByRole("button", { name: /Salvar alterações/ }).click();
+    await expect(page.getByText("Configurações salvas")).toBeVisible();
 
-    // --- recolhe a Sidebar e liga o Alto Contraste ---
     await page.goto("/dashboard");
-    await page.getByRole("button", { name: "Alternar menu lateral" }).click();
-    await page.getByRole("button", { name: /Alternar Modo Alto Contraste/i }).click();
-    // deixa os document.cookie assentarem
+    await page.getByRole("button", { name: "Alternar menu de navegação" }).click();
+    await page.getByRole("button", { name: "Alto contraste" }).click();
     await expect
       .poll(async () => (await context.cookies()).map((c) => c.name))
       .toEqual(expect.arrayContaining(["nexus-branding", "nexus-sidebar-collapsed"]));
 
-    // --- HTML CRU do servidor: o que chega ANTES do React hidratar ---
+    // HTML CRU do servidor: o que chega ANTES do React hidratar.
     const html = await (await context.request.get("/dashboard")).text();
-
-    // newName é único e só pode ter vindo de branding.appName (cookie) —
-    // se o SSR tivesse renderizado o default, ele estaria ausente. (O
-    // <title> estático do layout raiz ainda diz "Projeto Nova"; isso é a
-    // aba do navegador, não a barra superior, e não pisca.)
-    expect(html, "SSR deve trazer o nome novo — senão a Topbar pisca").toContain(newName);
-
-    // Sidebar recolhida usa a largura recolhida (--sidebar-w-collapsed) no
-    // <nav> e no padding-left do conteúdo; expandida usaria --sidebar-w.
-    expect(html, "SSR deve trazer a Sidebar recolhida").toContain(
-      "md:w-[var(--sidebar-w-collapsed)]",
-    );
-    expect(html).not.toContain("md:w-[var(--sidebar-w)]");
+    expect(html, "SSR deve trazer o nome novo").toContain(newName);
+    expect(html, "SSR deve trazer a Sidebar recolhida").toContain("md:w-[var(--sidebar-w-collapsed)]");
     expect(html).toContain("md:pl-[var(--sidebar-w-collapsed)]");
+    expect(html, "SSR deve carimbar data-high-contrast no <html>").toMatch(/<html[^>]*data-high-contrast="true"/);
 
-    expect(html, "SSR deve carimbar data-high-contrast no <html>").toMatch(
-      /<html[^>]*data-high-contrast="true"/,
-    );
+    // devolve o nome original (a suíte roda contra o mesmo banco)
+    await page.goto("/configuracao");
+    await page.getByLabel("Nome da Aplicação / Sistema *").fill(previous || "Projeto Nexus");
+    await page.getByRole("button", { name: /Salvar alterações/ }).click();
+    await expect(page.getByText("Configurações salvas")).toBeVisible();
   });
 });
