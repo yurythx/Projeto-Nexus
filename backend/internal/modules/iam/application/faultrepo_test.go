@@ -1,6 +1,6 @@
 package application_test
 
-// Código gerado por genfault.py a partir da interface Repository do
+// Código gerado por scripts/genfault.py a partir da interface Repository do
 // domínio. Não edite à mão: regenere se a interface mudar.
 
 import (

@@ -160,6 +160,10 @@ A suíte cobre três níveis, todos rodando no CI (job de backend com Postgres 1
 | Sistema (API real) | `backend/internal/app/*_http_test.go` | Cada módulo pela API completa (autenticação, IAM, Guard, auditoria, outbox): permissões (403), validação (422), fluxos felizes e de erro |
 | Ativação de módulos | `internal/app/modules_toggle_test.go` | Para **cada** plug-in, todas as rotas descobertas automaticamente respondem `404 MODULE_DISABLED` quando desligado e voltam ao religar; dependências aplicadas nos dois sentidos |
 | Contrato | `internal/app/openapi_test.go` | `docs/openapi.yaml` descreve exatamente as rotas montadas |
+| Matriz de falhas | `internal/modules/<m>/application/faults_test.go` | Cada chamada ao repositório de cada caso de uso falha, ou envenena a transação logo depois, e o erro chega a quem chamou: nada é engolido, nada fica gravado pela metade |
+| Repositório | `internal/modules/<m>/infrastructure/*_test.go` | Toda falha do banco (consulta, leitura de linha, `rows.Err`) é propagada, usando os fakes de `database/dbtest` |
+
+**Meta: 100% de cobertura por plug-in.** O CI roda `scripts/coverage-gate.sh` sobre o perfil do `go test`: cada diretório de `internal/modules/*` e o núcleo `internal/platform/audit` precisam estar em 100%, e o script lista as linhas descobertas quando não estão (ver ADR 009).
 
 Rodando localmente (os testes de integração pulam sem banco):
 
@@ -171,6 +175,13 @@ DB_HOST=localhost DB_PORT=5432 DB_NAME=nexus_test DB_USER=nexus DB_PASSWORD=... 
 cd backend
 TEST_DATABASE_URL="postgres://nexus:...@localhost:5432/nexus_test?sslmode=disable" \
   go test -race -p 1 -coverpkg=./internal/... ./...
+
+# Meta de cobertura por plug-in (a mesma do CI):
+TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+../scripts/coverage-gate.sh coverage.out
+
+# Mudou a interface Repository de um plug-in? Regenere o decorador de falhas:
+#   scripts/genfault.py (uso no cabeçalho do script)
 
 # Novo endpoint? Regenere o contrato (preserva o que já foi descrito à mão):
 UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter

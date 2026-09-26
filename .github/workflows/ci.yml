@@ -81,6 +81,12 @@ jobs:
           go test -race -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tail -1
 
+      - name: Coverage gate — 100% por módulo (internal/modules/* + auditoria)
+        # Cada plugin tem de manter 100% de cobertura de instruções (regras de
+        # negócio, falhas de banco/armazenamento e handlers). Falha listando
+        # as linhas descobertas.
+        run: ./scripts/coverage-gate.sh backend/coverage.out 100
+
       - name: Verify Go Build (API & Worker)
         run: |
           cd backend

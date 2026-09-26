@@ -81,6 +81,18 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | F6.7 | Testes de integração no CI (Postgres real), cobertura 46,5% → 70% | ✅ |
 | F6.8 | OpenAPI sincronizado com o roteador (teste de contrato) | ✅ `internal/app/openapi_test.go` |
 
+## Fase 7 — Revisão das regras de negócio dos plug-ins (ADR 009)
+
+| # | Item | Estado |
+|---|---|---|
+| F7.1 | Cada plug-in revisado contra o fluxo de trabalho para o qual foi criado; regras não aplicadas corrigidas (ver ADR 009 §9.1) | ✅ |
+| F7.2 | A01 — IAM: só administra uma conta quem cobre as permissões efetivas dela; conta federada sem senha local | ✅ |
+| F7.3 | Estados finais imutáveis (processo concluído, evento cancelado, sala arquivada) e transição idempotente sem nova auditoria | ✅ |
+| F7.4 | Erro de banco nunca mascarado como regra de negócio; curingas do LIKE digitados tratados como texto | ✅ |
+| F7.5 | Auditoria: User-Agent não derruba a transação; exportação LAI nunca incompleta; cópia WORM retoma da marca d'água sem quebrar a cadeia | ✅ |
+| F7.6 | Matriz de falhas (falha e transação envenenada em cada chamada do repositório) em todos os plug-ins | ✅ `scripts/genfault.py`, `database/dbtest` |
+| F7.7 | Meta de 100% de cobertura por plug-in no CI (cobertura total 70% → 84,7%) | ✅ `scripts/coverage-gate.sh` |
+
 ---
 
 ## Parâmetros novos e como são usados
