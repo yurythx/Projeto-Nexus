@@ -84,6 +84,7 @@ func (h *apiHarness) doFrom(remote, method, path, token, body string) *httptest.
 	req := httptest.NewRequest(method, path, r)
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = remote
+	req.Header.Set("User-Agent", "nexus-test/1.0")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

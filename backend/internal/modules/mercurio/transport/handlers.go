@@ -93,6 +93,10 @@ func (h *Handlers) SaveRoom(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	if id == uuid.Nil {
+		httputil.WriteCreated(w, room)
+		return
+	}
 	httputil.WriteOK(w, room)
 }
 
@@ -139,7 +143,7 @@ func (h *Handlers) Messages(w http.ResponseWriter, r *http.Request) {
 }
 
 type messageRequest struct {
-	Body string `json:"body" validate:"required,max=16000"`
+	Body string `json:"body" validate:"required,max=4000"`
 }
 
 func (h *Handlers) Send(w http.ResponseWriter, r *http.Request) {

@@ -211,7 +211,7 @@ function RoomView({ room, onRead }: { room: ChatRoom; onRead: () => void }) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
           rows={2}
-          maxLength={16000}
+          maxLength={4000}
           placeholder={editing ? "Editando (Esc cancela)" : "Escreva uma mensagem (Enter envia, Shift+Enter quebra linha)"}
           className="min-h-11 flex-1 resize-none rounded-lg border border-surface-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         />

@@ -183,6 +183,9 @@ func (s *Service) Send(ctx context.Context, identity auth.Identity, roomID uuid.
 	if err != nil {
 		return domain.Message{}, MapError(err)
 	}
+	if room.Archived {
+		return domain.Message{}, apperrors.Conflict("sala arquivada: somente leitura")
+	}
 	var out domain.Message
 	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		var err error

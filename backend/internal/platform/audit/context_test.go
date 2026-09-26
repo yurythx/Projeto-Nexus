@@ -1,6 +1,8 @@
 package audit
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -47,5 +49,22 @@ func TestFromRequest_NoCorrelationInContext(t *testing.T) {
 	}
 	if e.IPAddress != "198.51.100.4:1010" {
 		t.Errorf("IPAddress = %q", e.IPAddress)
+	}
+}
+
+func TestCaptureOriginFeedsFromContext(t *testing.T) {
+	var got Entry
+	h := CaptureOrigin(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = Meta(r.Context(), "x.y", "res", "1", nil, nil)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.RemoteAddr = "198.51.100.23:4567"
+	req.Header.Set("User-Agent", "navegador-teste/1.0")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got.IPAddress != "198.51.100.23" || got.UserAgent != "navegador-teste/1.0" {
+		t.Fatalf("origem não propagada para a auditoria: ip=%q ua=%q", got.IPAddress, got.UserAgent)
+	}
+	if e := FromContext(context.Background()); e.IPAddress != "" || e.UserAgent != "" {
+		t.Fatal("sem CaptureOrigin a origem fica vazia (nunca inventada)")
 	}
 }

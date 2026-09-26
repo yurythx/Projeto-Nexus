@@ -52,6 +52,12 @@ function DespachoForm({ processo, acao, onDone }: { processo: ProcessoView; acao
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {acao === "tramitar" && processo.sigilo === "sigiloso" && (
+        <p role="note" className="rounded-md bg-warning/10 p-3 text-xs text-foreground">
+          Processo <strong>sigiloso</strong>: só quem tem credencial nominal o enxerga. Conceda acesso às pessoas da unidade de
+          destino (painel &ldquo;Acesso nominal&rdquo;) <strong>antes</strong> de tramitar — depois disso sua unidade não atua mais no processo.
+        </p>
+      )}
       {acao === "tramitar" && (
         <Select id="desp-para" name="para" label="Unidade de destino *" required placeholder="Selecione…" options={unidades.map((u) => ({ value: u.id, label: `${u.sigla ? `${u.sigla} — ` : ""}${u.nome}` }))} />
       )}
@@ -227,14 +233,14 @@ export default function ProcessoPage() {
                 </Button>
               )}
               {aberto && p.can_act && (
-                <>
-                  <Button variant="secondary" onClick={() => setAcao("concluir")}>
-                    <CheckCheck size={16} aria-hidden="true" className="mr-1" /> Concluir
-                  </Button>
-                  <Button variant="secondary" onClick={() => setAcao("arquivar")}>
-                    <Archive size={16} aria-hidden="true" className="mr-1" /> Arquivar
-                  </Button>
-                </>
+                <Button variant="secondary" onClick={() => setAcao("concluir")}>
+                  <CheckCheck size={16} aria-hidden="true" className="mr-1" /> Concluir
+                </Button>
+              )}
+              {p.status === "concluido" && p.can_act && (
+                <Button variant="secondary" onClick={() => setAcao("arquivar")}>
+                  <Archive size={16} aria-hidden="true" className="mr-1" /> Arquivar
+                </Button>
               )}
               {!aberto && can("tramite:manage") && (
                 <Button variant="secondary" onClick={() => setAcao("reabrir")}>
