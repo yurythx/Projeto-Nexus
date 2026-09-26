@@ -62,7 +62,11 @@ export function WikiEditor({
         <Input id="wiki-slug" name="slug" label="Slug" maxLength={100} defaultValue={page?.slug} placeholder="gerado do título" />
       </div>
       <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+        {/* key: select não controlado — se a árvore chega depois de abrir o
+            editor, remonta com a mãe marcada (antes, salvar movia a página
+            para a raiz). */}
         <Select
+          key={`parent-${pages.length}`}
           id="wiki-parent"
           name="parent_id"
           label="Página-mãe"
