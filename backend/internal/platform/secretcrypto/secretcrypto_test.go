@@ -18,10 +18,7 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	}
 
 	const plaintext = "s3gr3d0-do-client-keycloak"
-	enc, err := c.Encrypt(plaintext)
-	if err != nil {
-		t.Fatalf("Encrypt: %v", err)
-	}
+	enc := c.Encrypt(plaintext)
 	if enc == plaintext {
 		t.Fatal("Encrypt: ciphertext igual ao plaintext — não cifrou nada")
 	}
@@ -41,10 +38,7 @@ func TestEncryptDecrypt_EmptyStringIsSentinel(t *testing.T) {
 		t.Fatalf("NewFromBase64Key: %v", err)
 	}
 
-	enc, err := c.Encrypt("")
-	if err != nil {
-		t.Fatalf("Encrypt(\"\"): %v", err)
-	}
+	enc := c.Encrypt("")
 	if enc != "" {
 		t.Fatalf("Encrypt(\"\") deveria devolver \"\", devolveu %q", enc)
 	}
@@ -69,10 +63,7 @@ func TestDecrypt_WrongKeyFails(t *testing.T) {
 		t.Fatalf("NewFromBase64Key (outra chave): %v", err)
 	}
 
-	enc, err := c1.Encrypt("segredo")
-	if err != nil {
-		t.Fatalf("Encrypt: %v", err)
-	}
+	enc := c1.Encrypt("segredo")
 
 	if _, err := c2.Decrypt(enc); err != ErrInvalidCiphertext {
 		t.Fatalf("Decrypt com chave errada: got err=%v, want ErrInvalidCiphertext", err)
@@ -85,10 +76,7 @@ func TestDecrypt_TamperedCiphertextFails(t *testing.T) {
 		t.Fatalf("NewFromBase64Key: %v", err)
 	}
 
-	enc, err := c.Encrypt("segredo")
-	if err != nil {
-		t.Fatalf("Encrypt: %v", err)
-	}
+	enc := c.Encrypt("segredo")
 
 	raw, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {

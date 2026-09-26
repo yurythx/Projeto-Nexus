@@ -66,20 +66,20 @@ func NewFromBase64Key(keyBase64 string) (*Cipher, error) {
 // dentro de uma coluna TEXT do Postgres, nunca numa URL). Um nonce
 // aleatório novo é gerado a cada chamada — GCM nunca deve reusar
 // nonce com a mesma chave.
-func (c *Cipher) Encrypt(plaintext string) (string, error) {
+func (c *Cipher) Encrypt(plaintext string) string {
 	if plaintext == "" {
 		// String vazia é o sentinel de "sem segredo" usado por todo o
 		// resto do pacote (Store.Set trata "" como "manter o valor
 		// atual" — ver keycloakconfig/store.go) — cifrar e decifrar uma
 		// string vazia deixaria essa checagem ambígua.
-		return "", nil
+		return ""
 	}
 
 	nonce := make([]byte, c.aead.NonceSize())
 	_, _ = rand.Read(nonce) // não falha (Go 1.24+)
 
 	ciphertext := c.aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return base64.StdEncoding.EncodeToString(ciphertext)
 }
 
 // Decrypt reverte Encrypt. Uma string vazia decifra para uma string

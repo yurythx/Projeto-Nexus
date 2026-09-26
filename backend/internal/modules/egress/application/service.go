@@ -49,14 +49,13 @@ type Service struct {
 	repo      domain.Repository
 	deliverer Deliverer
 	cipher    *secretcrypto.Cipher
-	encrypt   func(plaintext string) (string, error)
 	cfg       Config
 	logger    *slog.Logger
 }
 
 // NewService cria o serviço.
 func NewService(pool *pgxpool.Pool, repo domain.Repository, deliverer Deliverer, cipher *secretcrypto.Cipher, cfg Config, logger *slog.Logger) *Service {
-	return &Service{pool: pool, repo: repo, deliverer: deliverer, cipher: cipher, encrypt: cipher.Encrypt, cfg: cfg, logger: logger}
+	return &Service{pool: pool, repo: repo, deliverer: deliverer, cipher: cipher, cfg: cfg, logger: logger}
 }
 
 // MapError traduz erros de domínio.
@@ -115,12 +114,7 @@ func (s *Service) SaveTarget(ctx context.Context, id uuid.UUID, in TargetInput) 
 	}
 	var enc *string
 	if in.Secret != nil {
-		v := ""
-		if *in.Secret != "" {
-			if v, err = s.encrypt(*in.Secret); err != nil {
-				return domain.Target{}, apperrors.Internal(err)
-			}
-		}
+		v := s.cipher.Encrypt(*in.Secret) // "" continua "" (sem segredo)
 		enc = &v
 	}
 	t := domain.Target{ID: id, Name: strings.TrimSpace(in.Name), Kind: in.Kind, URL: u.String(),

@@ -3,6 +3,7 @@ package keycloakconfig
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -115,9 +116,14 @@ func (h *Handlers) Test(w http.ResponseWriter, r *http.Request) {
 
 	secret := req.ClientSecret
 	if secret == "" {
-		if current, err := h.store.Get(r.Context()); err == nil && current.Configured && current.ClientID == req.ClientID {
-			secret = current.ClientSecret
-		} else if h.envFallback.ClientID == req.ClientID {
+		// O segredo guardado só é reaproveitado para o MESMO issuer e client:
+		// senão um teste contra um issuer qualquer entregaria o client
+		// secret real ao token_endpoint dele.
+		if current, err := h.store.Get(r.Context()); err == nil && current.Configured {
+			if current.ClientID == req.ClientID && sameIssuer(current.IssuerURL, req.IssuerURL) {
+				secret = current.ClientSecret
+			}
+		} else if h.envFallback.ClientID == req.ClientID && sameIssuer(h.envFallback.IssuerURL, req.IssuerURL) {
 			secret = h.envFallback.ClientSecret
 		}
 	}
@@ -172,11 +178,19 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 	}
 	clientSecret := req.ClientSecret
 	if clientSecret == "" {
-		if current.Configured {
-			clientSecret = current.ClientSecret
-		} else {
-			clientSecret = h.envFallback.ClientSecret
+		// "Vazio = manter o atual" só vale para o MESMO issuer: trocar o
+		// issuer mantendo o segredo o entregaria ao novo token_endpoint (e
+		// o persistiria apontando para outro servidor).
+		keep, keptIssuer := current.ClientSecret, current.IssuerURL
+		if !current.Configured {
+			keep, keptIssuer = h.envFallback.ClientSecret, h.envFallback.IssuerURL
 		}
+		if keep != "" && !sameIssuer(keptIssuer, req.IssuerURL) {
+			httputil.WriteError(w, r, h.logger, apperrors.Validation(
+				"ao trocar o Issuer URL, informe o Client Secret de novo (o atual não é reaproveitado para outro servidor)"))
+			return
+		}
+		clientSecret = keep
 	}
 	// O "vazio = manter o atual" do frontend_client_secret é aplicado por
 	// Store.Set (mesma regra do client_secret, ver o comentário em
@@ -195,10 +209,17 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 		IssuerURL:            req.IssuerURL,
 		Realm:                req.Realm,
 		ClientID:             req.ClientID,
-		ClientSecret:         req.ClientSecret, // já em "vazio = manter" — Store.Set aplica a mesma regra
+		ClientSecret:         req.ClientSecret, // "vazio = manter" — Store.Set aplica a mesma regra
 		Audience:             req.Audience,
 		FrontendClientID:     req.FrontendClientID,
 		FrontendClientSecret: req.FrontendClientSecret,
+	}
+
+	if !current.Configured {
+		// Primeiro salvamento "adotando" a configuração do .env: grava o
+		// segredo que acabou de ser testado — antes ia vazio, e a
+		// reautenticação federada (Signum) passava a ler um segredo vazio.
+		incoming.ClientSecret = clientSecret
 	}
 
 	var updatedBy string
@@ -266,4 +287,10 @@ func RegisterRoutes(r chi.Router, h *Handlers, logger *slog.Logger) {
 		admin.Post("/test", h.Test)
 		admin.Put("/", h.Save)
 	})
+}
+
+// sameIssuer compara issuers ignorando espaços e a barra final.
+func sameIssuer(a, b string) bool {
+	norm := func(s string) string { return strings.TrimRight(strings.TrimSpace(s), "/") }
+	return norm(a) == norm(b)
 }
