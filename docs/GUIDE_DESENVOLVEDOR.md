@@ -194,9 +194,9 @@ TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/...,./pkg/... -coverprof
 # Mudou a interface Repository de um plug-in? Regenere o decorador de falhas:
 #   scripts/genfault.py (uso no cabeçalho do script)
 
-# Novo endpoint ou DTO alterado? Regenere o contrato. Os schemas marcados com
-# x-nexus-generated são refeitos a partir dos tipos Go; o que foi escrito à mão
-# (sem a marca) é preservado:
+# Novo endpoint ou DTO alterado? Regenere o contrato. As respostas de handlers
+# que devolvem struct saem dos tipos Go (a description à mão é mantida); texto à
+# mão só prevalece onde o handler devolve map ou negocia CSV/XML (ADR 010 §10.5):
 UPDATE_OPENAPI=1 TEST_DATABASE_URL=... go test ./internal/app -run TestOpenAPIMatchesRouter
 
 cd ../frontend && npm test

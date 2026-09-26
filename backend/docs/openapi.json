@@ -289,6 +289,37 @@
         "type": "object",
         "x-nexus-generated": true
       },
+      "AuthScope": {
+        "properties": {
+          "departamento_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "entidade_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "perfil": {
+            "type": "string"
+          },
+          "unidade_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "origem",
+          "perfil"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
       "BlogPost": {
         "properties": {
           "author_id": {
@@ -2301,6 +2332,67 @@
         "type": "object",
         "x-nexus-generated": true
       },
+      "IamMeResponse": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/AuthScope"
+            },
+            "type": "array"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "groups",
+          "id",
+          "name",
+          "permissions",
+          "roles",
+          "scopes",
+          "source",
+          "subject",
+          "username"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
       "IamOrgTree": {
         "properties": {
           "ativo": {
@@ -2769,6 +2861,84 @@
         "type": "object",
         "x-nexus-generated": true
       },
+      "IamUserDetail": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "ad_synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "federated": {
+            "type": "boolean"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "local_login": {
+            "type": "boolean"
+          },
+          "locked_until": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "lotacoes": {
+            "items": {
+              "$ref": "#/components/schemas/IamLotacao"
+            },
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "created_at",
+          "display_name",
+          "email",
+          "federated",
+          "groups",
+          "id",
+          "local_login",
+          "lotacoes",
+          "roles",
+          "username"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
       "Integration": {
         "properties": {
           "enabled": {
@@ -3036,6 +3206,115 @@
         ],
         "type": "object"
       },
+      "LgpdMyDataPackage": {
+        "properties": {
+          "account": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "audit_trail": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "consents": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "current_term_version": {
+            "type": "string"
+          },
+          "data_subject_requests": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "generated_at": {
+            "type": "string"
+          },
+          "modules": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "audit_trail",
+          "consents",
+          "current_term_version",
+          "data_subject_requests",
+          "generated_at",
+          "modules",
+          "note"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
+      "LocalauthLoginResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/LocalauthLoginResponseUser"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_at",
+          "token_type",
+          "user"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
+      "LocalauthLoginResponseUser": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "email",
+          "id",
+          "roles",
+          "username"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
       "MercurioDirectRequest": {
         "properties": {
           "user_id": {
@@ -3230,6 +3509,26 @@
           "method",
           "object_key",
           "upload_url"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
+      },
+      "OutboxCounts": {
+        "properties": {
+          "failed": {
+            "type": "integer"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "published": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "failed",
+          "pending",
+          "published"
         ],
         "type": "object",
         "x-nexus-generated": true
@@ -4173,37 +4472,6 @@
         "type": "object",
         "x-nexus-generated": true
       },
-      "User": {
-        "properties": {
-          "active": {
-            "type": "boolean"
-          },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "display_name": {
-            "type": "string"
-          },
-          "email": {
-            "format": "email",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "last_seen_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "WikiPage": {
         "properties": {
           "body": {
@@ -4417,6 +4685,22 @@
         ],
         "type": "object",
         "x-nexus-generated": true
+      },
+      "WsTicketResponse": {
+        "properties": {
+          "expires_at": {
+            "type": "string"
+          },
+          "ticket": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "ticket"
+        ],
+        "type": "object",
+        "x-nexus-generated": true
       }
     },
     "securitySchemes": {
@@ -4532,7 +4816,8 @@
                 }
               }
             },
-            "description": "Configuração atual (do Postgres, se já salva; senão o que vem de variável de ambiente)."
+            "description": "Configuração atual (do Postgres, se já salva; senão o que vem de variável de ambiente).",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4712,7 +4997,8 @@
                 }
               }
             },
-            "description": "Resultado do teste (mesmo em caso de falha — ver `status`)."
+            "description": "Resultado do teste (mesmo em caso de falha — ver `status`).",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5213,36 +5499,7 @@
                     {
                       "properties": {
                         "data": {
-                          "properties": {
-                            "access_token": {
-                              "type": "string"
-                            },
-                            "expires_at": {
-                              "format": "date-time",
-                              "type": "string"
-                            },
-                            "token_type": {
-                              "example": "Bearer",
-                              "type": "string"
-                            },
-                            "user": {
-                              "properties": {
-                                "email": {
-                                  "format": "email",
-                                  "type": "string"
-                                },
-                                "id": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                "username": {
-                                  "type": "string"
-                                }
-                              },
-                              "type": "object"
-                            }
-                          },
-                          "type": "object"
+                          "$ref": "#/components/schemas/LocalauthLoginResponse"
                         }
                       },
                       "type": "object"
@@ -5252,15 +5509,7 @@
               }
             },
             "description": "Credenciais válidas — token emitido.",
-            "headers": {
-              "Cache-Control": {
-                "description": "O corpo carrega um bearer token; nunca deve ser cacheado.",
-                "schema": {
-                  "example": "no-store",
-                  "type": "string"
-                }
-              }
-            }
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -8841,6 +9090,9 @@
                             "$ref": "#/components/schemas/ExampleItem"
                           },
                           "type": "array"
+                        },
+                        "meta": {
+                          "$ref": "#/components/schemas/PaginationMeta"
                         }
                       },
                       "type": "object"
@@ -8849,7 +9101,8 @@
                 }
               }
             },
-            "description": "Página de itens."
+            "description": "Página de itens.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -8904,7 +9157,8 @@
                 }
               }
             },
-            "description": "Item criado."
+            "description": "Item criado.",
+            "x-nexus-generated": true
           },
           "400": {
             "description": "title ausente ou corpo inválido."
@@ -8954,7 +9208,8 @@
                 }
               }
             },
-            "description": "O item."
+            "description": "O item.",
+            "x-nexus-generated": true
           },
           "400": {
             "description": "id não é um UUID válido."
@@ -11216,11 +11471,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/LgpdMyDataPackage"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
-            "description": "`meus-dados-nexus-\u003ctimestamp\u003e.json` (`Content-Disposition: attachment`).\n"
+            "description": "`meus-dados-nexus-\u003ctimestamp\u003e.json` (`Content-Disposition: attachment`).\n",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -11350,7 +11618,7 @@
                     {
                       "properties": {
                         "data": {
-                          "$ref": "#/components/schemas/User"
+                          "$ref": "#/components/schemas/IamMeResponse"
                         }
                       },
                       "type": "object"
@@ -11359,7 +11627,8 @@
                 }
               }
             },
-            "description": "O usuário atual."
+            "description": "O usuário atual.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -12017,23 +12286,7 @@
                     {
                       "properties": {
                         "data": {
-                          "properties": {
-                            "failed": {
-                              "type": "integer"
-                            },
-                            "pending": {
-                              "type": "integer"
-                            },
-                            "published": {
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "pending",
-                            "published",
-                            "failed"
-                          ],
-                          "type": "object"
+                          "$ref": "#/components/schemas/OutboxCounts"
                         }
                       },
                       "type": "object"
@@ -12042,7 +12295,8 @@
                 }
               }
             },
-            "description": "Contagem atual por status."
+            "description": "Contagem atual por status.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -14078,7 +14332,7 @@
                       "properties": {
                         "data": {
                           "items": {
-                            "$ref": "#/components/schemas/User"
+                            "$ref": "#/components/schemas/IamUser"
                           },
                           "type": "array"
                         },
@@ -14092,7 +14346,8 @@
                 }
               }
             },
-            "description": "Uma página de usuários."
+            "description": "Uma página de usuários.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -14209,7 +14464,7 @@
                     {
                       "properties": {
                         "data": {
-                          "$ref": "#/components/schemas/User"
+                          "$ref": "#/components/schemas/IamUserDetail"
                         }
                       },
                       "type": "object"
@@ -14218,7 +14473,8 @@
                 }
               }
             },
-            "description": "O usuário."
+            "description": "O usuário.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -15153,16 +15409,7 @@
                     {
                       "properties": {
                         "data": {
-                          "properties": {
-                            "expires_at": {
-                              "format": "date-time",
-                              "type": "string"
-                            },
-                            "ticket": {
-                              "type": "string"
-                            }
-                          },
-                          "type": "object"
+                          "$ref": "#/components/schemas/WsTicketResponse"
                         }
                       },
                       "type": "object"
@@ -15171,7 +15418,8 @@
                 }
               }
             },
-            "description": "Um ticket recém-emitido."
+            "description": "Um ticket recém-emitido.",
+            "x-nexus-generated": true
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

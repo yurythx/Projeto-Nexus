@@ -114,9 +114,25 @@ Os tipos Go viram `components/schemas`:
 Das 172 rotas, só uma continua com schema genérico: a de transparência que
 negocia CSV/XML.
 
-Tudo o que é gerado leva a marca `x-nexus-generated`. Regenerar
-(`UPDATE_OPENAPI=1`) refaz o que tem a marca e nunca toca o que foi escrito à
-mão. O teste de contrato também compara o arquivo com o resultado da geração:
+Tudo o que é gerado leva a marca `x-nexus-generated`, e regenerar
+(`UPDATE_OPENAPI=1`) refaz o que tem a marca. Onde havia texto escrito à mão,
+vale uma regra única:
+
+- **Handler devolve um struct:** o código é a fonte da verdade e a resposta é
+  derivada dele. A `description` escrita à mão é mantida.
+- **Handler devolve um `map` ou negocia CSV/XML:** o texto à mão prevalece,
+  porque o código não tem tipo.
+- **Componente à mão com a mesma forma do gerado:** é reaproveitado. A versão
+  à mão pode acrescentar `enum`, `format` ou limites que o tipo Go não
+  expressa.
+
+Essa comparação mostrou que três entradas escritas à mão estavam erradas:
+
+- `GET /me` documentava um usuário do banco, não a identidade da sessão;
+- `GET /users` e `/users/{id}` estavam sem 6 a 7 campos e sem as lotações;
+- `GET /lgpd/meus-dados` não tinha schema.
+
+O teste de contrato também compara o arquivo com o resultado da geração:
 mudar um DTO sem regenerar quebra o CI. De passagem, três respostas escritas
 à mão estavam sem `description`, o que tornava o documento inválido. Foram
 corrigidas, e o teste passou a exigir o campo.

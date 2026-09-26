@@ -76,10 +76,11 @@ type schemaGen struct {
 	components map[string]map[string]any // nome → schema gerado
 	names      map[string]string         // tipo (pkg.Nome) → nome do componente
 	taken      map[string]bool           // nomes de componentes escritos à mão
+	hand       map[string]map[string]any // schemas escritos à mão (para reaproveitar)
 	building   map[string]bool
 }
 
-func loadSchemaGen(t *testing.T, handWritten map[string]bool) *schemaGen {
+func loadSchemaGen(t *testing.T, hand map[string]map[string]any) *schemaGen {
 	t.Helper()
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes |
@@ -91,7 +92,10 @@ func loadSchemaGen(t *testing.T, handWritten map[string]bool) *schemaGen {
 		t.Fatal(err)
 	}
 	g := &schemaGen{funcs: map[string]funcSrc{}, components: map[string]map[string]any{},
-		names: map[string]string{}, taken: handWritten, building: map[string]bool{}}
+		names: map[string]string{}, taken: map[string]bool{}, hand: hand, building: map[string]bool{}}
+	for name := range hand {
+		g.taken[name] = true
+	}
 	for _, p := range pkgs {
 		if len(p.Errors) > 0 {
 			t.Fatalf("pacote %s: %v", p.PkgPath, p.Errors)
@@ -553,10 +557,105 @@ func (g *schemaGen) component(n *types.Named, st *types.Struct) string {
 	g.names[key] = name
 	g.building[key] = true
 	s := g.structSchema(st)
+	delete(g.building, key)
+	// Um componente escrito à mão com exatamente a mesma forma (campos,
+	// tipos, formatos) é reaproveitado: mantém as descrições e não duplica.
+	if twin := g.handTwin(s); twin != "" {
+		g.names[key] = twin
+		return twin
+	}
 	s[genMark] = true
 	g.components[name] = s
-	delete(g.building, key)
 	return name
+}
+
+func (g *schemaGen) handTwin(s map[string]any) string {
+	names := make([]string, 0, len(g.hand))
+	for n := range g.hand {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if refines(g.hand[n], s) {
+			return n
+		}
+	}
+	return ""
+}
+
+// refinement são as chaves que a versão escrita à mão pode acrescentar a um
+// campo: restrições que o tipo Go não expressa (um string que só aceita
+// alguns valores, um string que é data).
+var refinement = map[string]bool{"enum": true, "format": true, "pattern": true, "minLength": true, "maxLength": true, "minimum": true, "maximum": true}
+
+func isDocKey(k string) bool {
+	return k == "description" || k == "example" || k == "required" || k == "title" || strings.HasPrefix(k, "x-")
+}
+
+// refines diz se o schema escrito à mão tem a mesma forma do gerado (mesmos
+// campos, mesmos tipos), podendo só acrescentar restrições. O que é só
+// documentação (description, example, required, x-*) não conta.
+func refines(hand, gen map[string]any) bool {
+	for k := range hand {
+		if _, ok := gen[k]; !ok && !isDocKey(k) && !refinement[k] {
+			return false
+		}
+	}
+	for k, gv := range gen {
+		if isDocKey(k) {
+			continue
+		}
+		hv, ok := hand[k]
+		if !ok {
+			return false
+		}
+		switch k {
+		case "properties":
+			hp, _ := hv.(map[string]any)
+			gp, _ := gv.(map[string]any)
+			if len(hp) != len(gp) {
+				return false
+			}
+			for name, sub := range gp {
+				h, ok := hp[name].(map[string]any)
+				gm, _ := sub.(map[string]any)
+				if !ok || !refines(h, gm) {
+					return false
+				}
+			}
+		case "items", "additionalProperties":
+			hm, _ := hv.(map[string]any)
+			gm, _ := gv.(map[string]any)
+			if hm == nil || gm == nil || !refines(hm, gm) {
+				return false
+			}
+		case "enum":
+			if !sameSet(hv, gv) {
+				return false
+			}
+		default:
+			a, _ := json.Marshal(hv)
+			b, _ := json.Marshal(gv)
+			if string(a) != string(b) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func sameSet(a, b any) bool {
+	key := func(v any) string {
+		xs, _ := v.([]any)
+		out := make([]string, len(xs))
+		for i, x := range xs {
+			j, _ := json.Marshal(x)
+			out[i] = string(j)
+		}
+		sort.Strings(out)
+		return strings.Join(out, ",")
+	}
+	return key(a) == key(b)
 }
 
 func (g *schemaGen) nameUsed(name string) bool {
@@ -755,15 +854,18 @@ func applySchemas(t *testing.T, spec map[string]any, routes []routeInfo) {
 		schemas = map[string]any{}
 		comps["schemas"] = schemas
 	}
-	handWritten := map[string]bool{}
+	hand := map[string]map[string]any{}
 	for name, s := range schemas {
 		if m, ok := s.(map[string]any); ok && m[genMark] == true {
 			delete(schemas, name)
 			continue
 		}
-		handWritten[name] = true
+		if m, ok := s.(map[string]any); ok {
+			hand[name] = m
+		}
 	}
-	g := loadSchemaGen(t, handWritten)
+	usedBefore := referencedSchemas(spec)
+	g := loadSchemaGen(t, hand)
 	paths := spec["paths"].(map[string]any)
 	var unresolved []string
 	for _, r := range routes {
@@ -782,9 +884,46 @@ func applySchemas(t *testing.T, spec map[string]any, routes []routeInfo) {
 	for name, s := range g.components {
 		schemas[name] = s
 	}
+	// Componente escrito à mão que só existia para as respostas agora
+	// derivadas do código fica órfão: sai (os que já eram documentação
+	// avulsa, sem referência, como EventEnvelope, ficam).
+	usedAfter := referencedSchemas(spec)
+	for name := range hand {
+		if usedBefore[name] && !usedAfter[name] {
+			delete(schemas, name)
+		}
+	}
 	if len(unresolved) > 0 {
 		t.Logf("handlers sem código-fonte analisável (mantidos genéricos): %v", unresolved)
 	}
+}
+
+var schemaRef = regexp.MustCompile(`"#/components/schemas/([^"]+)"`)
+
+// referencedSchemas lista os schemas referenciados fora da própria
+// definição (caminhos, respostas, parâmetros e outros schemas).
+func referencedSchemas(spec map[string]any) map[string]bool {
+	out := map[string]bool{}
+	mark := func(v any, self string) {
+		b, _ := json.Marshal(v)
+		for _, m := range schemaRef.FindAllStringSubmatch(string(b), -1) {
+			if m[1] != self {
+				out[m[1]] = true
+			}
+		}
+	}
+	mark(spec["paths"], "")
+	comps, _ := spec["components"].(map[string]any)
+	for k, v := range comps {
+		if k != "schemas" {
+			mark(v, "")
+		}
+	}
+	schemas, _ := comps["schemas"].(map[string]any)
+	for name, v := range schemas {
+		mark(v, name)
+	}
+	return out
 }
 
 func isGenerated(v any) bool {
@@ -795,6 +934,63 @@ func isGenerated(v any) bool {
 func isGenericSuccess(v any) bool {
 	m, ok := v.(map[string]any)
 	return ok && len(m) == 1 && m["$ref"] == "#/components/responses/Success"
+}
+
+// defaultDescriptions são os textos que o próprio gerador escreve.
+var defaultDescriptions = map[string]bool{
+	"":              true,
+	descSuccess:     true,
+	descPage:        true,
+	"Sem conteúdo.": true,
+}
+
+const (
+	descSuccess = "Sucesso — payload em `data`."
+	descPage    = "Página de itens em `data`, paginação em `meta`."
+)
+
+// typedResponses: toda resposta detectada é 204 ou tem um struct nomeado
+// (direto, por ponteiro ou em lista) como data.
+func typedResponses(byCode map[int][]respInfo) bool {
+	for _, rs := range byCode {
+		for _, r := range rs {
+			if !r.noContent && !isStructType(r.data) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isStructType(t types.Type) bool {
+	for {
+		switch tt := types.Unalias(t).(type) {
+		case *types.Pointer:
+			t = tt.Elem()
+			continue
+		case *types.Slice:
+			t = tt.Elem()
+			continue
+		case *types.Named:
+			if _, known := wellKnown[typeKey(tt)]; known || implements(tt, "MarshalJSON") {
+				return false
+			}
+			_, ok := tt.Underlying().(*types.Struct)
+			return ok
+		}
+		return false
+	}
+}
+
+// onlyJSON: a resposta escrita à mão não documenta outro formato (CSV, XML).
+func onlyJSON(r any) bool {
+	content, _ := r.(map[string]any)["content"].(map[string]any)
+	for ct := range content {
+		if ct != "application/json" {
+			return false
+		}
+	}
+	return true
 }
 
 // isPlainNoContent é o 204 do esqueleto gerado para DELETE.
@@ -833,20 +1029,39 @@ func (g *schemaGen) applyOperation(op map[string]any, info *opInfo) {
 	// respostas de sucesso
 	responses, _ := op["responses"].(map[string]any)
 	if responses != nil && len(info.responses) > 0 {
+		// Resposta escrita à mão só prevalece onde o código não tem tipo
+		// (map, any) ou negocia outro formato além de JSON: com um struct,
+		// o código é a fonte da verdade e o texto à mão ficaria defasado
+		// (GET /me documentava um usuário do banco, não a identidade). A
+		// description escrita à mão é mantida.
+		typed := typedResponses(info.responses)
 		replaceable := true
+		descriptions := map[string]any{}
 		for code, r := range responses {
-			if strings.HasPrefix(code, "2") && !isGenericSuccess(r) && !isGenerated(r) && !isPlainNoContent(r) {
-				replaceable = false // escrita à mão
+			if !strings.HasPrefix(code, "2") || isGenericSuccess(r) || isPlainNoContent(r) {
+				continue
+			}
+			if !isGenerated(r) && (!typed || !onlyJSON(r)) {
+				replaceable = false
+				continue
+			}
+			// a description escrita à mão sobrevive às regenerações
+			if d, _ := r.(map[string]any)["description"].(string); !defaultDescriptions[d] {
+				descriptions[code] = d
 			}
 		}
 		if replaceable {
 			for code, r := range responses {
-				if isGenericSuccess(r) || isGenerated(r) || isPlainNoContent(r) {
+				if strings.HasPrefix(code, "2") || isGenericSuccess(r) || isGenerated(r) || isPlainNoContent(r) {
 					delete(responses, code)
 				}
 			}
 			for code, rs := range info.responses {
-				responses[strconv.Itoa(code)] = g.response(rs)
+				resp := g.response(rs)
+				if d, ok := descriptions[strconv.Itoa(code)].(string); ok && d != "" {
+					resp["description"] = d
+				}
+				responses[strconv.Itoa(code)] = resp
 			}
 		}
 	}
@@ -892,13 +1107,13 @@ func (g *schemaGen) response(rs []respInfo) map[string]any {
 		return map[string]any{"description": "Sem conteúdo.", genMark: true}
 	}
 	var variants []any
-	desc := "Sucesso — payload em `data`."
+	desc := descSuccess
 	for _, r := range rs {
 		props := map[string]any{"data": g.schema(r.data)}
 		switch {
 		case r.paged:
 			props["meta"] = map[string]any{"$ref": "#/components/schemas/PaginationMeta"}
-			desc = "Página de itens em `data`, paginação em `meta`."
+			desc = descPage
 		case r.meta != nil:
 			props["meta"] = g.schema(r.meta)
 		}
