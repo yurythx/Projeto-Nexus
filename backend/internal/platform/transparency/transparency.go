@@ -21,15 +21,19 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
+	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
+	"github.com/yurythx/projeto-nexus/internal/platform/lgpd"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
@@ -39,8 +43,9 @@ type ModuleInfo struct {
 	Enabled                bool
 }
 
+// Service publica os datasets de transparência ativa.
 type Service struct {
-	db      *pgxpool.Pool
+	db      database.DBTX // o pool, em produção
 	logger  *slog.Logger
 	modules func() []ModuleInfo
 }
@@ -106,7 +111,12 @@ func (s *Service) handleCatalog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) handlePlatform(w http.ResponseWriter, r *http.Request) {
 	var usuariosAtivos, modulosAtivos int
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE active`).Scan(&usuariosAtivos)
+	// Dado público: se a contagem falha, responde erro — nunca publica um
+	// "0 usuários ativos" que não é verdade.
+	if err := s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE active`).Scan(&usuariosAtivos); err != nil {
+		httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("transparency platform: %w", err)))
+		return
+	}
 	for _, m := range s.modules() {
 		if m.Enabled {
 			modulosAtivos++
@@ -116,7 +126,7 @@ func (s *Service) handlePlatform(w http.ResponseWriter, r *http.Request) {
 	row := map[string]any{
 		"usuarios_ativos":      usuariosAtivos,
 		"modulos_ativos":       modulosAtivos,
-		"termos_lgpd_vigentes": "v1.0.0-2026",
+		"termos_lgpd_vigentes": lgpd.CurrentTermVersion,
 		"gerado_em":            time.Now().UTC().Format(time.RFC3339),
 	}
 	s.write(w, r, "plataforma", nil, []map[string]any{row})
@@ -137,9 +147,12 @@ func (s *Service) handleModules(w http.ResponseWriter, r *http.Request) {
 func (s *Service) handleAuditActions(w http.ResponseWriter, r *http.Request) {
 	dias := 30
 	if v := r.URL.Query().Get("dias"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 365 {
-			dias = n
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 365 {
+			httputil.WriteError(w, r, s.logger, apperrors.BadRequest("dias deve ser um inteiro entre 1 e 365"))
+			return
 		}
+		dias = n
 	}
 	since := time.Now().UTC().AddDate(0, 0, -dias)
 	rows, err := s.db.Query(r.Context(), `
@@ -150,15 +163,16 @@ func (s *Service) handleAuditActions(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("transparency audit actions: %w", err)))
 		return
 	}
-	defer rows.Close()
-	out := []map[string]any{}
-	for rows.Next() {
+	// Sai completo ou não sai: pular linhas daria números públicos errados.
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (map[string]any, error) {
 		var action string
 		var n int
-		if err := rows.Scan(&action, &n); err != nil {
-			continue
-		}
-		out = append(out, map[string]any{"acao": action, "ocorrencias": n, "periodo_dias": dias})
+		err := row.Scan(&action, &n)
+		return map[string]any{"acao": action, "ocorrencias": n, "periodo_dias": dias}, err
+	})
+	if err != nil {
+		httputil.WriteError(w, r, s.logger, apperrors.Internal(fmt.Errorf("transparency audit actions: %w", err)))
+		return
 	}
 	s.write(w, r, "auditoria_acoes", map[string]any{"periodo_dias": dias, "desde": since.Format(time.RFC3339)}, out)
 }
@@ -190,11 +204,12 @@ func (s *Service) write(w http.ResponseWriter, r *http.Request, name string, met
 	case "xml":
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 		_, _ = w.Write([]byte(xml.Header))
-		_, _ = w.Write([]byte("<dataset name=\"" + name + "\">\n"))
+		_, _ = w.Write([]byte("<dataset name=\"" + xmlEscape(name) + "\">\n"))
 		for _, row := range rows {
 			_, _ = w.Write([]byte("  <registro>\n"))
 			for _, c := range sortedKeys(row) {
-				_, _ = fmt.Fprintf(w, "    <%s>%v</%s>\n", c, row[c], c)
+				// Valores escapados: "Pessoas & Setores" quebraria o XML.
+				_, _ = fmt.Fprintf(w, "    <%s>%s</%s>\n", c, xmlEscape(fmt.Sprintf("%v", row[c])), c)
 			}
 			_, _ = w.Write([]byte("  </registro>\n"))
 		}
@@ -214,13 +229,14 @@ func sortedKeys(m map[string]any) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	// ordenação simples por inserção — poucos campos por dataset
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j-1] > keys[j]; j-- {
-			keys[j-1], keys[j] = keys[j], keys[j-1]
-		}
-	}
+	sort.Strings(keys)
 	return keys
+}
+
+func xmlEscape(v string) string {
+	var b strings.Builder
+	_ = xml.EscapeText(&b, []byte(v)) // strings.Builder não falha
+	return b.String()
 }
 
 func chooseFormat(r *http.Request) string {
