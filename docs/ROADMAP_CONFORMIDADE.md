@@ -93,6 +93,17 @@ Legenda: ✅ feito · 🟡 parcial / scaffold · ⬜ pendente · 🔒 depende de
 | F7.6 | Matriz de falhas (falha e transação envenenada em cada chamada do repositório) em todos os plug-ins | ✅ `scripts/genfault.py`, `database/dbtest` |
 | F7.7 | Meta de 100% de cobertura por plug-in no CI (cobertura total 70% → 84,7%) | ✅ `scripts/coverage-gate.sh` |
 
+## Fase 8 — Revisão da plataforma (ADR 010)
+
+| # | Item | Estado |
+|---|---|---|
+| F8.1 | Cada pacote de `internal/platform` e a composição (`internal/app`) revisados; correções em ADR 010 §10.1 | ✅ |
+| F8.2 | Outbox com backoff por evento e reprocessamento auditado (`POST /monitoring/outbox/requeue`, `monitoring:manage`) | ✅ migration 000123 |
+| F8.3 | LGPD art. 18: dados pessoais dos plug-ins (`PersonalData`) no pacote de exportação e na eliminação, com retentativas | ✅ migration 000124 |
+| F8.4 | Anti-SSRF: formas IPv6 que embutem IPv4 bloqueadas | ✅ |
+| F8.5 | e-MAG: contraste AA exigido nos tokens de cor do branding | ✅ |
+| F8.6 | RabbitMQ e MinIO reais no CI; meta de 100% por pacote (plug-ins, plataforma, app, pkg) | ✅ `scripts/coverage-gate.sh` |
+
 ---
 
 ## Parâmetros novos e como são usados

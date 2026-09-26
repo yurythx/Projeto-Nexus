@@ -163,7 +163,18 @@ A suíte cobre três níveis, todos rodando no CI (job de backend com Postgres 1
 | Matriz de falhas | `internal/modules/<m>/application/faults_test.go` | Cada chamada ao repositório de cada caso de uso falha, ou envenena a transação logo depois, e o erro chega a quem chamou: nada é engolido, nada fica gravado pela metade |
 | Repositório | `internal/modules/<m>/infrastructure/*_test.go` | Toda falha do banco (consulta, leitura de linha, `rows.Err`) é propagada, usando os fakes de `database/dbtest` |
 
-**Meta: 100% de cobertura por plug-in.** O CI roda `scripts/coverage-gate.sh` sobre o perfil do `go test`: cada diretório de `internal/modules/*` e o núcleo `internal/platform/audit` precisam estar em 100%, e o script lista as linhas descobertas quando não estão (ver ADR 009).
+**Meta: 100% de cobertura por pacote.** O CI roda `scripts/coverage-gate.sh` sobre o perfil do `go test`. Precisam estar em 100%: cada plug-in de `internal/modules/*`, cada pacote de `internal/platform/*` (menos os dublês `dbtest` e `storagetest`), `internal/app` e `pkg/*`. Quando algum não está, o script lista as linhas descobertas (ver ADRs 009 e 010).
+
+Os testes de mensageria, armazenamento e composição rodam contra RabbitMQ e MinIO reais quando `TEST_RABBITMQ_URL` e `TEST_MINIO_ENDPOINT`/`TEST_MINIO_ACCESS_KEY`/`TEST_MINIO_SECRET_KEY` estão definidas; sem elas, são pulados. Para subir os dois localmente:
+
+```bash
+docker run -d --name nx-rabbit -p 5672:5672 -e RABBITMQ_DEFAULT_USER=nexus -e RABBITMQ_DEFAULT_PASS=nexus \
+  -e RABBITMQ_DEFAULT_VHOST=nexus rabbitmq:3.13-management-alpine
+docker run -d --name nx-minio -p 9000:9000 -e MINIO_ROOT_USER=nexusadmin -e MINIO_ROOT_PASSWORD=nexussecret123 \
+  pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+export TEST_RABBITMQ_URL=amqp://nexus:nexus@localhost:5672/nexus \
+  TEST_MINIO_ENDPOINT=localhost:9000 TEST_MINIO_ACCESS_KEY=nexusadmin TEST_MINIO_SECRET_KEY=nexussecret123
+```
 
 Rodando localmente (os testes de integração pulam sem banco):
 
@@ -176,8 +187,8 @@ cd backend
 TEST_DATABASE_URL="postgres://nexus:...@localhost:5432/nexus_test?sslmode=disable" \
   go test -race -p 1 -coverpkg=./internal/... ./...
 
-# Meta de cobertura por plug-in (a mesma do CI):
-TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+# Meta de cobertura por pacote (a mesma do CI):
+TEST_DATABASE_URL=... go test -p 1 -coverpkg=./internal/...,./pkg/... -coverprofile=coverage.out ./...
 ../scripts/coverage-gate.sh coverage.out
 
 # Mudou a interface Repository de um plug-in? Regenere o decorador de falhas:
