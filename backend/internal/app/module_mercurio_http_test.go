@@ -125,3 +125,34 @@ func TestMercurioRoomsAndMessageRules(t *testing.T) {
 		h.expect(http.StatusBadRequest, c.method, c.path, ana, c.body)
 	}
 }
+
+// mercurio:manage com escopo (ADR 013): o moderador da unidade A cria e
+// modera as salas dos departamentos de A — não as de B, nem as globais.
+func TestMercurioModeracaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	dep := func(unidade string) string {
+		return data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/departamentos", admin,
+			`{"unidade_id":"`+unidade+`","nome":"Depto `+uuid.NewString()[:6]+`"}`)).ID
+	}
+	depA, depSub, depB := dep(o.a), dep(o.sub), dep(o.b)
+	modA := h.gestorEm(t, o.a, "mercurio:manage")
+	sala := func(dep string) string {
+		return `{"kind":"department","name":"Equipe ` + uuid.NewString()[:6] + `","departamento_id":"` + dep + `"}`
+	}
+	salaA := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/mercurio/rooms", modA, sala(depA)))
+	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/mercurio/rooms", modA, sala(depSub)) // herança
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/mercurio/rooms", modA, sala(depB))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/mercurio/rooms", modA, `{"kind":"global","name":"Geral paralelo"}`)
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/mercurio/rooms", modA, `{"kind":"department","name":"Só grupo","ad_group":"GRP_X"}`)
+	// Não move a própria sala para o departamento de B.
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/mercurio/rooms/"+salaA.ID, modA, sala(depB))
+
+	salaB := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/mercurio/rooms", admin, sala(depB)))
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/mercurio/rooms/"+salaB.ID, modA, sala(depA))
+	msgA := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/mercurio/rooms/"+salaA.ID+"/messages", admin, `{"body":"na sala de A"}`))
+	msgB := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/mercurio/rooms/"+salaB.ID+"/messages", admin, `{"body":"na sala de B"}`))
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/mercurio/messages/"+msgB.ID, modA, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/mercurio/messages/"+msgA.ID, modA, "")
+}

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { apiClient } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/swr";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import { departamentosGeridos } from "@/lib/nexus/permissions";
 import type { ChatRoom, OrgTree } from "@/lib/nexus/types";
 
 /** Canais globais e salas departamentais (mapeadas a um departamento e/ou
@@ -19,7 +21,17 @@ export function RoomsAdmin({ rooms, onChanged }: { rooms: ChatRoom[]; onChanged:
   const { run, pending } = useAction();
   const [edit, setEdit] = useState<ChatRoom | null>(null);
   const [kind, setKind] = useState<"global" | "department">("global");
-  const deptos = (tree.data ?? []).flatMap((e) => e.unidades.flatMap((u) => u.departamentos.map((d) => ({ value: d.id, label: `${d.nome} (${u.sigla || u.nome})` }))));
+  const { me } = useNexus();
+  // Moderação com escopo (ADR 013): só os departamentos cobertos; canal
+  // global (e sala só por grupo) é da moderação global.
+  const geridos = departamentosGeridos(me, tree.data, "mercurio:manage");
+  const tipo = geridos.global ? kind : "department";
+  const deptos = (tree.data ?? []).flatMap((e) =>
+    e.unidades.flatMap((u) =>
+      u.departamentos.filter((d) => geridos.departamentos.has(d.id)).map((d) => ({ value: d.id, label: `${d.nome} (${u.sigla || u.nome})` })),
+    ),
+  );
+  const editavel = (r: ChatRoom) => geridos.global || (!!r.departamento_id && geridos.departamentos.has(r.departamento_id));
   const managed = rooms.filter((r) => r.kind !== "direct");
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -27,11 +39,11 @@ export function RoomsAdmin({ rooms, onChanged }: { rooms: ChatRoom[]; onChanged:
     const form = e.currentTarget;
     const fd = new FormData(form);
     const payload = {
-      kind,
+      kind: tipo,
       name: String(fd.get("name") ?? "").trim(),
       description: String(fd.get("description") ?? "").trim(),
       ad_group: String(fd.get("ad_group") ?? "").trim(),
-      departamento_id: kind === "department" ? String(fd.get("departamento_id") ?? "") || null : null,
+      departamento_id: tipo === "department" ? String(fd.get("departamento_id") ?? "") || null : null,
       archived: fd.get("archived") === "on",
     };
     const ok = await run(() => (edit ? apiClient.put(`v1/mercurio/rooms/${edit.id}`, payload) : apiClient.post("v1/mercurio/rooms", payload)), "Sala salva");
@@ -52,17 +64,19 @@ export function RoomsAdmin({ rooms, onChanged }: { rooms: ChatRoom[]; onChanged:
               {r.archived && <Badge tone="warning" className="ml-1">Arquivada</Badge>}
               {r.ad_group && <span className="block font-mono text-[11px] text-muted">{r.ad_group}</span>}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Editar ${r.name}`}
-              onClick={() => {
-                setEdit(r);
-                setKind(r.kind === "department" ? "department" : "global");
-              }}
-            >
-              <Pencil size={14} aria-hidden="true" />
-            </Button>
+            {editavel(r) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Editar ${r.name}`}
+                onClick={() => {
+                  setEdit(r);
+                  setKind(r.kind === "department" ? "department" : "global");
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" />
+              </Button>
+            )}
           </li>
         ))}
       </ul>
@@ -72,19 +86,24 @@ export function RoomsAdmin({ rooms, onChanged }: { rooms: ChatRoom[]; onChanged:
           <Select
             id="room-kind"
             label="Tipo"
-            value={kind}
+            value={tipo}
             onChange={(e) => setKind(e.target.value as "global" | "department")}
-            options={[
-              { value: "global", label: "Canal global" },
-              { value: "department", label: "Sala departamental" },
-            ]}
+            options={[...(geridos.global ? [{ value: "global", label: "Canal global" }] : []), { value: "department", label: "Sala departamental" }]}
           />
           <Input id="room-name" name="name" label="Nome *" required maxLength={120} defaultValue={edit?.name} />
         </div>
         <Input id="room-desc" name="description" label="Descrição" maxLength={500} defaultValue={edit?.description} />
-        {kind === "department" && (
+        {tipo === "department" && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Select id="room-depto" name="departamento_id" label="Departamento" placeholder="—" defaultValue={edit?.departamento_id ?? ""} options={deptos} />
+            <Select
+              id="room-depto"
+              name="departamento_id"
+              label={geridos.global ? "Departamento" : "Departamento *"}
+              required={!geridos.global}
+              placeholder="—"
+              defaultValue={edit?.departamento_id ?? ""}
+              options={deptos}
+            />
             <Input id="room-ad" name="ad_group" label="Grupo do AD" maxLength={200} defaultValue={edit?.ad_group} />
           </div>
         )}

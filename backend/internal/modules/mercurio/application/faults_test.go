@@ -59,9 +59,10 @@ type env struct {
 func newEnv(t *testing.T) *env {
 	pool := dbtest.Pool(t)
 	e := &env{t: t, pool: pool, hub: &fakeHub{},
-		ana:       auth.Identity{UserID: dbtest.User(t, pool), Username: "ana"},
-		beto:      auth.Identity{UserID: dbtest.User(t, pool), Username: "beto"},
-		moderator: auth.Identity{UserID: dbtest.User(t, pool), Username: "mod", Permissions: []string{string(auth.PermMercurioManage)}},
+		ana:  auth.Identity{UserID: dbtest.User(t, pool), Username: "ana"},
+		beto: auth.Identity{UserID: dbtest.User(t, pool), Username: "beto"},
+		moderator: auth.Identity{UserID: dbtest.User(t, pool), Username: "mod", Permissions: []string{string(auth.PermMercurioManage)},
+			Scopes: []auth.Scope{{Perfil: "moderador", Permissions: []string{string(auth.PermMercurioManage)}}}},
 	}
 	r, err := e.real().SaveRoom(context.Background(), e.moderator, uuid.Nil, application.RoomInput{Kind: "global", Name: "Geral " + uuid.NewString()[:6]})
 	if err != nil {

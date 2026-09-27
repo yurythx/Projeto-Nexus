@@ -15,8 +15,10 @@ import (
 )
 
 var (
-	ErrNotFound   = errors.New("mercurio: não encontrado")
-	ErrForbidden  = errors.New("mercurio: sem acesso a esta sala")
+	ErrNotFound  = errors.New("mercurio: não encontrado")
+	ErrForbidden = errors.New("mercurio: sem acesso a esta sala")
+	// ErrOutOfScope: mercurio:manage não cobre a sala (ADR 013).
+	ErrOutOfScope = errors.New("mercurio: sala fora do seu escopo de moderação")
 	ErrEditWindow = errors.New("mercurio: a mensagem só pode ser editada nos primeiros 15 minutos")
 )
 
@@ -25,17 +27,20 @@ const EditWindow = 15 * time.Minute
 
 // Room é uma sala.
 type Room struct {
-	ID             uuid.UUID   `json:"id"`
-	Kind           string      `json:"kind"`
-	Name           string      `json:"name"`
-	Description    string      `json:"description"`
-	ADGroup        string      `json:"ad_group,omitempty"`
-	DepartamentoID *uuid.UUID  `json:"departamento_id,omitempty"`
-	Archived       bool        `json:"archived"`
-	Members        []uuid.UUID `json:"members,omitempty"`
-	Unread         int         `json:"unread"`
-	LastMessageAt  *time.Time  `json:"last_message_at,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
+	ID             uuid.UUID  `json:"id"`
+	Kind           string     `json:"kind"`
+	Name           string     `json:"name"`
+	Description    string     `json:"description"`
+	ADGroup        string     `json:"ad_group,omitempty"`
+	DepartamentoID *uuid.UUID `json:"departamento_id,omitempty"`
+	// UnidadeID é a unidade do departamento da sala (lida junto, para a
+	// cobertura de mercurio:manage por unidade/entidade — ADR 013).
+	UnidadeID     *uuid.UUID  `json:"-"`
+	Archived      bool        `json:"archived"`
+	Members       []uuid.UUID `json:"members,omitempty"`
+	Unread        int         `json:"unread"`
+	LastMessageAt *time.Time  `json:"last_message_at,omitempty"`
+	CreatedAt     time.Time   `json:"created_at"`
 }
 
 // Message é uma mensagem.
@@ -56,14 +61,14 @@ type Message struct {
 //   - direct: só os dois participantes;
 //   - mercurio:manage enxerga tudo (moderação).
 func CanAccess(identity auth.Identity, r Room) bool {
-	if r.Archived && !auth.HasPermission(identity, auth.PermMercurioManage) {
+	if r.Archived && !Modera(identity, r) {
 		return false
 	}
 	switch r.Kind {
 	case "global":
 		return true
 	case "department":
-		if auth.HasPermission(identity, auth.PermMercurioManage) {
+		if Modera(identity, r) {
 			return true
 		}
 		if r.ADGroup != "" && identity.HasGroup(r.ADGroup) {
@@ -85,6 +90,22 @@ func CanAccess(identity auth.Identity, r Room) bool {
 		}
 	}
 	return false
+}
+
+// Posicao é onde a sala está na organização: a de departamento, no
+// departamento (e na unidade dele); a global, a direta e a de departamento
+// definida só por grupo do AD são institucionais (ADR 013).
+func (r Room) Posicao() auth.Target {
+	if r.Kind != "department" || r.DepartamentoID == nil {
+		return auth.Target{}
+	}
+	return auth.Target{UnidadeID: r.UnidadeID, DepartamentoID: r.DepartamentoID}
+}
+
+// Modera reporta se identity tem mercurio:manage cobrindo a sala: ver
+// arquivadas, moderar mensagens, criar e editar a sala.
+func Modera(identity auth.Identity, r Room) bool {
+	return auth.Can(identity, auth.PermMercurioManage, r.Posicao())
 }
 
 // DMKey é a chave única de uma sala direta entre dois usuários.

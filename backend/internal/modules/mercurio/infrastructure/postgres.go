@@ -32,12 +32,13 @@ func wrap(err error) error {
 
 const roomCols = `r.id, r.kind, r.name, r.description, r.ad_group, r.departamento_id, r.archived, r.created_at,
 	COALESCE((SELECT array_agg(m.user_id) FROM mercurio_room_members m WHERE m.room_id = r.id), '{}'),
-	(SELECT max(created_at) FROM mercurio_messages mm WHERE mm.room_id = r.id AND mm.deleted_at IS NULL)`
+	(SELECT max(created_at) FROM mercurio_messages mm WHERE mm.room_id = r.id AND mm.deleted_at IS NULL),
+	(SELECT d.unidade_id FROM departamentos d WHERE d.id = r.departamento_id)`
 
 func scanRoom(row interface{ Scan(...any) error }, extra ...any) (domain.Room, error) {
 	var r domain.Room
 	err := row.Scan(append([]any{&r.ID, &r.Kind, &r.Name, &r.Description, &r.ADGroup, &r.DepartamentoID, &r.Archived,
-		&r.CreatedAt, &r.Members, &r.LastMessageAt}, extra...)...)
+		&r.CreatedAt, &r.Members, &r.LastMessageAt, &r.UnidadeID}, extra...)...)
 	return r, err
 }
 

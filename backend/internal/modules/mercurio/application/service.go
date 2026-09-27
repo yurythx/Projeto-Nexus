@@ -55,6 +55,8 @@ func MapError(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return apperrors.NotFound("sala ou mensagem não encontrada")
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	case errors.Is(err, domain.ErrForbidden):
 		return apperrors.Forbidden("você não participa desta sala")
 	case errors.Is(err, domain.ErrEditWindow):
@@ -135,6 +137,9 @@ func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.
 			if prev.Kind == "direct" {
 				return apperrors.Conflict("salas diretas não são editáveis")
 			}
+			if !domain.Modera(identity, prev) {
+				return domain.ErrOutOfScope
+			}
 			room.Kind, before = prev.Kind, prev
 			accessChanged = prev.ADGroup != room.ADGroup || !sameID(prev.DepartamentoID, room.DepartamentoID)
 		}
@@ -144,6 +149,11 @@ func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.
 				return apperrors.Validation("departamento inexistente")
 			}
 			return err
+		}
+		// A sala gravada (relida com a unidade do departamento) precisa
+		// estar no escopo de quem grava; senão a transação é desfeita.
+		if !domain.Modera(identity, out) {
+			return domain.ErrOutOfScope
 		}
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "mercurio.room.saved", "mercurio_room", out.ID.String(), before, out))
 	})
@@ -269,8 +279,15 @@ func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UU
 		return MapError(err)
 	}
 	moderation := m.AuthorID != identity.UserID
-	if moderation && !auth.HasPermission(identity, auth.PermMercurioManage) {
-		return MapError(domain.ErrForbidden)
+	if moderation {
+		// Moderação só onde mercurio:manage cobre a sala (ADR 013).
+		room, err := s.repo.Room(ctx, s.pool, m.RoomID)
+		if err != nil {
+			return MapError(err)
+		}
+		if !domain.Modera(identity, room) {
+			return MapError(domain.ErrForbidden)
+		}
 	}
 	// O autor apaga a própria mensagem enquanto participa de uma sala
 	// ativa; a moderação (mercurio:manage) atua também nas arquivadas.

@@ -24,9 +24,11 @@ export function unidadesGeridas(
   permission: string,
 ): { global: boolean; unidades: Set<string> } {
   const all = (tree ?? []).flatMap((e) => e.unidades);
-  if (me?.roles?.includes("nexus-admin")) return { global: true, unidades: new Set(all.map((u) => u.id)) };
+  if (me?.roles?.includes("nexus-admin"))
+    return { global: true, unidades: new Set(all.map((u) => u.id)) };
   const filhas = new Map<string, string[]>();
-  for (const u of all) if (u.parent_id) filhas.set(u.parent_id, [...(filhas.get(u.parent_id) ?? []), u.id]);
+  for (const u of all)
+    if (u.parent_id) filhas.set(u.parent_id, [...(filhas.get(u.parent_id) ?? []), u.id]);
   const unidades = new Set<string>();
   const arvore = (id: string) => {
     if (unidades.has(id)) return;
@@ -42,4 +44,23 @@ export function unidadesGeridas(
     else for (const u of all.filter((x) => x.entidade_id === s.entidade_id)) unidades.add(u.id);
   }
   return { global, unidades: global ? new Set(all.map((u) => u.id)) : unidades };
+}
+
+/** Departamentos em que uma permissão com escopo vale: os das unidades
+ * cobertas (unidadesGeridas) e os concedidos diretamente. */
+export function departamentosGeridos(
+  me: Pick<Me, "roles" | "scopes"> | undefined,
+  tree: readonly OrgTree[] | undefined,
+  permission: string,
+): { global: boolean; departamentos: Set<string> } {
+  const { global, unidades } = unidadesGeridas(me, tree, permission);
+  const departamentos = new Set<string>();
+  for (const u of (tree ?? []).flatMap((e) => e.unidades)) {
+    if (unidades.has(u.id)) for (const d of u.departamentos) departamentos.add(d.id);
+  }
+  for (const s of me?.scopes ?? []) {
+    if (s.departamento_id && hasPermission(s.permissions, permission))
+      departamentos.add(s.departamento_id);
+  }
+  return { global, departamentos };
 }

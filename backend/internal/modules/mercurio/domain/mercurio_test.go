@@ -31,7 +31,7 @@ func TestCanAccess(t *testing.T) {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
-	mod := auth.Identity{Permissions: []string{"mercurio:manage"}}
+	mod := auth.Identity{Scopes: []auth.Scope{{Perfil: "moderador", Permissions: []string{"mercurio:manage"}}}}
 	if CanAccess(mod, Room{Kind: "direct", Members: []uuid.UUID{me, other}}) {
 		t.Error("moderação não lê conversas diretas alheias")
 	}
@@ -44,5 +44,24 @@ func TestDMKeyIsSymmetric(t *testing.T) {
 	a, b := uuid.New(), uuid.New()
 	if DMKey(a, b) != DMKey(b, a) {
 		t.Fatal("chave de sala direta deve independer da ordem")
+	}
+}
+
+// mercurio:manage com escopo (ADR 013): modera as salas dos departamentos
+// da unidade dele; global, direta e sala só por grupo do AD são
+// institucionais.
+func TestModeracaoComEscopo(t *testing.T) {
+	uA, uB, depA, depB := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	modA := auth.Identity{Scopes: []auth.Scope{{Perfil: "moderador", UnidadeID: &uA, Unidades: []uuid.UUID{uA}, Permissions: []string{"mercurio:manage"}}}}
+	salaA := Room{Kind: "department", DepartamentoID: &depA, UnidadeID: &uA}
+	salaB := Room{Kind: "department", DepartamentoID: &depB, UnidadeID: &uB}
+	if !Modera(modA, salaA) || Modera(modA, salaB) || Modera(modA, Room{Kind: "global"}) || Modera(modA, Room{Kind: "department", ADGroup: "g"}) {
+		t.Error("moderador de A: só as salas dos departamentos de A")
+	}
+	if !CanAccess(modA, Room{Kind: "department", DepartamentoID: &depA, UnidadeID: &uA, Archived: true}) || CanAccess(modA, Room{Kind: "department", DepartamentoID: &depB, UnidadeID: &uB, Archived: true}) {
+		t.Error("arquivada: só a moderação que cobre a sala vê")
+	}
+	if p := salaA.Posicao(); p.DepartamentoID == nil || *p.UnidadeID != uA {
+		t.Errorf("posição da sala de departamento: %+v", p)
 	}
 }
