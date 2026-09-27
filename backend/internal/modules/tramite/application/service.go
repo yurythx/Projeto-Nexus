@@ -131,8 +131,10 @@ type AbrirInput struct {
 
 // Abrir numera e abre um processo (tramite:create exigido na rota).
 func (s *Service) Abrir(ctx context.Context, identity auth.Identity, in AbrirInput) (domain.Processo, error) {
-	if !domain.InUnidade(identity, in.UnidadeOrigemID) && !auth.HasPermission(identity, auth.PermTramiteManage) {
-		return domain.Processo{}, apperrors.Forbidden("você só pode abrir processos em unidades onde está lotado")
+	// ADR 013: tramite:create vale onde foi concedido (o Protocolo abre na
+	// unidade dele e nas subunidades); tramite:manage idem.
+	if origem := auth.InUnidade(in.UnidadeOrigemID); !auth.Can(identity, auth.PermTramiteCreate, origem) && !auth.Can(identity, auth.PermTramiteManage, origem) {
+		return domain.Processo{}, apperrors.Forbidden("você só pode abrir processos nas unidades em que tem o perfil de protocolo")
 	}
 	var out domain.Processo
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
@@ -203,7 +205,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 		return View{}, err
 	}
 	v := View{Processo: p, CanAct: domain.CanAct(identity, info)}
-	v.CanRoute = v.CanAct && auth.HasPermission(identity, auth.PermTramiteRoute)
+	v.CanRoute = v.CanAct && domain.PodeTramitar(identity, p.UnidadeAtualID)
 	if v.Documentos, err = s.repo.Documentos(ctx, s.pool, id); err != nil {
 		return View{}, err
 	}
@@ -267,6 +269,9 @@ func (s *Service) Tramitar(ctx context.Context, identity auth.Identity, id, para
 		if domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
 		}
+		if !domain.PodeTramitar(identity, p.UnidadeAtualID) {
+			return domain.ErrForbidden
+		}
 		if p.UnidadeAtualID == para {
 			return apperrors.Validation("o processo já está nesta unidade")
 		}
@@ -315,6 +320,10 @@ func (s *Service) Arquivar(ctx context.Context, identity auth.Identity, id uuid.
 // Reabrir reabre um processo concluído/arquivado (tramite:manage na rota).
 func (s *Service) Reabrir(ctx context.Context, identity auth.Identity, id uuid.UUID, despacho string) (domain.Processo, error) {
 	return s.transition(ctx, identity, id, "reabertura", "", despacho, func(_ context.Context, _ pgx.Tx, p *domain.Processo) error {
+		// tramite:manage cobrindo a unidade em que o processo está (ADR 013).
+		if !auth.Can(identity, auth.PermTramiteManage, auth.InUnidade(p.UnidadeAtualID)) {
+			return domain.ErrForbidden
+		}
 		if !domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
 		}

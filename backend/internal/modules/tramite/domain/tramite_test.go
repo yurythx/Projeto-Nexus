@@ -17,7 +17,12 @@ func TestFormatNumero(t *testing.T) {
 func TestSigiloRules(t *testing.T) {
 	unidadeA, unidadeB := uuid.New(), uuid.New()
 	servidorA := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{Perfil: "servidor", UnidadeID: &unidadeA}}}
-	gestor := auth.Identity{UserID: uuid.New(), Permissions: []string{"tramite:manage"}}
+	// Concessões (ADR 013): o gestor global alcança tudo; o gestor de B,
+	// só os processos que passam por B.
+	gestor := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{Perfil: "gestor", Permissions: []string{"tramite:manage"}}}}
+	unidadeC := uuid.New()
+	gestorC := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{Perfil: "gestor", UnidadeID: &unidadeC, Permissions: []string{"tramite:manage"}}}}
+	gestorB := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{Perfil: "gestor", UnidadeID: &unidadeB, Permissions: []string{"tramite:manage"}}}}
 	estranho := auth.Identity{UserID: uuid.New()}
 
 	base := AccessInfo{CreatedBy: uuid.New(), UnidadeOrigemID: unidadeB, UnidadeAtualID: unidadeA}
@@ -41,6 +46,16 @@ func TestSigiloRules(t *testing.T) {
 	}
 	if !CanRead(servidorA, res) || !CanRead(gestor, res) {
 		t.Error("restrito é legível pela unidade atual e por tramite:manage")
+	}
+	if CanRead(gestorC, res) || !CanRead(gestorB, res) {
+		t.Error("tramite:manage com escopo: só vale se cobre a unidade de origem ou a atual")
+	}
+	if CanAct(gestorB, res) || !CanAct(gestor, res) {
+		t.Error("o gestor age onde o processo está (unidade atual); o global, em qualquer uma")
+	}
+	protoA := auth.Identity{UserID: uuid.New(), Scopes: []auth.Scope{{Perfil: "protocolo", UnidadeID: &unidadeA, Permissions: []string{"tramite:route"}}}}
+	if PodeTramitar(servidorA, unidadeA) || !PodeTramitar(protoA, unidadeA) || PodeTramitar(protoA, unidadeB) || !PodeTramitar(gestor, unidadeB) {
+		t.Error("tramitar exige tramite:route (ou manage) cobrindo a unidade atual")
 	}
 
 	sig := base

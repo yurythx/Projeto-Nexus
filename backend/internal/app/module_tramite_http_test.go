@@ -459,6 +459,59 @@ func TestTramiteUnidadeDesativada(t *testing.T) {
 		`{"tipo_id":"`+f.tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+f.unA+`"}`)
 }
 
+// Permissão com escopo (ADR 013): tramite:manage e tramite:create valem na
+// unidade em que foram concedidos e nas subunidades dela — não nas irmãs.
+func TestTramiteGestaoComEscopo(t *testing.T) {
+	f := newTramiteFixture(t)
+	h := f.h
+	ctx := context.Background()
+	sub := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", f.admin,
+		`{"entidade_id":"`+f.ent+`","parent_id":"`+f.unA+`","nome":"Subunidade de A"}`)).ID
+	var protocolo string
+	if err := h.d.DB.QueryRow(ctx, `SELECT id FROM perfis WHERE slug = 'protocolo'`).Scan(&protocolo); err != nil {
+		t.Fatal(err)
+	}
+	gestorPerfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", f.admin,
+		`{"nome":"Gestor de trâmite `+uuid.NewString()[:6]+`","permissoes":["tramite:manage"]}`)).ID
+	lotar := func(perfil, unidade string) string {
+		id, tok := h.user("nexus-user")
+		h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+id.String()+"/lotacoes", f.admin,
+			`{"perfil_id":"`+perfil+`","unidade_id":"`+unidade+`"}`)
+		return tok
+	}
+	gestorA := lotar(gestorPerfil, f.unA)
+	protoSub := lotar(protocolo, sub)
+
+	emA := f.abrir(t, f.anaA, "restrito", f.unA, "Restrito de A")
+	emSub := f.abrir(t, protoSub, "restrito", sub, "Restrito da subunidade")
+	emB := f.abrir(t, f.betoB, "restrito", f.unB, "Restrito de B")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos/"+emA.ID, gestorA, "")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos/"+emSub.ID, gestorA, "") // herança
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/tramite/processos/"+emB.ID, gestorA, "")
+	lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/tramite/processos", gestorA, "").Body.String()
+	if !strings.Contains(lista, emA.ID) || !strings.Contains(lista, emSub.ID) || strings.Contains(lista, emB.ID) {
+		t.Fatalf("listagem do gestor de A: só A e a subunidade: %s", lista)
+	}
+
+	// Reabrir: só onde tem tramite:manage; o global reabre em qualquer unidade.
+	pubB := f.abrir(t, f.betoB, "publico", f.unB, "Público de B")
+	for _, proc := range []procResp{emA, pubB} {
+		dono := f.anaA
+		if proc.ID == pubB.ID {
+			dono = f.betoB
+		}
+		h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/concluir", dono, `{"despacho":"Concluído"}`)
+	}
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+emA.ID+"/reabrir", gestorA, `{"despacho":"Reaberto pela gestão de A"}`)
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos/"+pubB.ID+"/reabrir", gestorA, `{"despacho":"Fora do escopo"}`)
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+pubB.ID+"/reabrir", f.admin, `{"despacho":"Gestão global"}`)
+
+	// tramite:create do Protocolo de A vale na subunidade, não na irmã B.
+	f.abrir(t, f.anaA, "publico", sub, "Aberto pelo Protocolo de A na subunidade")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos", f.anaA,
+		`{"tipo_id":"`+f.tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+f.unB+`"}`)
+}
+
 func TestTramiteRejectsMalformedIDs(t *testing.T) {
 	f := newTramiteFixture(t)
 	for _, c := range []struct{ method, path, body string }{

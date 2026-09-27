@@ -117,6 +117,14 @@ func (r *Repository) HasGrant(ctx context.Context, db database.DBTX, processoID,
 	return ok, wrap(err)
 }
 
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
+}
+
 func unidadesOf(identity auth.Identity) []string {
 	out := []string{}
 	for _, s := range identity.Scopes {
@@ -133,19 +141,23 @@ func (r *Repository) ListVisible(ctx context.Context, db database.DBTX, identity
 			p.created_by = $1
 			OR EXISTS (SELECT 1 FROM tramite_acessos a WHERE a.processo_id = p.id AND a.user_id = $1)
 			OR p.sigilo = 'publico'
-			OR (p.sigilo = 'restrito' AND ($2 OR p.unidade_atual_id = ANY($3::uuid[]) OR p.unidade_origem_id = ANY($3::uuid[])))
+			OR (p.sigilo = 'restrito' AND ($2 OR p.unidade_atual_id = ANY($3::uuid[]) OR p.unidade_origem_id = ANY($3::uuid[])
+				OR p.unidade_atual_id = ANY($8::uuid[]) OR p.unidade_origem_id = ANY($8::uuid[])))
 		)
 		AND ($4 = '' OR p.status = $4)
 		AND ($5::uuid IS NULL OR p.unidade_atual_id = $5)
 		AND (NOT $6 OR p.unidade_atual_id = ANY($3::uuid[]))
 		AND ($7 = '' OR p.search @@ nexus_search_tsquery('portuguese', $7) OR starts_with(p.numero, $7))`
-	args := []any{identity.UserID, auth.HasPermission(identity, auth.PermTramiteManage), unidadesOf(identity),
-		f.Status, f.UnidadeID, f.Mine, f.Query}
+	// $2/$8: onde o gestor (tramite:manage) alcança — tudo, ou a árvore de
+	// unidades das concessões dele (ADR 013).
+	gestao := auth.CoverageOf(identity, auth.PermTramiteManage)
+	args := []any{identity.UserID, gestao.All, unidadesOf(identity),
+		f.Status, f.UnidadeID, f.Mine, f.Query, uuidStrings(gestao.Unidades)}
 	var total int64
 	if err := db.QueryRow(ctx, `SELECT count(*)`+procFrom+where, args...).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
 	}
-	rows, err := db.Query(ctx, `SELECT `+procCols+procFrom+where+` ORDER BY p.updated_at DESC LIMIT $8 OFFSET $9`,
+	rows, err := db.Query(ctx, `SELECT `+procCols+procFrom+where+` ORDER BY p.updated_at DESC LIMIT $9 OFFSET $10`,
 		append(args, p.Limit(), p.Offset())...)
 	if err != nil {
 		return nil, 0, wrap(err)

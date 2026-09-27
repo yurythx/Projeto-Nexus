@@ -151,7 +151,7 @@ func CanRead(identity auth.Identity, a AccessInfo) bool {
 	case SigiloPublico:
 		return true
 	case SigiloRestrito:
-		if auth.HasPermission(identity, auth.PermTramiteManage) {
+		if Gere(identity, a) {
 			return true
 		}
 		return InUnidade(identity, a.UnidadeAtualID) || InUnidade(identity, a.UnidadeOrigemID)
@@ -167,7 +167,22 @@ func CanAct(identity auth.Identity, a AccessInfo) bool {
 	if !CanRead(identity, a) {
 		return false
 	}
-	return InUnidade(identity, a.UnidadeAtualID) || auth.HasPermission(identity, auth.PermTramiteManage)
+	return InUnidade(identity, a.UnidadeAtualID) || auth.Can(identity, auth.PermTramiteManage, auth.InUnidade(a.UnidadeAtualID))
+}
+
+// Gere reporta se identity tem tramite:manage cobrindo a unidade atual ou
+// a de origem do processo (ADR 013: vale onde foi concedida, com herança
+// para as subunidades).
+func Gere(identity auth.Identity, a AccessInfo) bool {
+	return auth.Can(identity, auth.PermTramiteManage, auth.InUnidade(a.UnidadeAtualID)) ||
+		auth.Can(identity, auth.PermTramiteManage, auth.InUnidade(a.UnidadeOrigemID))
+}
+
+// PodeTramitar reporta se identity tem tramite:route (ou tramite:manage)
+// cobrindo a unidade em que o processo está.
+func PodeTramitar(identity auth.Identity, unidadeAtual uuid.UUID) bool {
+	alvo := auth.InUnidade(unidadeAtual)
+	return auth.Can(identity, auth.PermTramiteRoute, alvo) || auth.Can(identity, auth.PermTramiteManage, alvo)
 }
 
 // InUnidade reporta se identity tem lotação na unidade (ou em departamento

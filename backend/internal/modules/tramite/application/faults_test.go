@@ -241,7 +241,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	author := auth.Identity{UserID: dbtest.User(t, pool), Permissions: []string{string(auth.PermTramiteRoute)},
-		Scopes: []auth.Scope{{Perfil: "protocolo", UnidadeID: &un}}}
+		Scopes: []auth.Scope{{Perfil: "protocolo", UnidadeID: &un, Permissions: []string{string(auth.PermTramiteCreate), string(auth.PermTramiteRoute)}}}}
 	return &env{t: t, pool: pool, store: storagetest.New(), author: author, unidade: un, tipo: tipo}
 }
 
