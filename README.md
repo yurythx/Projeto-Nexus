@@ -125,6 +125,9 @@ make seed-admin
 - **Frontend (Painel Nexus):** [http://localhost:3002](http://localhost:3002)
 - **API Healthcheck:** [http://localhost:8002/health](http://localhost:8002/health)
 
+### Regras de negócio
+Estrutura organizacional (entidades, unidades, departamentos), perfis, lotações, onde o escopo vale e as regras de cada módulo: [`docs/REGRAS_DE_NEGOCIO.md`](docs/REGRAS_DE_NEGOCIO.md).
+
 ### Deploy em servidor
 `./scripts/deploy.sh <ip-ou-dns>` gera `.env` com segredos fortes, a chave RSA e sobe a stack em produção; depois `make prod-seed-admin`. HTTPS com o Caddy como única entrada (`scripts/enable-https.sh`), Keycloak de teste com uma prefeitura fictícia (`make demo-keycloak`, `make demo-popular`), cenários ponta a ponta (`make demo-test`) e backup diário (`scripts/backup.sh`): ordem completa em [`docs/DEPLOY.md`](docs/DEPLOY.md).
 

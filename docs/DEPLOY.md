@@ -130,6 +130,11 @@ volumes do Keycloak de teste e da CA do Caddy (se existirem), `.env` +
 `<dir>/config/secrets` antes de restaurar. Os backups ficam no mesmo disco —
 copie-os para fora do servidor.
 
+## Modelar a organização
+
+Como desenhar entidades, unidades, departamentos, grupos e mapeamentos (e
+o que o escopo restringe ou não): [REGRAS_DE_NEGOCIO.md](REGRAS_DE_NEGOCIO.md#6-como-modelar-uma-implantação).
+
 ## Ambiente de teste: Keycloak + dados fictícios
 
 Enquanto não há um Keycloak oficial, `make demo-keycloak` sobe um

@@ -66,6 +66,9 @@ Todo código desenvolvido na plataforma deve obedecer estritamente aos 5 pilares
 - **Aceite de Termos**: O componente `<LGPDConsentModal />` verifica automaticamente o aceite formal dos termos pelo usuário e registra o evento auditável na tabela imutável `audit_logs`.
 
 ### 3.3. Identidade e autorização (Keycloak + AD, RBAC multi-escopo)
+> Regras completas de estrutura, perfis, lotações e escopo (inclusive onde o
+> escopo **não** restringe): [REGRAS_DE_NEGOCIO.md](REGRAS_DE_NEGOCIO.md).
+
 - Autenticação por **Keycloak dedicado** (OIDC, tokens RS256 validados localmente via JWKS com cache e rotação) com federação do **Active Directory**; login local RS256 como contingência.
 - O IAM resolve, a cada requisição (com cache invalidado entre réplicas), as **permissões efetivas** (`recurso:ação`, curingas `recurso:*` e `*`) a partir das **lotações** manuais e do **mapeamento de grupos do AD**, cada um num escopo (Entidade → Unidade → Departamento):
   ```go
