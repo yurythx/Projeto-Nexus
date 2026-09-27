@@ -132,6 +132,8 @@ type eventRequest struct {
 	EndsAt      time.Time  `json:"ends_at" validate:"required"`
 	AllDay      bool       `json:"all_day"`
 	Visibility  string     `json:"visibility" validate:"omitempty,oneof=public internal private"`
+	// Publico: público-alvo (ADR 014); vazio = todos.
+	Publico auth.Publico `json:"publico" validate:"-"`
 }
 
 func (req eventRequest) input() application.EventInput {
@@ -141,7 +143,7 @@ func (req eventRequest) input() application.EventInput {
 	}
 	return application.EventInput{
 		Title: req.Title, Description: req.Description, Location: req.Location, Visibility: vis,
-		RoomID: req.RoomID, StartsAt: req.StartsAt, EndsAt: req.EndsAt, AllDay: req.AllDay,
+		RoomID: req.RoomID, StartsAt: req.StartsAt, EndsAt: req.EndsAt, AllDay: req.AllDay, Publico: req.Publico,
 	}
 }
 

@@ -47,6 +47,13 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 			t.Errorf("%s sem linha afetada: %v", name, err)
 		}
 	}
+	// Público-alvo (ADR 014): o evento foi lido/gravado, mas o público não.
+	if _, err := r.GetEvent(ctx, &dbtest.Seq{Row: rowOK{}}, id); !errors.Is(err, dbtest.ErrInjected) {
+		t.Errorf("público-alvo com o banco fora: %v", err)
+	}
+	if err := calls["SaveEvent"](&dbtest.Seq{Execs: []dbtest.ExecResult{dbtest.OK, {Err: dbtest.ErrInjected}}}); !errors.Is(err, dbtest.ErrInjected) {
+		t.Errorf("gravar o público com o banco fora: %v", err)
+	}
 	if err := calls["SaveEvent"](&dbtest.Seq{Execs: []dbtest.ExecResult{dbtest.OK}}); err == nil {
 		t.Error("gravou mas não releu o evento")
 	}
@@ -74,3 +81,8 @@ func TestConstraintViolationsMapToDomainErrors(t *testing.T) {
 		t.Errorf("capacidade negativa: %v", err)
 	}
 }
+
+// rowOK é uma linha que se lê sem erro (valores zerados).
+type rowOK struct{}
+
+func (rowOK) Scan(...any) error { return nil }

@@ -714,6 +714,9 @@
           "organizer_name": {
             "type": "string"
           },
+          "publico": {
+            "$ref": "#/components/schemas/AuthPublico"
+          },
           "room_id": {
             "format": "uuid",
             "type": "string"
@@ -748,6 +751,7 @@
           "location",
           "organizer_id",
           "organizer_name",
+          "publico",
           "starts_at",
           "status",
           "title",
@@ -773,6 +777,9 @@
           "location": {
             "maxLength": 200,
             "type": "string"
+          },
+          "publico": {
+            "$ref": "#/components/schemas/AuthPublicoInput"
           },
           "room_id": {
             "format": "uuid",

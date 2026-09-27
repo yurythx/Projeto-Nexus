@@ -4,6 +4,7 @@ import { Ban, ChevronLeft, ChevronRight, DoorOpen, MapPin, Pencil, Plus, Trash2 
 import { useMemo, useState, type FormEvent } from "react";
 
 import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
+import { PublicoAlvoPicker, PublicoBadge, TODOS, publicoVazio } from "@/components/iam/PublicoAlvo";
 import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
@@ -38,6 +39,8 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
     return d.toISOString();
   }, []);
   const defaultEnd = useMemo(() => new Date(new Date(defaultStart).getTime() + 3600_000).toISOString(), [defaultStart]);
+  const [publico, setPublico] = useState(event?.publico ?? TODOS);
+  const restrito = !publicoVazio(publico);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -51,6 +54,7 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
       ends_at: new Date(String(fd.get("ends_at"))).toISOString(),
       all_day: fd.get("all_day") === "on",
       visibility: String(fd.get("visibility") ?? "internal"),
+      publico,
     };
     const ok = await run(
       () => (event ? apiClient.put(`v1/calendar/events/${event.id}`, payload) : apiClient.post("v1/calendar/events", payload)),
@@ -82,14 +86,16 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
         <Input id="ev-location" name="location" label="Local / link" maxLength={200} defaultValue={event?.location} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
+        {/* Com público-alvo (ADR 014) o evento não vai ao site: sem "Pública". */}
         <Select
+          key={`vis-${restrito}`}
           id="ev-vis"
           name="visibility"
           label="Visibilidade"
           defaultValue={event?.visibility ?? "internal"}
           options={[
-            { value: "internal", label: "Interna (servidores)" },
-            { value: "public", label: "Pública (site institucional)" },
+            { value: "internal", label: restrito ? "Interna (só o público-alvo)" : "Interna (servidores)" },
+            ...(restrito ? [] : [{ value: "public", label: "Pública (site institucional)" }]),
             { value: "private", label: "Privada (só eu)" },
           ]}
         />
@@ -97,6 +103,7 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
           <input type="checkbox" name="all_day" defaultChecked={event?.all_day} className="h-4 w-4 accent-primary" /> Dia inteiro
         </label>
       </div>
+      <PublicoAlvoPicker idPrefix="ev-publico" value={publico} onChange={setPublico} />
       <Textarea id="ev-desc" name="description" label="Descrição" rows={3} maxLength={5000} defaultValue={event?.description} />
       <p className="text-xs text-muted">Conflitos de horário na mesma sala são recusados pelo servidor.</p>
       <div className="flex justify-end">
@@ -280,6 +287,7 @@ export default function AgendaPage() {
                           )}
                           <span>{e.organizer_name}</span>
                           <Badge>{VIS_LABEL[e.visibility]}</Badge>
+                          <PublicoBadge publico={e.publico} />
                           {e.status === "cancelled" && <Badge tone="danger">Cancelado</Badge>}
                         </p>
                         {e.description && <p className="mt-1 text-sm text-muted">{e.description}</p>}

@@ -12,7 +12,11 @@ import (
 
 	"github.com/yurythx/projeto-nexus/internal/modules/calendar/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
+
+// tabelaPublico é onde fica o público-alvo dos eventos (ADR 014).
+var tabelaPublico = publico.Tabela{Nome: "calendar_event_publico", Coluna: "event_id"}
 
 // Repository implementa domain.Repository.
 type Repository struct{}
@@ -106,10 +110,11 @@ func (r *Repository) RoomHasUpcoming(ctx context.Context, db database.DBTX, id u
 
 func (r *Repository) RoomBusy(ctx context.Context, db database.DBTX, roomID uuid.UUID, from, to time.Time) ([]domain.Busy, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id, CASE WHEN visibility = 'private' THEN 'Reservado' ELSE title END, starts_at, ends_at
-		FROM calendar_events
-		WHERE room_id = $1 AND status = 'confirmed' AND tstzrange(starts_at, ends_at, '[)') && tstzrange($2, $3, '[)')
-		ORDER BY starts_at`, roomID, from, to)
+		SELECT e.id, CASE WHEN e.visibility = 'private' OR NOT `+tabelaPublico.SemPublico("e.id")+` THEN 'Reservado' ELSE e.title END,
+		       e.starts_at, e.ends_at
+		FROM calendar_events e
+		WHERE e.room_id = $1 AND e.status = 'confirmed' AND tstzrange(e.starts_at, e.ends_at, '[)') && tstzrange($2, $3, '[)')
+		ORDER BY e.starts_at`, roomID, from, to)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -139,17 +144,21 @@ func scanEvent(row interface{ Scan(...any) error }) (domain.Event, error) {
 }
 
 func (r *Repository) ListEvents(ctx context.Context, db database.DBTX, f domain.EventFilter) ([]domain.Event, error) {
+	args := []any{f.From, f.To, f.RoomID, f.IncludeCancel, f.OnlyPublic, f.SeeAll, f.ViewerID, uuidStrings(f.SeeUnidades)}
+	// Público-alvo (ADR 014): no site, só sem público; dentro, quem está no
+	// público, o organizador e a gestão da sala.
+	leitura := tabelaPublico.Condicao("e.id", "e.organizer_id", "r.unidade_id",
+		publico.Leitura{Leitor: f.Leitor, Autor: f.ViewerID, Tudo: f.SeeAll, Geridas: f.SeeUnidades}, &args)
 	rows, err := db.Query(ctx, `SELECT `+eventCols+eventFrom+`
 		WHERE tstzrange(e.starts_at, e.ends_at, '[)') && tstzrange($1, $2, '[)')
 		  AND ($3::uuid IS NULL OR e.room_id = $3)
 		  AND ($4 OR e.status = 'confirmed')
 		  AND CASE
-		        WHEN $5 THEN e.visibility = 'public'
+		        WHEN $5 THEN e.visibility = 'public' AND `+tabelaPublico.SemPublico("e.id")+`
 		        WHEN $6 THEN true
-		        ELSE e.visibility <> 'private' OR e.organizer_id = $7 OR r.unidade_id = ANY($8::uuid[])
+		        ELSE (e.visibility <> 'private' OR e.organizer_id = $7 OR r.unidade_id = ANY($8::uuid[])) AND `+leitura+`
 		      END
-		ORDER BY e.starts_at LIMIT 2000`,
-		f.From, f.To, f.RoomID, f.IncludeCancel, f.OnlyPublic, f.SeeAll, f.ViewerID, uuidStrings(f.SeeUnidades))
+		ORDER BY e.starts_at LIMIT 2000`, args...)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -162,12 +171,39 @@ func (r *Repository) ListEvents(ctx context.Context, db database.DBTX, f domain.
 		}
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, wrap(err)
+	}
+	rows.Close()
+	return out, wrap(comPublico(ctx, db, out))
+}
+
+// comPublico carrega o público-alvo dos eventos.
+func comPublico(ctx context.Context, db database.DBTX, events []domain.Event) error {
+	ids := make([]uuid.UUID, 0, len(events))
+	for _, e := range events {
+		ids = append(ids, e.ID)
+	}
+	m, err := tabelaPublico.Carregar(ctx, db, ids)
+	if err != nil {
+		return err
+	}
+	for i := range events {
+		events[i].Publico = m[events[i].ID]
+	}
+	return nil
 }
 
 func (r *Repository) GetEvent(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.Event, error) {
 	e, err := scanEvent(db.QueryRow(ctx, `SELECT `+eventCols+eventFrom+`WHERE e.id = $1`, id))
-	return e, wrap(err)
+	if err != nil {
+		return e, wrap(err)
+	}
+	one := []domain.Event{e}
+	if err := comPublico(ctx, db, one); err != nil {
+		return domain.Event{}, wrap(err)
+	}
+	return one[0], nil
 }
 
 func (r *Repository) SaveEvent(ctx context.Context, db database.DBTX, e domain.Event) (domain.Event, error) {
@@ -180,6 +216,9 @@ func (r *Repository) SaveEvent(ctx context.Context, db database.DBTX, e domain.E
 		e.ID, e.Title, e.Description, e.Location, e.RoomID, e.StartsAt, e.EndsAt, e.AllDay, e.Visibility, e.Status, e.OrganizerID)
 	if err != nil {
 		return domain.Event{}, wrap(err)
+	}
+	if err := tabelaPublico.Gravar(ctx, db, e.ID, e.Publico); err != nil {
+		return domain.Event{}, err
 	}
 	return r.GetEvent(ctx, db, e.ID)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 var (
@@ -23,6 +24,8 @@ var (
 	// ErrOutOfScope: calendar:manage não cobre a unidade dona da sala (a
 	// atual ou a nova) — ADR 013.
 	ErrOutOfScope = errors.New("calendar: sala fora do seu escopo de gestão")
+	// ErrPublicoNoSite: evento com público-alvo não pode ser público.
+	ErrPublicoNoSite = errors.New("calendar: evento com público-alvo não pode ser público (site) — use interno")
 )
 
 // MaxRange limita consultas de período (evita varreduras gigantes).
@@ -59,6 +62,9 @@ type Event struct {
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	RoomUnidadeID *uuid.UUID `json:"-"` // dona da sala: quem modera o evento (ADR 013)
+	// Publico é o público-alvo (ADR 014); vazio = todos. Com público, o
+	// evento não pode ser "public" (não vai ao site).
+	Publico auth.Publico `json:"publico"`
 }
 
 // Dona é a posição de um recurso da Agenda para calendar:manage: a unidade
@@ -83,11 +89,13 @@ type Busy struct {
 
 // EventFilter restringe a listagem.
 type EventFilter struct {
-	From, To      time.Time
-	RoomID        *uuid.UUID
-	ViewerID      uuid.UUID
-	SeeAll        bool        // calendar:manage global enxerga eventos privados de terceiros
-	SeeUnidades   []uuid.UUID // com escopo: os privados das salas destas unidades
+	From, To    time.Time
+	RoomID      *uuid.UUID
+	ViewerID    uuid.UUID
+	SeeAll      bool        // calendar:manage global enxerga eventos privados de terceiros
+	SeeUnidades []uuid.UUID // com escopo: os privados das salas destas unidades
+	// Leitor: onde quem lê pertence (público-alvo, ADR 014).
+	Leitor        publico.Leitor
 	OnlyPublic    bool
 	IncludeCancel bool
 }

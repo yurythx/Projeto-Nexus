@@ -95,9 +95,31 @@ describe("Agenda", () => {
     expect(api.to("POST v1/calendar/events")[0]!.body).toEqual({
       title: "Reunião", description: "Pauta", location: "Auditório", room_id: "r1",
       starts_at: new Date("2026-03-10T09:00").toISOString(), ends_at: new Date("2026-03-10T10:30").toISOString(),
-      all_day: true, visibility: "public",
+      all_day: true, visibility: "public", publico: { entidades: [], unidades: [] },
     });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Novo evento" })).not.toBeInTheDocument());
+  });
+
+  it("público-alvo (ADR 014): restrito tira a opção Pública e vai no corpo; a lista mostra o selo", async () => {
+    const ORG = [{ id: "e1", nome: "Saúde", sigla: "SEMSA", ativo: true, unidades: [{ id: "u1", entidade_id: "e1", nome: "UPA", sigla: "", departamentos: [] }] }];
+    const api = mockBackend({
+      ...identityRoutes(),
+      "GET v1/iam/org-tree": { data: ORG },
+      "GET v1/calendar/events": { data: [event("e7", { publico: { entidades: ["e1"], unidades: [] } })] },
+      "GET v1/calendar/rooms": { data: [] },
+      "POST v1/calendar/events": { data: event("novo") },
+    });
+    renderApp(<AgendaPage />);
+    expect(await screen.findByText("Para: SEMSA")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Novo evento/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Novo evento" });
+    await userEvent.type(within(dialog).getByLabelText("Título *"), "Reunião da UPA");
+    expect(within(dialog).getByRole("option", { name: "Pública (site institucional)" })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByText("SEMSA — Saúde"));
+    await userEvent.click(within(dialog).getByLabelText("UPA"));
+    expect(within(dialog).queryByRole("option", { name: "Pública (site institucional)" })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar evento" }));
+    await waitFor(() => expect(api.to("POST v1/calendar/events")[0]?.body).toMatchObject({ visibility: "internal", publico: { entidades: [], unidades: ["u1"] } }));
   });
 
   it("conflito de sala volta como erro e o formulário fica aberto", async () => {

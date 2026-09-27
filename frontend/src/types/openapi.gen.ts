@@ -2661,6 +2661,7 @@ export interface components {
             /** Format: uuid */
             organizer_id: string;
             organizer_name: string;
+            publico: components["schemas"]["AuthPublico"];
             /** Format: uuid */
             room_id?: string;
             room_name?: string;
@@ -2678,6 +2679,7 @@ export interface components {
             /** Format: date-time */
             ends_at: string;
             location?: string;
+            publico?: components["schemas"]["AuthPublicoInput"];
             /** Format: uuid */
             room_id?: string | null;
             /** Format: date-time */

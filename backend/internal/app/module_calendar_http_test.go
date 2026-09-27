@@ -137,3 +137,39 @@ func TestCalendarGestaoComEscopo(t *testing.T) {
 	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/calendar/rooms/"+deB.ID, gestorA, "")
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/calendar/rooms/"+deSub.ID, gestorA, "")
 }
+
+// Público-alvo na Agenda (ADR 014): o evento para a unidade A é visto por
+// quem está em A ou abaixo; fora do público some da agenda e do detalhe, e
+// na ocupação da sala aparece como "Reservado". Com público não é público.
+func TestCalendarPublicoAlvo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	naSub := h.gestorEm(t, o.sub, "contact:read")
+	emB := h.gestorEm(t, o.b, "contact:read")
+	base := time.Now().UTC().Add(120 * time.Hour).Truncate(time.Hour)
+	janela := "from=" + base.Add(-time.Hour).Format(time.RFC3339) + "&to=" + base.Add(3*time.Hour).Format(time.RFC3339)
+	sala := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/rooms", admin, `{"name":"Sala `+uuid.NewString()[:8]+`"}`))
+	evento := func(vis string) string {
+		return `{"title":"Reunião de A","visibility":"` + vis + `","room_id":"` + sala.ID + `","starts_at":"` + base.Format(time.RFC3339) +
+			`","ends_at":"` + base.Add(time.Hour).Format(time.RFC3339) + `","publico":{"unidades":["` + o.a + `"]}}`
+	}
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/calendar/events", admin, evento("public"))
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/calendar/events", admin, strings.Replace(evento("internal"), o.a, uuid.NewString(), 1))
+	ev := data[eventResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/events", admin, evento("internal")))
+
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/events/"+ev.ID, naSub, "")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/calendar/events/"+ev.ID, emB, "")
+	if l := h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/events?"+janela, naSub, "").Body.String(); !strings.Contains(l, ev.ID) {
+		t.Fatalf("lotado na subunidade de A vê o evento: %s", l)
+	}
+	if l := h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/events?"+janela, emB, "").Body.String(); strings.Contains(l, ev.ID) {
+		t.Fatalf("lotado em B não vê o evento: %s", l)
+	}
+	if b := h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/rooms/"+sala.ID+"/busy?"+janela, emB, "").Body.String(); !strings.Contains(b, "Reservado") || strings.Contains(b, "Reunião de A") {
+		t.Fatalf("ocupação da sala esconde o título do evento restrito: %s", b)
+	}
+	if p := h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/public/events?"+janela, "", "").Body.String(); strings.Contains(p, ev.ID) {
+		t.Fatalf("evento com público não vai ao site: %s", p)
+	}
+}

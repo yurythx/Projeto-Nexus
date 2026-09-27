@@ -17,6 +17,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 // EventCreated é emitido ao criar um evento.
@@ -51,6 +52,10 @@ func MapError(err error) error {
 		return apperrors.Conflict(err.Error())
 	case errors.Is(err, domain.ErrOutOfScope):
 		return apperrors.Forbidden(err.Error())
+	case errors.Is(err, domain.ErrPublicoNoSite):
+		return apperrors.Validation(err.Error())
+	case errors.Is(err, publico.ErrInvalido):
+		return apperrors.Validation("público-alvo com secretaria ou unidade inexistente")
 	}
 	return err
 }
@@ -70,7 +75,7 @@ func (s *Service) Events(ctx context.Context, identity auth.Identity, from, to t
 	gestao := auth.CoverageOf(identity, auth.PermCalendarManage)
 	return s.repo.ListEvents(ctx, s.pool, domain.EventFilter{
 		From: from, To: to, RoomID: roomID, ViewerID: identity.UserID,
-		SeeAll: gestao.All, SeeUnidades: gestao.Unidades,
+		SeeAll: gestao.All, SeeUnidades: gestao.Unidades, Leitor: publico.LeitorDe(identity),
 	})
 }
 
@@ -92,7 +97,8 @@ func (s *Service) Event(ctx context.Context, identity auth.Identity, id uuid.UUI
 	if err != nil {
 		return e, MapError(err)
 	}
-	if e.Visibility == "private" && e.OrganizerID != identity.UserID && !auth.Can(identity, auth.PermCalendarManage, e.Posicao()) {
+	gere := e.OrganizerID == identity.UserID || auth.Can(identity, auth.PermCalendarManage, e.Posicao())
+	if !gere && (e.Visibility == "private" || !auth.NoPublico(identity, e.Publico)) {
 		return domain.Event{}, MapError(domain.ErrNotFound)
 	}
 	return e, nil
@@ -104,6 +110,8 @@ type EventInput struct {
 	RoomID                                   *uuid.UUID
 	StartsAt, EndsAt                         time.Time
 	AllDay                                   bool
+	// Publico é o público-alvo (ADR 014); vazio = todos.
+	Publico auth.Publico
 }
 
 // validate confere o intervalo e, quando a reserva de sala é nova (ou
@@ -112,6 +120,9 @@ type EventInput struct {
 func (s *Service) validate(ctx context.Context, db database.DBTX, in EventInput, currentRoom *uuid.UUID) error {
 	if err := domain.ValidateRange(in.StartsAt, in.EndsAt); err != nil {
 		return err
+	}
+	if in.Visibility == "public" && !in.Publico.Vazio() {
+		return domain.ErrPublicoNoSite
 	}
 	if in.RoomID != nil && (currentRoom == nil || *currentRoom != *in.RoomID) {
 		room, err := s.repo.GetRoom(ctx, db, *in.RoomID)
@@ -136,7 +147,7 @@ func (s *Service) CreateEvent(ctx context.Context, identity auth.Identity, in Ev
 		out, err = s.repo.SaveEvent(ctx, tx, domain.Event{
 			ID: uuid.New(), Title: strings.TrimSpace(in.Title), Description: in.Description, Location: in.Location,
 			RoomID: in.RoomID, StartsAt: in.StartsAt.UTC(), EndsAt: in.EndsAt.UTC(), AllDay: in.AllDay,
-			Visibility: in.Visibility, Status: "confirmed", OrganizerID: identity.UserID,
+			Visibility: in.Visibility, Status: "confirmed", OrganizerID: identity.UserID, Publico: in.Publico,
 		})
 		if err != nil {
 			return err
@@ -144,6 +155,8 @@ func (s *Service) CreateEvent(ctx context.Context, identity auth.Identity, in Ev
 		if err := s.outbox.Write(ctx, tx, EventCreated, "calendar_event", out.ID.String(), uuid.Nil, map[string]any{
 			"id": out.ID.String(), "title": out.Title, "starts_at": out.StartsAt, "ends_at": out.EndsAt,
 			"room_id": out.RoomID, "visibility": out.Visibility,
+			// Com público-alvo, a difusão geral (tempo real) descarta o aviso (ADR 014).
+			"restrito": !out.Publico.Vazio(),
 		}); err != nil {
 			return err
 		}
@@ -179,6 +192,7 @@ func (s *Service) UpdateEvent(ctx context.Context, identity auth.Identity, id uu
 		next := prev
 		next.Title, next.Description, next.Location, next.Visibility = strings.TrimSpace(in.Title), in.Description, in.Location, in.Visibility
 		next.RoomID, next.StartsAt, next.EndsAt, next.AllDay = in.RoomID, in.StartsAt.UTC(), in.EndsAt.UTC(), in.AllDay
+		next.Publico = in.Publico
 		if out, err = s.repo.SaveEvent(ctx, tx, next); err != nil {
 			return err
 		}

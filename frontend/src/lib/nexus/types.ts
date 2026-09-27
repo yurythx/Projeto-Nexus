@@ -365,6 +365,8 @@ export interface CalendarEvent {
   all_day: boolean;
   visibility: "public" | "internal" | "private";
   status: "confirmed" | "cancelled";
+  /** Público-alvo (ADR 014); vazio = todos. */
+  publico?: Publico;
   organizer_id: UUID;
   organizer_name: string;
 }
