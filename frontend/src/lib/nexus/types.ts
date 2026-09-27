@@ -407,6 +407,8 @@ export interface ACLEntry {
 export interface WikiPage {
   id: UUID;
   parent_id?: UUID;
+  /** Unidade dona (ADR 013); ausente = institucional. */
+  unidade_id?: UUID;
   slug: string;
   title: string;
   body?: string;

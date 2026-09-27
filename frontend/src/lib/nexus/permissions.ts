@@ -64,3 +64,25 @@ export function departamentosGeridos(
   }
   return { global, departamentos };
 }
+
+/** Unidades em que a pessoa está lotada (concessão de qualquer perfil) —
+ * espelho de auth.LotadoEm: a unidade da concessão e as subunidades; na
+ * entidade, todas as unidades dela; no departamento, só a unidade dele.
+ * Concessão global não é lotação. */
+export function unidadesLotadas(
+  me: Pick<Me, "scopes"> | undefined,
+  tree: readonly OrgTree[] | undefined,
+): Set<string> {
+  const all = (tree ?? []).flatMap((e) => e.unidades);
+  const lotadas = new Set<string>();
+  for (const s of me?.scopes ?? []) {
+    if (s.departamento_id) {
+      const dona = all.find((u) => u.departamentos.some((d) => d.id === s.departamento_id));
+      if (dona) lotadas.add(dona.id);
+    } else if (s.unidade_id || s.entidade_id) {
+      const sozinho = { roles: [], scopes: [{ ...s, permissions: ["*"] }] };
+      for (const id of unidadesGeridas(sozinho, tree, "*").unidades) lotadas.add(id);
+    }
+  }
+  return lotadas;
+}

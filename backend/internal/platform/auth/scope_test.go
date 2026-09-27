@@ -129,3 +129,18 @@ func TestEffectivePermissions(t *testing.T) {
 		t.Error("classificação das permissões")
 	}
 }
+
+func TestLotadoEm(t *testing.T) {
+	naMae := Identity{Scopes: []Scope{grant([]string{"wiki:read"}, ptr(idE), ptr(idU), nil, idU, idF)}}
+	if !LotadoEm(naMae, idU) || !LotadoEm(naMae, idF) || LotadoEm(naMae, idV) {
+		t.Error("lotação na unidade-mãe vale nela e nas subunidades, não na irmã")
+	}
+	noDepto := Identity{Scopes: []Scope{grant(nil, ptr(idE), ptr(idU), ptr(idD), idU, idF)}}
+	if !LotadoEm(noDepto, idU) || LotadoEm(noDepto, idF) {
+		t.Error("lotação no departamento vale na unidade dele, não nas subunidades")
+	}
+	global := Identity{Scopes: []Scope{grant([]string{"*"}, nil, nil, nil)}}
+	if LotadoEm(global, idU) || LotadoEm(Identity{}, idU) {
+		t.Error("concessão global não é lotação; sem concessão, nada")
+	}
+}

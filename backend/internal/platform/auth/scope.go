@@ -79,6 +79,21 @@ func (s Scope) coveredUnidades() []uuid.UUID {
 	return []uuid.UUID{*s.UnidadeID}
 }
 
+// LotadoEm reporta se identity tem alguma concessão (de qualquer perfil)
+// na unidade — nela, num departamento dela ou numa unidade acima dela.
+// Concessão global não conta: é "lotação" na plataforma, não na unidade.
+func LotadoEm(identity Identity, unidade uuid.UUID) bool {
+	for _, s := range identity.Scopes {
+		if s.UnidadeID != nil && *s.UnidadeID == unidade {
+			return true
+		}
+		if !s.Global() && s.DepartamentoID == nil && s.Covers(InUnidade(unidade)) {
+			return true
+		}
+	}
+	return false
+}
+
 // Can reporta se identity tem permission sobre o recurso na posição t.
 // Permissão que não vale com escopo exige concessão global.
 func Can(identity Identity, permission Permission, t Target) bool {

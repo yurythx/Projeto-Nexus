@@ -55,3 +55,46 @@ func TestWikiTreeRules(t *testing.T) {
 	h.expect(http.StatusBadRequest, http.MethodDelete, "/api/v1/wiki/pages/x", admin, "")
 	h.expect(http.StatusNotFound, http.MethodDelete, "/api/v1/wiki/pages/"+uuid.NewString(), admin, "")
 }
+
+// Dono organizacional da página (ADR 013): marca como dona quem está
+// lotado na unidade (ou tem wiki:manage cobrindo-a); subpágina herda a dona
+// da mãe; excluir exige wiki:manage cobrindo a dona.
+func TestWikiGestaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	gestorA := h.gestorEm(t, o.a, "wiki:manage")
+	lotadoB := h.gestorEm(t, o.b, "contact:read") // lotado em B, sem wiki:manage
+	_, estranho := h.user("nexus-user")
+	pagina := func(unidade, parent string) string {
+		body := `{"title":"Página ` + uuid.NewString()[:8] + `"`
+		if unidade != "" {
+			body += `,"unidade_id":"` + unidade + `"`
+		}
+		if parent != "" {
+			body += `,"parent_id":"` + parent + `"`
+		}
+		return body + `}`
+	}
+	type paginaResp struct {
+		ID        string  `json:"id"`
+		UnidadeID *string `json:"unidade_id"`
+	}
+
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/wiki/pages", estranho, pagina(o.b, ""))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/wiki/pages", gestorA, pagina(o.b, ""))
+	deB := data[paginaResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", lotadoB, pagina(o.b, "")))
+	deSub := data[paginaResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", gestorA, pagina(o.sub, "")))
+	filha := data[paginaResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", estranho, pagina("", deSub.ID)))
+	if filha.UnidadeID == nil || *filha.UnidadeID != o.sub {
+		t.Fatalf("subpágina herda a dona da mãe: %+v", filha)
+	}
+
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/wiki/pages/"+deB.ID, gestorA, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+filha.ID, gestorA, "") // subunidade de A
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+deSub.ID, gestorA, "")
+	institucional := data[paginaResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", estranho, pagina("", "")))
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/wiki/pages/"+institucional.ID, gestorA, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+institucional.ID, admin, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+deB.ID, admin, "")
+}

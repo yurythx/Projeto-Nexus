@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
+import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { Markdown } from "@/components/nexus/Markdown";
 import { useAction } from "@/components/nexus/useAction";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +44,7 @@ export function WikiEditor({
       title: String(fd.get("title") ?? "").trim(),
       slug: String(fd.get("slug") ?? "").trim(),
       parent_id: String(fd.get("parent_id") ?? "") || null,
+      unidade_id: String(fd.get("unidade_id") ?? "") || null,
       position: Number(fd.get("position") ?? 0) || 0,
       summary: String(fd.get("summary") ?? "").trim(),
       body,
@@ -76,6 +78,13 @@ export function WikiEditor({
         />
         <Input id="wiki-position" name="position" type="number" min={0} label="Ordem" defaultValue={page?.position ?? 0} />
       </div>
+      <UnidadeDonaSelect
+        id="wiki-unidade"
+        permission="wiki:manage"
+        lotacao
+        defaultValue={page?.unidade_id}
+        placeholder={page ? "Institucional (sem unidade)" : "Herdar da página-mãe (na raiz: institucional)"}
+      />
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Conteúdo (Markdown)</span>
         <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((v) => !v)} aria-pressed={preview}>

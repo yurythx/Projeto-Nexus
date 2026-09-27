@@ -4560,6 +4560,10 @@
           "title": {
             "type": "string"
           },
+          "unidade_id": {
+            "format": "uuid",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -4618,6 +4622,11 @@
             "maxLength": 200,
             "type": "string"
           },
+          "unidade_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
           "version": {
             "type": "integer"
           }
@@ -4662,6 +4671,10 @@
             "type": "string"
           },
           "title": {
+            "type": "string"
+          },
+          "unidade_id": {
+            "format": "uuid",
             "type": "string"
           },
           "updated_at": {

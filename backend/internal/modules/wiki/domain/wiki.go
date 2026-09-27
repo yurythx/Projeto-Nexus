@@ -17,12 +17,16 @@ var (
 	ErrStale       = errors.New("wiki: a página foi alterada por outra pessoa")
 	ErrHasChildren = errors.New("wiki: a página possui subpáginas")
 	ErrCycle       = errors.New("wiki: uma página não pode ficar dentro de si mesma")
+	// ErrOutOfScope: a unidade dona escolhida não é da pessoa, ou wiki:manage
+	// não cobre a dona da página a excluir (ADR 013).
+	ErrOutOfScope = errors.New("wiki: página fora do seu escopo")
 )
 
 // Page é uma página da Wiki.
 type Page struct {
 	ID            uuid.UUID  `json:"id"`
 	ParentID      *uuid.UUID `json:"parent_id,omitempty"`
+	UnidadeID     *uuid.UUID `json:"unidade_id,omitempty"` // dona (ADR 013); nil = institucional
 	Slug          string     `json:"slug"`
 	Title         string     `json:"title"`
 	Body          string     `json:"body,omitempty"`

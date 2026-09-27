@@ -3348,6 +3348,9 @@ components:
                     type: string
                 title:
                     type: string
+                unidade_id:
+                    format: uuid
+                    type: string
                 updated_at:
                     format: date-time
                     type: string
@@ -3393,6 +3396,10 @@ components:
                 title:
                     maxLength: 200
                     type: string
+                unidade_id:
+                    format: uuid
+                    nullable: true
+                    type: string
                 version:
                     type: integer
             required:
@@ -3424,6 +3431,9 @@ components:
                 slug:
                     type: string
                 title:
+                    type: string
+                unidade_id:
+                    format: uuid
                     type: string
                 updated_at:
                     format: date-time

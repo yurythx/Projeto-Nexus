@@ -81,7 +81,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"Delete": func() func(*application.Service) error {
 			p := e.page(nil)
-			return func(s *application.Service) error { return s.Delete(ctx, p.ID) }
+			return func(s *application.Service) error { return s.Delete(ctx, gestor, p.ID) }
 		},
 		"Revisions": func() func(*application.Service) error {
 			p := e.page(nil)

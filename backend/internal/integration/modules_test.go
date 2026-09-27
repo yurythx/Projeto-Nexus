@@ -384,11 +384,11 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if len(res) == 0 {
 			t.Fatal("busca deveria achar a página")
 		}
-		if err := svc.Delete(ctx, parent.ID); err == nil {
+		if err := svc.Delete(ctx, gestaoGlobal, parent.ID); err == nil {
 			t.Fatal("página com filhas não pode ser excluída")
 		}
-		must(t, svc.Delete(ctx, child.ID))
-		must(t, svc.Delete(ctx, parent.ID))
+		must(t, svc.Delete(ctx, gestaoGlobal, child.ID))
+		must(t, svc.Delete(ctx, gestaoGlobal, parent.ID))
 	})
 
 	var signumSvc *signumApp.Service

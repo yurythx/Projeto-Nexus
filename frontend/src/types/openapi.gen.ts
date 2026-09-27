@@ -3774,6 +3774,8 @@ export interface components {
             position: number;
             slug: string;
             title: string;
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
             /** Format: uuid */
@@ -3789,6 +3791,8 @@ export interface components {
             slug?: string;
             summary?: string;
             title: string;
+            /** Format: uuid */
+            unidade_id?: string | null;
             version?: number;
         };
         WikiPageView: {
@@ -3805,6 +3809,8 @@ export interface components {
             position: number;
             slug: string;
             title: string;
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
             /** Format: uuid */

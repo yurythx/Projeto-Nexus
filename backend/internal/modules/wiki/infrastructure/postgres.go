@@ -34,13 +34,13 @@ func wrap(err error) error {
 }
 
 const cols = `p.id, p.parent_id, p.slug, p.title, p.body, p.position, p.version, p.created_by, p.updated_by,
-	COALESCE(NULLIF(u.display_name,''), u.username, ''), p.created_at, p.updated_at`
+	COALESCE(NULLIF(u.display_name,''), u.username, ''), p.created_at, p.updated_at, p.unidade_id`
 const from = ` FROM wiki_pages p LEFT JOIN users u ON u.id = p.updated_by `
 
 func scan(row interface{ Scan(...any) error }, extra ...any) (domain.Page, error) {
 	var p domain.Page
 	err := row.Scan(append([]any{&p.ID, &p.ParentID, &p.Slug, &p.Title, &p.Body, &p.Position, &p.Version, &p.CreatedBy,
-		&p.UpdatedBy, &p.UpdatedByName, &p.CreatedAt, &p.UpdatedAt}, extra...)...)
+		&p.UpdatedBy, &p.UpdatedByName, &p.CreatedAt, &p.UpdatedAt, &p.UnidadeID}, extra...)...)
 	return p, err
 }
 
@@ -97,15 +97,15 @@ func (r *Repository) Breadcrumbs(ctx context.Context, db database.DBTX, id uuid.
 }
 
 func (r *Repository) Insert(ctx context.Context, db database.DBTX, p domain.Page) error {
-	_, err := db.Exec(ctx, `INSERT INTO wiki_pages (id, parent_id, slug, title, body, position, version, created_by, updated_by)
-		VALUES ($1,$2,$3,$4,$5,$6,1,$7,$7)`, p.ID, p.ParentID, p.Slug, p.Title, p.Body, p.Position, p.CreatedBy)
+	_, err := db.Exec(ctx, `INSERT INTO wiki_pages (id, parent_id, slug, title, body, position, version, created_by, updated_by, unidade_id)
+		VALUES ($1,$2,$3,$4,$5,$6,1,$7,$7,$8)`, p.ID, p.ParentID, p.Slug, p.Title, p.Body, p.Position, p.CreatedBy, p.UnidadeID)
 	return wrap(err)
 }
 
 func (r *Repository) UpdateIfVersion(ctx context.Context, db database.DBTX, p domain.Page, expected int) error {
 	tag, err := db.Exec(ctx, `UPDATE wiki_pages SET parent_id=$2, slug=$3, title=$4, body=$5, position=$6,
-		version = version + 1, updated_by=$7, updated_at=now() WHERE id=$1 AND version=$8`,
-		p.ID, p.ParentID, p.Slug, p.Title, p.Body, p.Position, p.UpdatedBy, expected)
+		version = version + 1, updated_by=$7, updated_at=now(), unidade_id=$9 WHERE id=$1 AND version=$8`,
+		p.ID, p.ParentID, p.Slug, p.Title, p.Body, p.Position, p.UpdatedBy, expected, p.UnidadeID)
 	if err != nil {
 		return wrap(err)
 	}

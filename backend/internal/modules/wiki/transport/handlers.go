@@ -72,12 +72,14 @@ type pageRequest struct {
 	Body     string     `json:"body" validate:"max=500000"`
 	Position int        `json:"position" validate:"min=0,max=100000"`
 	Summary  string     `json:"summary" validate:"max=300"`
+	// UnidadeID é a unidade dona (ADR 013); vazio na criação herda a da mãe.
+	UnidadeID *uuid.UUID `json:"unidade_id"`
 	// Version é a versão que o editor abriu (concorrência otimista).
 	Version int `json:"version"`
 }
 
 func (req pageRequest) input() application.Input {
-	return application.Input{ParentID: req.ParentID, Title: req.Title, Slug: req.Slug, Body: req.Body, Position: req.Position, Summary: req.Summary}
+	return application.Input{ParentID: req.ParentID, Title: req.Title, Slug: req.Slug, Body: req.Body, Position: req.Position, Summary: req.Summary, UnidadeID: req.UnidadeID}
 }
 
 func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +182,7 @@ func (h *Handlers) Restore(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := httputil.UUIDParam(r, "id")
 	if err == nil {
-		err = h.svc.Delete(r.Context(), id)
+		err = h.svc.Delete(r.Context(), identity(r), id)
 	}
 	if err != nil {
 		h.fail(w, r, err)

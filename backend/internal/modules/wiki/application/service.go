@@ -43,6 +43,8 @@ func MapError(err error) error {
 		return apperrors.Conflict("mova ou exclua as subpáginas antes de excluir esta página")
 	case errors.Is(err, domain.ErrCycle):
 		return apperrors.Conflict(err.Error())
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
@@ -85,6 +87,22 @@ type Input struct {
 	Body     string
 	Position int
 	Summary  string
+	// UnidadeID é a unidade dona; na criação, vazio herda a da página-mãe.
+	UnidadeID *uuid.UUID
+}
+
+// podeMarcar: só marca uma unidade como dona quem está lotado nela ou tem
+// wiki:manage cobrindo-a (ninguém atribui página a unidade alheia).
+func podeMarcar(identity auth.Identity, unidade *uuid.UUID) bool {
+	return unidade == nil || auth.LotadoEm(identity, *unidade) || auth.Can(identity, auth.PermWikiManage, auth.InUnidade(*unidade))
+}
+
+// dona é a posição da página para wiki:manage (nil = institucional).
+func dona(unidade *uuid.UUID) auth.Target {
+	if unidade == nil {
+		return auth.Target{}
+	}
+	return auth.InUnidade(*unidade)
 }
 
 // Create cria uma página (qualquer autenticado).
@@ -100,12 +118,20 @@ func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) 
 	var out domain.Page
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		if in.ParentID != nil {
-			if _, err := s.repo.Get(ctx, tx, *in.ParentID); err != nil {
+			parent, err := s.repo.Get(ctx, tx, *in.ParentID)
+			if err != nil {
 				return err
 			}
+			if in.UnidadeID == nil {
+				in.UnidadeID = parent.UnidadeID // herda a dona da página-mãe
+			} else if !podeMarcar(identity, in.UnidadeID) {
+				return domain.ErrOutOfScope
+			}
+		} else if !podeMarcar(identity, in.UnidadeID) {
+			return domain.ErrOutOfScope
 		}
 		p := domain.Page{ID: uuid.New(), ParentID: in.ParentID, Slug: slug, Title: in.Title, Body: in.Body,
-			Position: in.Position, CreatedBy: identity.UserID, UpdatedBy: identity.UserID}
+			Position: in.Position, CreatedBy: identity.UserID, UpdatedBy: identity.UserID, UnidadeID: in.UnidadeID}
 		if err := s.repo.Insert(ctx, tx, p); err != nil {
 			return err
 		}
@@ -147,11 +173,16 @@ func (s *Service) Update(ctx context.Context, identity auth.Identity, id uuid.UU
 				return domain.ErrCycle
 			}
 		}
+		// Trocar a dona: quem troca precisa poder marcar a antiga e a nova.
+		if !sameUnidade(prev.UnidadeID, in.UnidadeID) && (!podeMarcar(identity, prev.UnidadeID) || !podeMarcar(identity, in.UnidadeID)) {
+			return domain.ErrOutOfScope
+		}
 		slug := modkit.Slugify(in.Slug)
 		if slug == "" {
 			slug = prev.Slug
 		}
 		next := prev
+		next.UnidadeID = in.UnidadeID
 		next.ParentID, next.Slug, next.Title, next.Body, next.Position, next.UpdatedBy = in.ParentID, slug, in.Title, in.Body, in.Position, identity.UserID
 		if err := s.repo.UpdateIfVersion(ctx, tx, next, expectedVersion); err != nil {
 			return err
@@ -181,17 +212,20 @@ func (s *Service) Restore(ctx context.Context, identity auth.Identity, id uuid.U
 		return domain.Page{}, MapError(err)
 	}
 	return s.Update(ctx, identity, id, cur.Version, Input{
-		ParentID: cur.ParentID, Title: rev.Title, Slug: cur.Slug, Body: rev.Body, Position: cur.Position,
+		ParentID: cur.ParentID, Title: rev.Title, Slug: cur.Slug, Body: rev.Body, Position: cur.Position, UnidadeID: cur.UnidadeID,
 		Summary: "Restauração da versão " + strconv.Itoa(version),
 	})
 }
 
-// Delete exclui a página (wiki:manage — aplicado na rota).
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+// Delete exclui a página: wiki:manage cobrindo a unidade dona (ADR 013).
+func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UUID) error {
 	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !auth.Can(identity, auth.PermWikiManage, dona(prev.UnidadeID)) {
+			return domain.ErrOutOfScope
 		}
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
@@ -199,6 +233,13 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "wiki.page.deleted", "wiki_page", id.String(),
 			map[string]any{"slug": prev.Slug, "title": prev.Title, "version": prev.Version}, nil))
 	}))
+}
+
+func sameUnidade(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // Revisions lista o histórico (página inexistente: 404).

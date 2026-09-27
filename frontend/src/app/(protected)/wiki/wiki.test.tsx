@@ -43,7 +43,7 @@ describe("Wiki — layout e árvore", () => {
     await userEvent.click(within(d).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/wiki/nova"));
     expect(api.to("POST v1/wiki/pages")[0]!.body).toEqual({
-      title: "Procedimentos", slug: "", parent_id: "filha", position: 0, summary: "primeira versão", body: "# Passo 1",
+      title: "Procedimentos", slug: "", parent_id: "filha", unidade_id: null, position: 0, summary: "primeira versão", body: "# Passo 1",
     });
   });
 
@@ -111,6 +111,29 @@ describe("Wiki — página", () => {
     await waitFor(() => expect(within(d).getByLabelText("Página-mãe")).toHaveValue("raiz"));
     await userEvent.click(within(d).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api.to("PUT v1/wiki/pages/filha")[0]?.body).toMatchObject({ parent_id: "raiz" }));
+  });
+
+  it("unidade dona (ADR 013): oferece as lotadas e a atual; sem wiki:manage não é obrigatória", async () => {
+    const ORG = [
+      { id: "e1", nome: "Órgão", unidades: ["u1", "u2", "u3"].map((id) => ({ id, entidade_id: "e1", nome: `Unidade ${id}`, departamentos: [] })) },
+    ];
+    const api = mockBackend({
+      ...identityRoutes({ permissions: ["contact:read"], scopes: [{ perfil: "p", origem: "manual", entidade_id: "e1", unidade_id: "u1", permissions: ["contact:read"] }] }),
+      "GET v1/wiki/pages/filha": detail({ unidade_id: "u2" }),
+      "GET v1/wiki/tree": { data: TREE },
+      "GET v1/iam/org-tree": { data: ORG },
+      "PUT v1/wiki/pages/filha": { data: wp("filha") },
+    });
+    renderApp(<WikiPageView />);
+    await userEvent.click(await screen.findByRole("button", { name: /Editar/ }));
+    const d = await screen.findByRole("dialog", { name: "Editar — Página filha" });
+    const dona = within(d).getByLabelText("Unidade dona");
+    await waitFor(() => expect(dona).toHaveValue("u2"));
+    expect(dona).not.toBeRequired();
+    expect(within(dona).getByRole("option", { name: "Unidade u1" })).toBeInTheDocument();
+    expect(within(dona).queryByRole("option", { name: "Unidade u3" })).not.toBeInTheDocument();
+    await userEvent.click(within(d).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.to("PUT v1/wiki/pages/filha")[0]?.body).toMatchObject({ unidade_id: "u2" }));
   });
 
   it("conflito de versão aparece e o editor continua aberto", async () => {
