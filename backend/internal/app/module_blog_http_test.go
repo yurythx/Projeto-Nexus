@@ -88,6 +88,7 @@ func TestBlogGestaoComEscopo(t *testing.T) {
 	rascunhoB := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, post(o.b)))
 	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/blog/posts/"+institucional.ID+"/publish", gestorA, "")
 	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/blog/posts/"+rascunhoB.ID, gestorA, "")
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/blog/posts/"+rascunhoB.ID, gestorA, post(o.a)) // não traz de B para A
 	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/blog/posts/"+rascunhoB.ID, gestorA, "")
 	h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts/"+rascunhoB.ID, admin, "")
 	if lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts?status=draft&page_size=100", gestorA, "").Body.String(); strings.Contains(lista, rascunhoB.ID) || strings.Contains(lista, institucional.ID) {
