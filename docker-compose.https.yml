@@ -15,7 +15,10 @@ services:
       PUBLIC_HOST: ${HTTPS_PUBLIC_HOST:?HTTPS_PUBLIC_HOST must be set}
       HTTP_PORT: ${HTTP_PORT:-8002}
     volumes:
-      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # A PASTA, não o arquivo: o git pull troca o Caddyfile por um arquivo
+      # novo, e um bind de arquivo único continuaria mostrando o antigo ao
+      # container. O deploy recarrega o Caddy (caddy reload) a cada subida.
+      - ./deploy/caddy:/etc/caddy:ro
       # caddy_data guarda a CA (chave privada inclusive): perdê-lo obriga
       # toda máquina de teste a instalar uma raiz nova — está no backup.
       - caddy_data:/data

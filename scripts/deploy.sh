@@ -86,6 +86,13 @@ fi
 log "Build e subida dos serviços"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
+# O Caddy (se a borda HTTPS estiver ativa) relê o Caddyfile sem derrubar
+# conexões: mudanças de TLS/rotas valem sem recriar o container.
+if "${COMPOSE[@]}" ps --services 2>/dev/null | grep -qx caddy; then
+  log "Recarregando a configuração do Caddy"
+  "${COMPOSE[@]}" exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+fi
+
 log "Aguardando os serviços ficarem saudáveis"
 for _ in $(seq 1 60); do
   unhealthy=$("${COMPOSE[@]}" ps --format '{{.Service}} {{.Health}}' | awk '$2 != "healthy" && $2 != "" {print $1}')
