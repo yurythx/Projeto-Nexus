@@ -82,7 +82,8 @@ escopo (ver "Como ficou na implementação (fase 3)").
   própria unidade.
 
 **Leitura não muda:** Blog, Wiki, Catálogo e Agenda continuam visíveis
-como hoje. Segmentar a leitura por público-alvo é outra funcionalidade.
+como hoje. Segmentar a leitura por público-alvo é outra funcionalidade —
+depois implementada no [ADR 014](014-publico-alvo.md).
 
 ### 5. Compatibilidade
 

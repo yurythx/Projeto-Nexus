@@ -14,5 +14,7 @@ Toda mudança de contrato de API, RBAC, auditoria ou middleware exige um ADR
 | [008](008-kernel-grafo-de-modulos-e-estrategia-de-testes.md) | Grafo de módulos, invariantes do IAM, proveniência da auditoria, LGPD federado e estratégia de testes | Aceito |
 | [009](009-revisao-dos-plugins-e-meta-de-cobertura.md) | Revisão das regras de negócio de cada plug-in e meta de 100% de cobertura por módulo no CI | Aceito |
 | [010](010-revisao-da-plataforma-e-cobertura-por-pacote.md) | Revisão de cada pacote da plataforma e da composição; RabbitMQ e MinIO reais no CI; meta de 100% por pacote | Aceito |
-| [012](012-estrutura-desativada-nao-concede.md) | Estrutura desativada deixa de conceder perfis e de receber processos; unidade-mãe com subunidades não é excluída | Aceito |
 | [011](011-borda-unica-ip-confiavel-e-busca-por-prefixo.md) | Proxy HTTPS como borda única, IP do visitante confiável ponta a ponta, bloqueio de login por IP com limite próprio, busca por prefixo, reautenticação do Signum | Aceito |
+| [012](012-estrutura-desativada-nao-concede.md) | Estrutura desativada deixa de conceder perfis e de receber processos; unidade-mãe com subunidades não é excluída | Aceito |
+| [013](013-permissao-com-escopo-e-heranca.md) | Permissão com escopo e herança: as permissões de gestão valem onde foram concedidas (e abaixo); unidade dona do conteúdo; administração delegada do IAM | Aceito e implementado |
+| [014](014-publico-alvo.md) | Público-alvo: Blog, Wiki e Agenda publicados só para secretarias e/ou unidades | Aceito |

@@ -265,8 +265,25 @@ valem em lugar nenhum.
 ADR 013, e o que a gestão global criar sem dona). Só a gestão global o
 gerencia.
 
-**A leitura não muda:** Blog publicado, Wiki, Catálogo publicado e Agenda
-continuam visíveis a todos como antes. O escopo restringe a **gestão**.
+**A leitura:** o escopo restringe a **gestão**. Para restringir a
+**leitura**, Blog, Wiki e Agenda têm o **público-alvo** (ADR 014): o
+conteúdo pode ser só para uma ou mais secretarias e/ou unidades. Sem
+público-alvo, tudo é visível a todos como antes; o Catálogo publicado
+segue sempre aberto (é do cidadão).
+
+**Público-alvo (ADR 014):**
+- **Quem pertence:** quem tem lotação (manual ou por grupo do AD, de
+  qualquer perfil) numa secretaria do público, ou numa unidade dele **ou
+  abaixo dela** (a lotação num departamento conta na unidade dele).
+  Concessão só global não é pertencimento.
+- **Quem mais vê:** o autor (organizador, no evento) e a gestão que cobre
+  o conteúdo — a do módulo na unidade dona — e a gestão global.
+- Conteúdo com público-alvo **nunca** vai ao site público; não é
+  difundido a todos em tempo real; a Busca Global respeita.
+- Excluir uma secretaria ou unidade que é público de algum conteúdo é
+  recusado (senão o conteúdo ficaria aberto a todos em silêncio).
+- Público-alvo direciona a leitura; **não é sigilo** (o sigilo de
+  processos é regra do Trâmite).
 
 Além disso, **Arquivos** usa as lotações nas ACLs das pastas (`unidade`,
 `departamento`, `perfil`) e o **Trâmite** usa a lotação para abrir e
@@ -409,6 +426,9 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   reservada** altera, cancela ou vê um evento privado de terceiros. Evento
   sem sala é institucional. Evento cancelado não se
   altera, cria-se outro. Cancelar libera a sala.
+- **Público-alvo** (seção 5): o evento interno só aparece para o público
+  escolhido; com público, o evento não pode ser "público" (site), e na
+  ocupação da sala aparece como "Reservado".
 
 ### Blog
 - `blog:manage` cria, edita, publica, arquiva e exclui os posts da
@@ -418,6 +438,8 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   Não se publica sem texto.
 - Leitores veem só o publicado. Rascunho e arquivado ficam só para
   a gestão que cobre a dona. Slug único. Tipos: notícia ou comunicado.
+- **Público-alvo** (seção 5): o post pode ser só para secretarias e/ou
+  unidades; fora do público some da lista, do detalhe e da busca.
 
 ### Wiki
 - Qualquer autenticado cria e edita. Excluir exige `wiki:manage` cobrindo a
@@ -425,6 +447,11 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 - **Unidade dona:** vazia na criação, herda a da página-mãe. Marca uma
   unidade como dona quem está lotado nela ou tem `wiki:manage` cobrindo-a;
   trocar a dona exige poder marcar a antiga e a nova.
+- **Público-alvo** (seção 5), com herança: a página é lida por quem
+  satisfaz o público de **cada** página da cadeia até a raiz que tem um —
+  a subpágina restringe mais, nunca abre o que a mãe fechou. Trocar o
+  público de uma página: quem a criou ou a gestão da dona (qualquer um
+  edita, mas não esconde dos colegas o que é de todos).
 - **Controle de concorrência:** a edição informa a versão aberta. Se outra
   pessoa salvou antes, a edição é recusada (`409`) em vez de sobrescrever.
 - Histórico de revisões com restauração. Árvore de páginas: não se exclui
