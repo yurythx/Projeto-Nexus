@@ -95,6 +95,8 @@ Idempotente. Coloca o Caddy (`docker-compose.https.yml`,
 
 A porta 80 só serve a CA e redireciona o resto para https.
 
+**Só TLS 1.3.** O Caddy recusa TLS 1.2 ou anterior (navegadores e sistemas atuais já usam 1.3; um cliente muito antigo não conecta).
+
 **O Caddy é a única entrada.** O script define `HOST_BIND=127.0.0.1`: as
 portas diretas (3010/8010/9010/9011/8180) só escutam no próprio servidor —
 abertas na rede, deixavam o cliente forjar o `X-Forwarded-For` e escapar dos

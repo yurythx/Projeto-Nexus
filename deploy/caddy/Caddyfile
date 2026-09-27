@@ -19,8 +19,11 @@
 	}
 }
 
+# TLS 1.3 como versão mínima (skill §4 — A02): TLS 1.2 é recusado.
 (tls_local) {
-	tls internal
+	tls internal {
+		protocols tls1.3
+	}
 }
 
 # Frontend (NextAuth, BFF, site público)

@@ -37,7 +37,9 @@ const nextConfig: NextConfig = {
   //   esbarraria nisso antes de conseguir pedir acesso a qualquer uma
   //   delas.
   // - Strict-Transport-Security — instrui o navegador a nunca tentar
-  //   HTTP puro de novo com este host pelo próximo ano; enviado sempre
+  //   HTTP puro de novo com este host pelos próximos 2 anos, com
+  //   includeSubDomains e preload (valor exigido pela skill §4, igual ao
+  //   da API); enviado sempre
   //   (não só condicionado a produção) porque o navegador IGNORA este
   //   cabeçalho quando a resposta chega por uma conexão HTTP simples
   //   (dev local) — mandar sempre é inofensivo e evita esquecer de
@@ -45,8 +47,9 @@ const nextConfig: NextConfig = {
   //   upgrade-insecure-requests: servida por HTTP num IP da rede, ela
   //   forçaria https nos assets e quebraria a página.)
   //
-  // frame-ancestors 'none' na CSP já cobre clickjacking (substitui
-  // X-Frame-Options, obsoleto pra esse fim) — não repetido aqui.
+  // - X-Frame-Options: DENY — frame-ancestors 'none' na CSP já cobre
+  //   clickjacking nos navegadores atuais; o cabeçalho antigo fica como
+  //   defesa em profundidade para os que não entendem a CSP (skill §4).
   async headers() {
     return [
       {
@@ -58,7 +61,8 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=(), usb=(), payment=(), interest-cohort=()",
           },
-          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+          { key: "X-Frame-Options", value: "DENY" },
         ],
       },
     ];
