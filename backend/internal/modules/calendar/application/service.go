@@ -49,6 +49,8 @@ func MapError(err error) error {
 		return apperrors.Validation("valor fora do permitido (visibilidade, status ou capacidade)")
 	case errors.Is(err, domain.ErrCancelled), errors.Is(err, domain.ErrRoomInUse):
 		return apperrors.Conflict(err.Error())
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
@@ -65,9 +67,10 @@ func (s *Service) Events(ctx context.Context, identity auth.Identity, from, to t
 	if err := checkWindow(from, to); err != nil {
 		return nil, err
 	}
+	gestao := auth.CoverageOf(identity, auth.PermCalendarManage)
 	return s.repo.ListEvents(ctx, s.pool, domain.EventFilter{
 		From: from, To: to, RoomID: roomID, ViewerID: identity.UserID,
-		SeeAll: auth.HasPermission(identity, auth.PermCalendarManage),
+		SeeAll: gestao.All, SeeUnidades: gestao.Unidades,
 	})
 }
 
@@ -89,7 +92,7 @@ func (s *Service) Event(ctx context.Context, identity auth.Identity, id uuid.UUI
 	if err != nil {
 		return e, MapError(err)
 	}
-	if e.Visibility == "private" && e.OrganizerID != identity.UserID && !auth.HasPermission(identity, auth.PermCalendarManage) {
+	if e.Visibility == "private" && e.OrganizerID != identity.UserID && !auth.Can(identity, auth.PermCalendarManage, e.Posicao()) {
 		return domain.Event{}, MapError(domain.ErrNotFound)
 	}
 	return e, nil
@@ -150,8 +153,8 @@ func (s *Service) CreateEvent(ctx context.Context, identity auth.Identity, in Ev
 }
 
 func (s *Service) ownOrManage(identity auth.Identity, e domain.Event) error {
-	if e.OrganizerID != identity.UserID && !auth.HasPermission(identity, auth.PermCalendarManage) {
-		return apperrors.Forbidden("só o organizador ou quem tem calendar:manage altera este evento")
+	if e.OrganizerID != identity.UserID && !auth.Can(identity, auth.PermCalendarManage, e.Posicao()) {
+		return apperrors.Forbidden("só o organizador ou quem tem calendar:manage na unidade da sala altera este evento")
 	}
 	return nil
 }
@@ -226,9 +229,10 @@ func (s *Service) DeleteEvent(ctx context.Context, identity auth.Identity, id uu
 	}))
 }
 
-// Rooms lista salas (inativas só para gestão).
+// Rooms lista salas (inativas só para a gestão que as cobre).
 func (s *Service) Rooms(ctx context.Context, identity auth.Identity) ([]domain.Room, error) {
-	return s.repo.ListRooms(ctx, s.pool, !auth.HasPermission(identity, auth.PermCalendarManage))
+	gestao := auth.CoverageOf(identity, auth.PermCalendarManage)
+	return s.repo.ListRooms(ctx, s.pool, !gestao.All, gestao.Unidades)
 }
 
 // RoomBusy devolve a ocupação de uma sala no período.
@@ -242,13 +246,17 @@ func (s *Service) RoomBusy(ctx context.Context, roomID uuid.UUID, from, to time.
 	return s.repo.RoomBusy(ctx, s.pool, roomID, from, to)
 }
 
-// SaveRoom cria/atualiza uma sala (calendar:manage).
-func (s *Service) SaveRoom(ctx context.Context, id uuid.UUID, in domain.Room) (domain.Room, error) {
+// SaveRoom cria/atualiza uma sala: calendar:manage cobrindo a unidade dona
+// (a atual e a nova; sem dona, institucional — ADR 013).
+func (s *Service) SaveRoom(ctx context.Context, identity auth.Identity, id uuid.UUID, in domain.Room) (domain.Room, error) {
 	if in.Resources == nil {
 		in.Resources = []string{}
 	}
 	var out domain.Room
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
+		if !auth.Can(identity, auth.PermCalendarManage, domain.Dona(in.UnidadeID)) {
+			return domain.ErrOutOfScope
+		}
 		var before any
 		if id == uuid.Nil {
 			in.ID = uuid.New()
@@ -256,6 +264,9 @@ func (s *Service) SaveRoom(ctx context.Context, id uuid.UUID, in domain.Room) (d
 			prev, err := s.repo.GetRoom(ctx, tx, id)
 			if err != nil {
 				return err
+			}
+			if !auth.Can(identity, auth.PermCalendarManage, domain.Dona(prev.UnidadeID)) {
+				return domain.ErrOutOfScope
 			}
 			in.ID, before = id, prev
 		}
@@ -270,11 +281,14 @@ func (s *Service) SaveRoom(ctx context.Context, id uuid.UUID, in domain.Room) (d
 
 // DeleteRoom remove uma sala sem reservas futuras (os eventos passados
 // ficam registrados, sem sala). Com reservas futuras: desativar.
-func (s *Service) DeleteRoom(ctx context.Context, id uuid.UUID) error {
+func (s *Service) DeleteRoom(ctx context.Context, identity auth.Identity, id uuid.UUID) error {
 	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.GetRoom(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !auth.Can(identity, auth.PermCalendarManage, domain.Dona(prev.UnidadeID)) {
+			return domain.ErrOutOfScope
 		}
 		upcoming, err := s.repo.RoomHasUpcoming(ctx, tx, id)
 		if err != nil {

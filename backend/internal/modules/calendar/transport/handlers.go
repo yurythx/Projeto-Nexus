@@ -243,6 +243,8 @@ type roomRequest struct {
 	Capacity  int      `json:"capacity" validate:"min=0,max=10000"`
 	Resources []string `json:"resources" validate:"max=30,dive,max=80"`
 	Active    *bool    `json:"active"`
+	// UnidadeID é a unidade dona (ADR 013); vazio = institucional.
+	UnidadeID *uuid.UUID `json:"unidade_id"`
 }
 
 func (h *Handlers) SaveRoom(w http.ResponseWriter, r *http.Request) {
@@ -260,8 +262,9 @@ func (h *Handlers) SaveRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	active := req.Active == nil || *req.Active
-	room, err := h.svc.SaveRoom(r.Context(), id, domain.Room{
-		Name: req.Name, Location: req.Location, Capacity: req.Capacity, Resources: req.Resources, Active: active,
+	identity, _ := auth.IdentityFromContext(r.Context())
+	room, err := h.svc.SaveRoom(r.Context(), identity, id, domain.Room{
+		Name: req.Name, Location: req.Location, Capacity: req.Capacity, Resources: req.Resources, Active: active, UnidadeID: req.UnidadeID,
 	})
 	if err != nil {
 		h.fail(w, r, err)
@@ -277,7 +280,8 @@ func (h *Handlers) SaveRoom(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteRoom(w http.ResponseWriter, r *http.Request) {
 	id, err := httputil.UUIDParam(r, "id")
 	if err == nil {
-		err = h.svc.DeleteRoom(r.Context(), id)
+		identity, _ := auth.IdentityFromContext(r.Context())
+		err = h.svc.DeleteRoom(r.Context(), identity, id)
 	}
 	if err != nil {
 		h.fail(w, r, err)

@@ -781,6 +781,10 @@
             },
             "type": "array"
           },
+          "unidade_id": {
+            "format": "uuid",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -824,6 +828,11 @@
             },
             "maxItems": 30,
             "type": "array"
+          },
+          "unidade_id": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [

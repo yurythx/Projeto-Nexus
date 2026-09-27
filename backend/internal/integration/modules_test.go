@@ -278,7 +278,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 
 	t.Run("calendar", func(t *testing.T) {
 		svc := calApp.NewService(e.pool, calInfra.NewRepository(), e.ob)
-		room, err := svc.SaveRoom(ctx, uuid.Nil, calDomain.Room{Name: "Sala " + uuid.NewString()[:6], Capacity: 10, Active: true})
+		room, err := svc.SaveRoom(ctx, gestaoGlobal, uuid.Nil, calDomain.Room{Name: "Sala " + uuid.NewString()[:6], Capacity: 10, Active: true})
 		must(t, err)
 		start := time.Now().Add(48 * time.Hour).Truncate(time.Hour)
 		ev, err := svc.CreateEvent(ctx, e.identity, calApp.EventInput{Title: "Reunião", Visibility: "internal", RoomID: &room.ID, StartsAt: start, EndsAt: start.Add(time.Hour)})

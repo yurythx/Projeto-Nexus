@@ -564,6 +564,9 @@ components:
                     items:
                         type: string
                     type: array
+                unidade_id:
+                    format: uuid
+                    type: string
                 updated_at:
                     format: date-time
                     type: string
@@ -598,6 +601,10 @@ components:
                         type: string
                     maxItems: 30
                     type: array
+                unidade_id:
+                    format: uuid
+                    nullable: true
+                    type: string
             required:
                 - name
             type: object

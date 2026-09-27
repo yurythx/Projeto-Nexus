@@ -170,7 +170,7 @@ describe("Agenda", () => {
     await userEvent.type(within(dialog).getByLabelText("Recursos (separados por vírgula)"), "tv, , videoconferência ");
     await userEvent.click(within(dialog).getByRole("button", { name: "Salvar sala" }));
     await waitFor(() => expect(api.to("POST v1/calendar/rooms")).toHaveLength(1));
-    expect(api.to("POST v1/calendar/rooms")[0]!.body).toEqual({ name: "Sala Azul", location: "2º andar", capacity: 12, resources: ["tv", "videoconferência"], active: true });
+    expect(api.to("POST v1/calendar/rooms")[0]!.body).toEqual({ name: "Sala Azul", location: "2º andar", capacity: 12, resources: ["tv", "videoconferência"], active: true, unidade_id: null });
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Editar Sala r1" }));
     expect(within(dialog).getByLabelText("Recursos (separados por vírgula)")).toHaveValue("projetor");
@@ -186,6 +186,28 @@ describe("Agenda", () => {
     const confirm = await screen.findByRole("dialog", { name: 'Excluir a sala "Sala r2"?' });
     await userEvent.click(within(confirm).getByRole("button", { name: "Excluir" }));
     await waitFor(() => expect(api.to("DELETE v1/calendar/rooms/r2")).toHaveLength(1));
+  });
+
+  it("gestor com escopo (ADR 013): só as salas da unidade dele e os eventos reservados nelas", async () => {
+    const ORG = [{ id: "e1", nome: "Órgão", unidades: [{ id: "u1", entidade_id: "e1", nome: "Protocolo", departamentos: [] }] }];
+    mockBackend({
+      ...identityRoutes({ permissions: ["calendar:manage"], scopes: [{ perfil: "p", origem: "manual", entidade_id: "e1", unidade_id: "u1", permissions: ["calendar:manage"] }] }),
+      "GET v1/calendar/events": { data: [event("e1", { organizer_id: "outro", room_id: "r1" }), event("e2", { organizer_id: "outro", room_id: "r2" }), event("e3", { organizer_id: "outro" })] },
+      "GET v1/calendar/rooms": { data: [room("r1", { unidade_id: "u1" }), room("r2")] },
+      "GET v1/iam/org-tree": { data: ORG },
+    });
+    renderApp(<AgendaPage />);
+    expect(await screen.findByRole("button", { name: "Editar Evento e1" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar Evento e2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar Evento e3" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Salas/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Salas de reunião" });
+    expect(within(dialog).getByRole("button", { name: "Editar Sala r1" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Editar Sala r2" })).not.toBeInTheDocument();
+    const dona = within(dialog).getByLabelText("Unidade dona *");
+    expect(dona).toBeRequired();
+    expect(within(dona).getByRole("option", { name: "Protocolo" })).toBeInTheDocument();
   });
 
   it("sem salas cadastradas", async () => {

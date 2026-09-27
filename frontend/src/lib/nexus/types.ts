@@ -340,6 +340,8 @@ export interface Room {
   capacity: number;
   resources: string[];
   active: boolean;
+  /** Unidade dona (ADR 013); ausente = institucional. */
+  unidade_id?: UUID;
 }
 
 export interface CalendarEvent {

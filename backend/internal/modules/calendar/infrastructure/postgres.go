@@ -42,16 +42,25 @@ func wrap(err error) error {
 	return fmt.Errorf("calendar: %w", err)
 }
 
-const roomCols = `id, name, location, capacity, resources, active, created_at, updated_at`
+const roomCols = `id, name, location, capacity, resources, active, created_at, updated_at, unidade_id`
 
 func scanRoom(row interface{ Scan(...any) error }) (domain.Room, error) {
 	var r domain.Room
-	err := row.Scan(&r.ID, &r.Name, &r.Location, &r.Capacity, &r.Resources, &r.Active, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(&r.ID, &r.Name, &r.Location, &r.Capacity, &r.Resources, &r.Active, &r.CreatedAt, &r.UpdatedAt, &r.UnidadeID)
 	return r, err
 }
 
-func (r *Repository) ListRooms(ctx context.Context, db database.DBTX, onlyActive bool) ([]domain.Room, error) {
-	rows, err := db.Query(ctx, `SELECT `+roomCols+` FROM calendar_rooms WHERE (NOT $1 OR active) ORDER BY name`, onlyActive)
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
+}
+
+func (r *Repository) ListRooms(ctx context.Context, db database.DBTX, onlyActive bool, unidades []uuid.UUID) ([]domain.Room, error) {
+	rows, err := db.Query(ctx, `SELECT `+roomCols+` FROM calendar_rooms WHERE (NOT $1 OR active OR unidade_id = ANY($2::uuid[])) ORDER BY name`,
+		onlyActive, uuidStrings(unidades))
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -74,10 +83,10 @@ func (r *Repository) GetRoom(ctx context.Context, db database.DBTX, id uuid.UUID
 
 func (r *Repository) SaveRoom(ctx context.Context, db database.DBTX, room domain.Room) (domain.Room, error) {
 	out, err := scanRoom(db.QueryRow(ctx, `
-		INSERT INTO calendar_rooms (id, name, location, capacity, resources, active) VALUES ($1,$2,$3,$4,$5,$6)
+		INSERT INTO calendar_rooms (id, name, location, capacity, resources, active, unidade_id) VALUES ($1,$2,$3,$4,$5,$6,$7)
 		ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, location=EXCLUDED.location, capacity=EXCLUDED.capacity,
-		    resources=EXCLUDED.resources, active=EXCLUDED.active
-		RETURNING `+roomCols, room.ID, room.Name, room.Location, room.Capacity, room.Resources, room.Active))
+		    resources=EXCLUDED.resources, active=EXCLUDED.active, unidade_id=EXCLUDED.unidade_id
+		RETURNING `+roomCols, room.ID, room.Name, room.Location, room.Capacity, room.Resources, room.Active, room.UnidadeID))
 	return out, wrap(err)
 }
 
@@ -118,14 +127,14 @@ func (r *Repository) RoomBusy(ctx context.Context, db database.DBTX, roomID uuid
 
 const eventCols = `e.id, e.title, e.description, e.location, e.room_id, COALESCE(r.name,''), e.starts_at, e.ends_at,
 	e.all_day, e.visibility, e.status, e.organizer_id, COALESCE(NULLIF(u.display_name,''), u.username, ''),
-	e.created_at, e.updated_at`
+	e.created_at, e.updated_at, r.unidade_id`
 
 const eventFrom = ` FROM calendar_events e LEFT JOIN calendar_rooms r ON r.id = e.room_id LEFT JOIN users u ON u.id = e.organizer_id `
 
 func scanEvent(row interface{ Scan(...any) error }) (domain.Event, error) {
 	var e domain.Event
 	err := row.Scan(&e.ID, &e.Title, &e.Description, &e.Location, &e.RoomID, &e.RoomName, &e.StartsAt, &e.EndsAt,
-		&e.AllDay, &e.Visibility, &e.Status, &e.OrganizerID, &e.OrganizerName, &e.CreatedAt, &e.UpdatedAt)
+		&e.AllDay, &e.Visibility, &e.Status, &e.OrganizerID, &e.OrganizerName, &e.CreatedAt, &e.UpdatedAt, &e.RoomUnidadeID)
 	return e, err
 }
 
@@ -137,10 +146,10 @@ func (r *Repository) ListEvents(ctx context.Context, db database.DBTX, f domain.
 		  AND CASE
 		        WHEN $5 THEN e.visibility = 'public'
 		        WHEN $6 THEN true
-		        ELSE e.visibility <> 'private' OR e.organizer_id = $7
+		        ELSE e.visibility <> 'private' OR e.organizer_id = $7 OR r.unidade_id = ANY($8::uuid[])
 		      END
 		ORDER BY e.starts_at LIMIT 2000`,
-		f.From, f.To, f.RoomID, f.IncludeCancel, f.OnlyPublic, f.SeeAll, f.ViewerID)
+		f.From, f.To, f.RoomID, f.IncludeCancel, f.OnlyPublic, f.SeeAll, f.ViewerID, uuidStrings(f.SeeUnidades))
 	if err != nil {
 		return nil, wrap(err)
 	}

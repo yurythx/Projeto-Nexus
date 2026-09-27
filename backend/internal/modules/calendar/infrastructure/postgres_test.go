@@ -18,7 +18,7 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 	ctx := context.Background()
 	id := uuid.New()
 	calls := map[string]func(db database.DBTX) error{
-		"ListRooms":       func(db database.DBTX) error { _, err := r.ListRooms(ctx, db, true); return err },
+		"ListRooms":       func(db database.DBTX) error { _, err := r.ListRooms(ctx, db, true, nil); return err },
 		"GetRoom":         func(db database.DBTX) error { _, err := r.GetRoom(ctx, db, id); return err },
 		"SaveRoom":        func(db database.DBTX) error { _, err := r.SaveRoom(ctx, db, domain.Room{ID: id}); return err },
 		"DeleteRoom":      func(db database.DBTX) error { return r.DeleteRoom(ctx, db, id) },

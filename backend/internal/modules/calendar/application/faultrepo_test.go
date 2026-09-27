@@ -50,13 +50,13 @@ func (fr *faultRepo) post(ctx context.Context, db database.DBTX) {
 	_, _ = db.Exec(ctx, `SELECT 1/0`)
 }
 
-func (fr *faultRepo) ListRooms(ctx context.Context, db database.DBTX, onlyActive bool) ([]domain.Room, error) {
+func (fr *faultRepo) ListRooms(ctx context.Context, db database.DBTX, onlyActive bool, unidades []uuid.UUID) ([]domain.Room, error) {
 	if err := fr.hook("ListRooms"); err != nil {
 		var z0 []domain.Room
 		return z0, err
 	}
 	defer fr.post(ctx, db)
-	return fr.inner.ListRooms(ctx, db, onlyActive)
+	return fr.inner.ListRooms(ctx, db, onlyActive, unidades)
 }
 
 func (fr *faultRepo) GetRoom(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.Room, error) {

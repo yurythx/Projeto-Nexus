@@ -44,7 +44,7 @@ func (e *env) real() *application.Service { return e.svc(infrastructure.NewRepos
 
 func (e *env) room() domain.Room {
 	e.t.Helper()
-	r, err := e.real().SaveRoom(context.Background(), uuid.Nil, domain.Room{Name: "Sala " + uuid.NewString()[:8], Active: true})
+	r, err := e.real().SaveRoom(context.Background(), gestor, uuid.Nil, domain.Room{Name: "Sala " + uuid.NewString()[:8], Active: true})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -122,11 +122,11 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"SaveRoom": func() func(*application.Service) error {
 			r := e.room()
-			return func(s *application.Service) error { _, err := s.SaveRoom(ctx, r.ID, r); return err }
+			return func(s *application.Service) error { _, err := s.SaveRoom(ctx, gestor, r.ID, r); return err }
 		},
 		"DeleteRoom": func() func(*application.Service) error {
 			r := e.room()
-			return func(s *application.Service) error { return s.DeleteRoom(ctx, r.ID) }
+			return func(s *application.Service) error { return s.DeleteRoom(ctx, gestor, r.ID) }
 		},
 	}
 	for name, o := range ops {
@@ -151,7 +151,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 	if err := application.MapError(errBoom); !errors.Is(err, errBoom) {
 		t.Error("erro desconhecido passa adiante")
 	}
-	if _, err := e.real().SaveRoom(ctx, uuid.Nil, domain.Room{Name: "Negativa " + uuid.NewString()[:6], Capacity: -5}); err == nil ||
+	if _, err := e.real().SaveRoom(ctx, gestor, uuid.Nil, domain.Room{Name: "Negativa " + uuid.NewString()[:6], Capacity: -5}); err == nil ||
 		!strings.Contains(err.Error(), "valor fora do permitido") {
 		t.Errorf("capacidade negativa é validação, não \"intervalo\": %v", err)
 	}

@@ -2686,6 +2686,8 @@ export interface components {
             location: string;
             name: string;
             resources: string[];
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -2695,6 +2697,8 @@ export interface components {
             location?: string;
             name: string;
             resources?: string[];
+            /** Format: uuid */
+            unidade_id?: string | null;
         };
         CatalogCategory: {
             count: number;

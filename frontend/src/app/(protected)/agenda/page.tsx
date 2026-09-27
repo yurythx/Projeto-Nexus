@@ -3,6 +3,7 @@
 import { Ban, ChevronLeft, ChevronRight, DoorOpen, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
+import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
@@ -16,7 +17,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { apiClient } from "@/lib/api/client";
 import { useApiQuery, withQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
-import type { CalendarEvent, Room } from "@/lib/nexus/types";
+import { unidadesGeridas } from "@/lib/nexus/permissions";
+import type { CalendarEvent, OrgTree, Room } from "@/lib/nexus/types";
 
 const VIS_LABEL: Record<CalendarEvent["visibility"], string> = { public: "Pública", internal: "Interna", private: "Privada" };
 
@@ -106,7 +108,7 @@ function EventForm({ event, rooms, onDone }: { event?: CalendarEvent; rooms: Roo
   );
 }
 
-function RoomsManager({ rooms, onChanged }: { rooms: Room[]; onChanged: () => void }) {
+function RoomsManager({ rooms, gere, onChanged }: { rooms: Room[]; gere: (unidade?: string) => boolean; onChanged: () => void }) {
   const { run, pending } = useAction();
   const [edit, setEdit] = useState<Room | null>(null);
 
@@ -120,6 +122,7 @@ function RoomsManager({ rooms, onChanged }: { rooms: Room[]; onChanged: () => vo
       capacity: Number(fd.get("capacity") ?? 0) || 0,
       resources: String(fd.get("resources") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
       active: fd.get("active") === "on",
+      unidade_id: String(fd.get("unidade_id") ?? "") || null,
     };
     const ok = await run(() => (edit ? apiClient.put(`v1/calendar/rooms/${edit.id}`, payload) : apiClient.post("v1/calendar/rooms", payload)), "Sala salva");
     if (ok) {
@@ -140,14 +143,16 @@ function RoomsManager({ rooms, onChanged }: { rooms: Room[]; onChanged: () => vo
               {!r.active && <Badge tone="warning" className="ml-1">Inativa</Badge>}
               {r.resources.length > 0 && <span className="block text-xs text-muted">{r.resources.join(", ")}</span>}
             </span>
-            <span className="flex gap-1">
-              <Button variant="ghost" size="sm" aria-label={`Editar ${r.name}`} onClick={() => setEdit(r)}>
-                <Pencil size={14} aria-hidden="true" />
-              </Button>
-              <ConfirmButton aria-label={`Excluir ${r.name}`} title={`Excluir a sala "${r.name}"?`} confirmLabel="Excluir" onConfirm={() => run(() => apiClient.delete(`v1/calendar/rooms/${r.id}`), "Sala excluída").then(onChanged)}>
-                <Trash2 size={14} aria-hidden="true" />
-              </ConfirmButton>
-            </span>
+            {gere(r.unidade_id) && (
+              <span className="flex gap-1">
+                <Button variant="ghost" size="sm" aria-label={`Editar ${r.name}`} onClick={() => setEdit(r)}>
+                  <Pencil size={14} aria-hidden="true" />
+                </Button>
+                <ConfirmButton aria-label={`Excluir ${r.name}`} title={`Excluir a sala "${r.name}"?`} confirmLabel="Excluir" onConfirm={() => run(() => apiClient.delete(`v1/calendar/rooms/${r.id}`), "Sala excluída").then(onChanged)}>
+                  <Trash2 size={14} aria-hidden="true" />
+                </ConfirmButton>
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -158,6 +163,7 @@ function RoomsManager({ rooms, onChanged }: { rooms: Room[]; onChanged: () => vo
           <Input id="room-location" name="location" label="Localização" maxLength={200} defaultValue={edit?.location} />
           <Input id="room-capacity" name="capacity" type="number" min={0} label="Capacidade" defaultValue={edit?.capacity ?? 0} />
         </div>
+        <UnidadeDonaSelect id="room-unidade" permission="calendar:manage" defaultValue={edit?.unidade_id} />
         <Input id="room-resources" name="resources" label="Recursos (separados por vírgula)" defaultValue={edit?.resources.join(", ")} placeholder="projetor, videoconferência" />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="active" defaultChecked={edit?.active ?? true} className="h-4 w-4 accent-primary" /> Ativa
@@ -192,6 +198,11 @@ export default function AgendaPage() {
   const to = new Date(month.getFullYear(), month.getMonth() + 1, 1).toISOString();
   const events = useApiQuery<CalendarEvent[]>(withQuery("v1/calendar/events", { from, to, room_id: roomFilter }));
   const rooms = useApiQuery<Room[]>("v1/calendar/rooms");
+  // calendar:manage vale na unidade dona da sala (ADR 013); sala e evento
+  // sem dona são institucionais — só a gestão global.
+  const tree = useApiQuery<OrgTree[]>(can("calendar:manage") ? "v1/iam/org-tree" : null);
+  const geridas = unidadesGeridas(me, tree.data, "calendar:manage");
+  const gere = (unidade?: string) => can("calendar:manage") && (geridas.global || (!!unidade && geridas.unidades.has(unidade)));
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -202,7 +213,7 @@ export default function AgendaPage() {
     return [...map.entries()];
   }, [events.data]);
 
-  const canEdit = (e: CalendarEvent) => e.organizer_id === me?.id || can("calendar:manage");
+  const canEdit = (e: CalendarEvent) => e.organizer_id === me?.id || gere(rooms.data?.find((r) => r.id === e.room_id)?.unidade_id);
   const monthLabel = month.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   return (
@@ -320,7 +331,7 @@ export default function AgendaPage() {
         )}
       </Dialog>
       <Dialog open={roomsOpen} onClose={() => setRoomsOpen(false)} title="Salas de reunião" size="xl">
-        {roomsOpen && <RoomsManager rooms={rooms.data ?? []} onChanged={() => void rooms.mutate()} />}
+        {roomsOpen && <RoomsManager rooms={rooms.data ?? []} gere={gere} onChanged={() => void rooms.mutate()} />}
       </Dialog>
     </div>
   );

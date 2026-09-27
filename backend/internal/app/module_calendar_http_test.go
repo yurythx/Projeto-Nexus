@@ -100,3 +100,40 @@ func TestCalendarRules(t *testing.T) {
 	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/rooms", admin, `{"name":"`+dup+`"}`)
 	h.expect(http.StatusConflict, http.MethodPost, "/api/v1/calendar/rooms", admin, `{"name":"`+dup+`"}`)
 }
+
+// calendar:manage com escopo (ADR 013): gere as salas da unidade coberta
+// (e subunidades) e modera os eventos reservados nelas; sala e evento sem
+// dona são institucionais.
+func TestCalendarGestaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	gestorA := h.gestorEm(t, o.a, "calendar:manage")
+	_, ana := h.user("nexus-user")
+	sala := func(unidade string) string {
+		body := `{"name":"Sala ` + uuid.NewString()[:8] + `"`
+		if unidade != "" {
+			body += `,"unidade_id":"` + unidade + `"`
+		}
+		return body + `}`
+	}
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/calendar/rooms", gestorA, sala(o.b))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/calendar/rooms", gestorA, sala(""))
+	deSub := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/rooms", gestorA, sala(o.sub)))
+	deB := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/rooms", admin, sala(o.b)))
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/calendar/rooms/"+deB.ID, gestorA, sala(o.a))
+
+	base := time.Now().UTC().Add(96 * time.Hour).Truncate(time.Hour)
+	evento := func(room string, d time.Duration) string {
+		return `{"title":"Privado","visibility":"private","room_id":"` + room + `","starts_at":"` + base.Add(d).Format(time.RFC3339) +
+			`","ends_at":"` + base.Add(d+time.Hour).Format(time.RFC3339) + `"}`
+	}
+	naSub := data[eventResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/events", ana, evento(deSub.ID, 0)))
+	emB := data[eventResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/calendar/events", ana, evento(deB.ID, 0)))
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/calendar/events/"+naSub.ID, gestorA, "")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/calendar/events/"+emB.ID, gestorA, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/calendar/events/"+emB.ID+"/cancel", gestorA, "")
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/calendar/events/"+naSub.ID+"/cancel", gestorA, "")
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/calendar/rooms/"+deB.ID, gestorA, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/calendar/rooms/"+deSub.ID, gestorA, "")
+}

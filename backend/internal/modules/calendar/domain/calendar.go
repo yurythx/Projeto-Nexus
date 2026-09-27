@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
@@ -19,6 +20,9 @@ var (
 	ErrInvalidValue = errors.New("calendar: valor fora do permitido")
 	ErrCancelled    = errors.New("calendar: evento cancelado não pode ser alterado; crie um novo")
 	ErrRoomInUse    = errors.New("calendar: a sala tem reservas futuras; desative-a em vez de excluir")
+	// ErrOutOfScope: calendar:manage não cobre a unidade dona da sala (a
+	// atual ou a nova) — ADR 013.
+	ErrOutOfScope = errors.New("calendar: sala fora do seu escopo de gestão")
 )
 
 // MaxRange limita consultas de período (evita varreduras gigantes).
@@ -26,14 +30,15 @@ const MaxRange = 93 * 24 * time.Hour
 
 // Room é uma sala reservável.
 type Room struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Location  string    `json:"location"`
-	Capacity  int       `json:"capacity"`
-	Resources []string  `json:"resources"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	Name      string     `json:"name"`
+	Location  string     `json:"location"`
+	Capacity  int        `json:"capacity"`
+	Resources []string   `json:"resources"`
+	Active    bool       `json:"active"`
+	UnidadeID *uuid.UUID `json:"unidade_id,omitempty"` // dona (ADR 013); nil = institucional
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // Event é um evento/reserva.
@@ -53,7 +58,20 @@ type Event struct {
 	OrganizerName string     `json:"organizer_name"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	RoomUnidadeID *uuid.UUID `json:"-"` // dona da sala: quem modera o evento (ADR 013)
 }
+
+// Dona é a posição de um recurso da Agenda para calendar:manage: a unidade
+// dona da sala; sem ela, institucional (só a gestão global).
+func Dona(unidade *uuid.UUID) auth.Target {
+	if unidade == nil {
+		return auth.Target{}
+	}
+	return auth.InUnidade(*unidade)
+}
+
+// Posicao é a posição do evento: a da sala reservada; sem sala, institucional.
+func (e Event) Posicao() auth.Target { return Dona(e.RoomUnidadeID) }
 
 // Busy é um intervalo ocupado de uma sala.
 type Busy struct {
@@ -68,7 +86,8 @@ type EventFilter struct {
 	From, To      time.Time
 	RoomID        *uuid.UUID
 	ViewerID      uuid.UUID
-	SeeAll        bool // calendar:manage enxerga eventos privados de terceiros
+	SeeAll        bool        // calendar:manage global enxerga eventos privados de terceiros
+	SeeUnidades   []uuid.UUID // com escopo: os privados das salas destas unidades
 	OnlyPublic    bool
 	IncludeCancel bool
 }
@@ -83,7 +102,9 @@ func ValidateRange(start, end time.Time) error {
 
 // Repository é a porta de persistência.
 type Repository interface {
-	ListRooms(ctx context.Context, db database.DBTX, onlyActive bool) ([]Room, error)
+	// ListRooms lista as salas; com onlyActive, as inativas só aparecem se
+	// forem de uma das unidades dadas (gestão com escopo).
+	ListRooms(ctx context.Context, db database.DBTX, onlyActive bool, unidades []uuid.UUID) ([]Room, error)
 	GetRoom(ctx context.Context, db database.DBTX, id uuid.UUID) (Room, error)
 	SaveRoom(ctx context.Context, db database.DBTX, r Room) (Room, error)
 	DeleteRoom(ctx context.Context, db database.DBTX, id uuid.UUID) error
