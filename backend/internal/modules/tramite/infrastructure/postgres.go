@@ -48,10 +48,21 @@ func (r *Repository) Tipos(ctx context.Context, db database.DBTX) ([]domain.Tipo
 	return out, rows.Err()
 }
 
-// TipoAtivo reporta se o tipo existe e aceita novos processos.
+// TipoAtivo reporta se o tipo existe e aceita novos processos. FOR SHARE:
+// ninguém exclui o tipo entre esta checagem e a gravação do processo.
 func (r *Repository) TipoAtivo(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
 	var ok bool
-	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM tramite_tipos WHERE id = $1 AND ativo)`, id).Scan(&ok)
+	err := db.QueryRow(ctx, `SELECT COALESCE((SELECT ativo FROM tramite_tipos WHERE id = $1 FOR SHARE), false)`, id).Scan(&ok)
+	return ok, wrap(err)
+}
+
+// UnidadeAtiva reporta se a unidade existe e ela e a entidade estão ativas
+// (docs/REGRAS_DE_NEGOCIO.md §2). FOR SHARE: ninguém exclui nem desativa a
+// unidade entre esta checagem e a gravação.
+func (r *Repository) UnidadeAtiva(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `SELECT COALESCE((SELECT u.ativo AND e.ativo FROM unidades u JOIN entidades e ON e.id = u.entidade_id
+		WHERE u.id = $1 FOR SHARE OF u, e), false)`, id).Scan(&ok)
 	return ok, wrap(err)
 }
 

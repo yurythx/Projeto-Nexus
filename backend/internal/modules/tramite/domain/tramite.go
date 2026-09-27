@@ -33,6 +33,9 @@ var (
 	ErrPublicGrant = errors.New("tramite: processo público não usa credencial de acesso")
 	// ErrInactiveTipo: tipos desativados não aceitam novos processos.
 	ErrInactiveTipo = errors.New("tramite: tipo de processo inexistente ou desativado")
+	// ErrInactiveUnidade: unidade (ou a entidade dela) inexistente ou
+	// desativada não abre nem recebe processos.
+	ErrInactiveUnidade = errors.New("tramite: unidade inexistente ou desativada")
 )
 
 // Níveis de sigilo.
@@ -192,6 +195,9 @@ type Filter struct {
 type Repository interface {
 	Tipos(ctx context.Context, db database.DBTX) ([]Tipo, error)
 	TipoAtivo(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
+	// UnidadeAtiva reporta se a unidade existe e ela e a entidade estão
+	// ativas, travando as duas linhas até o fim da transação.
+	UnidadeAtiva(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error)
 	NextNumero(ctx context.Context, db database.DBTX, ano int) (int, error)
 	Insert(ctx context.Context, db database.DBTX, p Processo) error
 	Get(ctx context.Context, db database.DBTX, id uuid.UUID, forUpdate bool) (Processo, error)

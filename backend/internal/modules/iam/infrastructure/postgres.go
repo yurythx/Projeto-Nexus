@@ -463,10 +463,12 @@ func (r *Repository) UserPermissions(ctx context.Context, db database.DBTX, id u
 	err := db.QueryRow(ctx, `
 		WITH u AS (SELECT roles, groups FROM users WHERE id = $1),
 		grants AS (
-			SELECT unnest(p.permissoes) AS perm FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo WHERE s.user_id = $1
+			SELECT unnest(p.permissoes) AS perm FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo
+			 WHERE s.user_id = $1 AND nexus_scope_active(s.entidade_id, s.unidade_id, s.departamento_id)
 			UNION
 			SELECT unnest(p.permissoes) FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo, u
 			 WHERE lower(m.ad_group) = ANY (SELECT lower(g) FROM unnest(u.groups) g)
+			   AND nexus_scope_active(m.entidade_id, m.unidade_id, m.departamento_id)
 			UNION
 			SELECT '*' FROM u WHERE $2 = ANY (u.roles)
 		)

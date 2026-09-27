@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ import (
 // "protocolo" (tramite:create + tramite:route).
 type tramiteFixture struct {
 	h                  *apiHarness
-	admin, tipo        string
+	admin, tipo, ent   string
 	unA, unB           string
 	anaA, carlosA      string
 	betoB, semLotacao  string
@@ -30,6 +31,7 @@ func newTramiteFixture(t *testing.T) *tramiteFixture {
 	ctx := context.Background()
 	sfx := uuid.NewString()[:6]
 	ent := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", f.admin, `{"nome":"Órgão `+sfx+`"}`))
+	f.ent = ent.ID
 	f.unA = data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", f.admin,
 		`{"entidade_id":"`+ent.ID+`","nome":"Protocolo `+sfx+`","sigla":"PA`+sfx+`"}`)).ID
 	f.unB = data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", f.admin,
@@ -428,6 +430,35 @@ func TestTramiteFluxoDeTrabalho(t *testing.T) {
 
 // Identificadores malformados na URL são recusados antes de qualquer
 // acesso ao banco, e a busca respeita a indisponibilidade do banco.
+// Unidade (ou entidade) desativada não abre nem recebe processos — nem por
+// quem tem tramite:manage — e quem só tinha lotação nela perde o perfil.
+func TestTramiteUnidadeDesativada(t *testing.T) {
+	f := newTramiteFixture(t)
+	h := f.h
+	proc := f.abrir(t, f.anaA, "publico", f.unA, "Processo para unidade desativada")
+	unidade := func(nome string, ativo bool) string {
+		return fmt.Sprintf(`{"entidade_id":"%s","nome":"%s","ativo":%t}`, f.ent, nome, ativo)
+	}
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/iam/unidades/"+f.unB, f.admin, unidade("Jurídico desativado", false))
+
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/tramitar", f.anaA,
+		`{"para_unidade_id":"`+f.unB+`","despacho":"Para unidade desativada"}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/tramite/processos", f.admin,
+		`{"tipo_id":"`+f.tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+f.unB+`"}`)
+	// Beto só tinha lotação no Jurídico: sem ela, nem protocolo ele é mais.
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/tramite/processos", f.betoB,
+		`{"tipo_id":"`+f.tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+f.unB+`"}`)
+
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/iam/unidades/"+f.unB, f.admin, unidade("Jurídico", true))
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/tramite/processos/"+proc.ID+"/tramitar", f.anaA,
+		`{"para_unidade_id":"`+f.unB+`","despacho":"Reativada"}`)
+
+	// Entidade desativada: as unidades dela também não servem.
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/iam/entidades/"+f.ent, f.admin, `{"nome":"Órgão desativado","ativo":false}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/tramite/processos", f.admin,
+		`{"tipo_id":"`+f.tipo+`","assunto":"x","sigilo":"publico","unidade_origem_id":"`+f.unA+`"}`)
+}
+
 func TestTramiteRejectsMalformedIDs(t *testing.T) {
 	f := newTramiteFixture(t)
 	for _, c := range []struct{ method, path, body string }{

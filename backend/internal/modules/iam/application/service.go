@@ -184,12 +184,15 @@ func (s *Service) ListEntidades(ctx context.Context) ([]domain.Entidade, error) 
 }
 
 // SaveEntidade cria (ID nil) ou atualiza uma entidade.
+// SaveEntidade/SaveUnidade/SaveDepartamento invalidam o cache do IAM: o
+// "ativo" de cada nível liga ou desliga as lotações e mapeamentos nele
+// (nexus_scope_active, migration 000126).
 func (s *Service) SaveEntidade(ctx context.Context, in domain.Entidade) (domain.Entidade, error) {
 	if in.Slug == "" {
 		in.Slug = modkit.Slugify(in.Nome)
 	}
 	var out domain.Entidade
-	err := s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		var before any
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
@@ -224,7 +227,7 @@ func (s *Service) SaveUnidade(ctx context.Context, in domain.Unidade) (domain.Un
 		in.Slug = modkit.Slugify(in.Nome)
 	}
 	var out domain.Unidade
-	err := s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		var before any
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
@@ -283,7 +286,7 @@ func (s *Service) SaveDepartamento(ctx context.Context, in domain.Departamento) 
 		in.Slug = modkit.Slugify(in.Nome)
 	}
 	var out domain.Departamento
-	err := s.tx(ctx, false, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		var before any
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()

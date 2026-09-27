@@ -84,6 +84,13 @@ func (f *faultRepo) TipoAtivo(ctx context.Context, db database.DBTX, id uuid.UUI
 	defer f.post(ctx, db)
 	return f.Repository.TipoAtivo(ctx, db, id)
 }
+func (f *faultRepo) UnidadeAtiva(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	if err := f.hook(ctx, db, "UnidadeAtiva"); err != nil {
+		return false, err
+	}
+	defer f.post(ctx, db)
+	return f.Repository.UnidadeAtiva(ctx, db, id)
+}
 func (f *faultRepo) NextNumero(ctx context.Context, db database.DBTX, ano int) (int, error) {
 	if err := f.hook(ctx, db, "NextNumero"); err != nil {
 		return 0, err

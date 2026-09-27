@@ -35,7 +35,7 @@ const ACAO: Record<Acao, { title: string; path: string; ok: string }> = {
 function DespachoForm({ processo, acao, onDone }: { processo: ProcessoView; acao: Acao; onDone: () => void }) {
   const tree = useApiQuery<OrgTree[]>(acao === "tramitar" ? "v1/iam/org-tree" : null);
   const { run, pending } = useAction();
-  const unidades = (tree.data ?? []).flatMap((e) => e.unidades.filter((u) => u.ativo && u.id !== processo.unidade_atual_id));
+  const unidades = (tree.data ?? []).filter((e) => e.ativo).flatMap((e) => e.unidades.filter((u) => u.ativo && u.id !== processo.unidade_atual_id));
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

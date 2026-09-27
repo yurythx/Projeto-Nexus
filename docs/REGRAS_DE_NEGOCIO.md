@@ -114,17 +114,29 @@ saúde, filial, sede.
   depende, depois o item.
 
   **Bloqueiam a exclusão:**
-  - unidades de uma entidade e departamentos de uma unidade;
+  - unidades de uma entidade, departamentos de uma unidade e subunidades
+    de uma unidade-mãe;
   - lotações e mapeamentos de grupo que apontam para o item;
   - processos do Trâmite (origem, unidade atual e histórico).
 
   **Não bloqueiam; a referência é apenas limpa:**
   - unidade responsável de um serviço do Catálogo;
   - lotação exibida no Diretório;
-  - departamento de uma sala do Mercúrio;
-  - unidade-mãe das subunidades (elas viram unidades de topo).
-- **"Ativo":** hoje só controla o que aparece no **Diretório** (setores
-  públicos e busca de setores). Ver os [pontos de atenção](#8-pontos-de-atenção-comportamento-atual).
+  - departamento de uma sala do Mercúrio.
+- **"Ativo" — desativar é tirar de operação sem apagar:**
+  - lotações e mapeamentos de grupo cujo escopo tenha entidade, unidade ou
+    departamento desativado **deixam de conceder** o perfil, na hora
+    (salvar a estrutura invalida o cache do IAM); reativar devolve;
+  - desativar a entidade vale para tudo que está abaixo dela;
+  - o Trâmite recusa (`422`) abrir processo em unidade desativada, ou de
+    entidade desativada, e tramitar para ela — inclusive para quem tem
+    `tramite:manage`. Processos que já estão lá continuam consultáveis;
+  - o Diretório e as telas do Trâmite deixam de oferecer o que está
+    desativado.
+
+  A regra do escopo ativo é única, `nexus_scope_active` (migration 000126),
+  usada tanto pelo cálculo de permissões por requisição quanto pela tela de
+  usuários.
 - Toda alteração é auditada com o antes e o depois.
 - Quem administra: permissão `iam:manage`.
 
@@ -275,9 +287,10 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 - **Estados:** `aberto` → `em_tramitacao` → `concluido` → `arquivado`.
   Reabrir (`tramite:manage`) volta para `em_tramitacao`. Só se arquiva o
   que está **concluído**.
-- **Abrir:** exige `tramite:create` e lotação na unidade de origem.
+- **Abrir:** exige `tramite:create` e lotação na unidade de origem, que
+  precisa estar ativa (e a entidade dela também).
 - **Tramitar:** exige `tramite:route`, o processo na sua unidade e um
-  destino diferente da unidade atual.
+  destino ativo, diferente da unidade atual.
 - **Sigilo:**
 
   | Sigilo | Quem vê |
@@ -435,20 +448,16 @@ Comportamentos do código hoje que merecem decisão de quem administra:
 1. **O escopo não limita permissões fora de Trâmite, Arquivos e
    Mercúrio** (seção 5). Perfis de gestão com escopo valem para a
    plataforma toda.
-2. **"Ativo" em entidade, unidade e departamento só afeta o Diretório.**
-   Lotações numa unidade desativada **continuam dando acesso**, e o
-   Trâmite **aceita** abrir processo e tramitar para uma unidade
-   desativada. Recomendação: recusar unidade ou entidade inativa como
-   origem ou destino no Trâmite e ignorar lotações nelas no IAM.
-3. **Processo sigiloso não é visto nem por `tramite:manage`.** É
+2. **Processo sigiloso não é visto nem por `tramite:manage`.** É
    intencional (só autor e credenciados), mas quem administra precisa
    saber.
-4. **Reabrir processo exige `tramite:manage`,** que nenhum perfil de
+3. **Reabrir processo exige `tramite:manage`,** que nenhum perfil de
    sistema tem além do administrador. O Protocolo conclui e arquiva, mas
    não reabre.
-5. **Sem isolamento entre entidades** (seção 6): uma implantação serve a
+4. **Sem isolamento entre entidades** (seção 6): uma implantação serve a
    uma organização (que pode ter várias entidades), não a várias
    organizações independentes.
-6. **Excluir uma unidade-mãe não é bloqueado pelas subunidades:** elas
-   perdem a mãe e viram unidades de topo, sem aviso. Se a hierarquia
-   importa, reatribua as subunidades antes.
+
+Corrigidos (antes eram pontos de atenção): estrutura desativada seguia
+dando acesso e recebendo processos, e excluir uma unidade-mãe deixava as
+subunidades sem mãe em silêncio — ver a seção 2.4.

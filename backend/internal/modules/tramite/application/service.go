@@ -66,7 +66,7 @@ func MapError(err error) error {
 	case errors.Is(err, domain.ErrInvalidState), errors.Is(err, domain.ErrDocumentState),
 		errors.Is(err, domain.ErrClosed), errors.Is(err, domain.ErrPendingSignature):
 		return apperrors.Conflict(err.Error())
-	case errors.Is(err, domain.ErrPublicGrant), errors.Is(err, domain.ErrInactiveTipo):
+	case errors.Is(err, domain.ErrPublicGrant), errors.Is(err, domain.ErrInactiveTipo), errors.Is(err, domain.ErrInactiveUnidade):
 		return apperrors.Validation(err.Error())
 	case errors.Is(err, domain.ErrSignatureOff):
 		return apperrors.FeatureDisabled(err.Error())
@@ -143,6 +143,12 @@ func (s *Service) Abrir(ctx context.Context, identity auth.Identity, in AbrirInp
 		if !ativo {
 			return domain.ErrInactiveTipo
 		}
+		if ativo, err = s.repo.UnidadeAtiva(ctx, tx, in.UnidadeOrigemID); err != nil {
+			return err
+		}
+		if !ativo {
+			return domain.ErrInactiveUnidade
+		}
 		ano := time.Now().Year()
 		seq, err := s.repo.NextNumero(ctx, tx, ano)
 		if err != nil {
@@ -152,9 +158,6 @@ func (s *Service) Abrir(ctx context.Context, identity auth.Identity, in AbrirInp
 			Assunto: strings.TrimSpace(in.Assunto), Interessado: in.Interessado, Descricao: in.Descricao, Sigilo: in.Sigilo,
 			Status: domain.StatusAberto, UnidadeOrigemID: in.UnidadeOrigemID, CreatedBy: identity.UserID}
 		if err := s.repo.Insert(ctx, tx, p); err != nil {
-			if database.IsForeignKeyViolation(err) {
-				return apperrors.Validation("tipo de processo ou unidade inexistente")
-			}
 			return err
 		}
 		uid := identity.UserID
@@ -232,10 +235,9 @@ func (s *Service) transition(ctx context.Context, identity auth.Identity, id uui
 		if err := mutate(ctx, tx, &p); err != nil {
 			return err
 		}
+		// A unidade de destino já foi conferida e travada (UnidadeAtiva):
+		// não há violação de FK possível aqui.
 		if err := s.repo.Update(ctx, tx, p); err != nil {
-			if database.IsForeignKeyViolation(err) {
-				return apperrors.Validation("unidade de destino inexistente")
-			}
 			return err
 		}
 		uid := identity.UserID
@@ -261,12 +263,19 @@ func (s *Service) transition(ctx context.Context, identity auth.Identity, id uui
 
 // Tramitar encaminha o processo a outra unidade (tramite:route na rota).
 func (s *Service) Tramitar(ctx context.Context, identity auth.Identity, id, para uuid.UUID, despacho string) (domain.Processo, error) {
-	return s.transition(ctx, identity, id, "tramitacao", EventTramitado, despacho, func(_ context.Context, _ pgx.Tx, p *domain.Processo) error {
+	return s.transition(ctx, identity, id, "tramitacao", EventTramitado, despacho, func(ctx context.Context, tx pgx.Tx, p *domain.Processo) error {
 		if domain.Encerrado(p.Status) {
 			return domain.ErrInvalidState
 		}
 		if p.UnidadeAtualID == para {
 			return apperrors.Validation("o processo já está nesta unidade")
+		}
+		ativa, err := s.repo.UnidadeAtiva(ctx, tx, para)
+		if err != nil {
+			return err
+		}
+		if !ativa {
+			return domain.ErrInactiveUnidade
 		}
 		p.UnidadeAtualID, p.Status = para, domain.StatusEmTramitacao
 		return nil

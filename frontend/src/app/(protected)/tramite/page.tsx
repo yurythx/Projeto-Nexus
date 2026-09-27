@@ -24,7 +24,7 @@ import type { OrgTree, Processo, TramiteTipo } from "@/lib/nexus/types";
 
 function useUnidadeOptions() {
   const tree = useApiQuery<OrgTree[]>("v1/iam/org-tree");
-  return (tree.data ?? []).flatMap((e) => e.unidades.filter((u) => u.ativo).map((u) => ({ value: u.id, label: `${u.sigla ? `${u.sigla} — ` : ""}${u.nome}` })));
+  return (tree.data ?? []).filter((e) => e.ativo).flatMap((e) => e.unidades.filter((u) => u.ativo).map((u) => ({ value: u.id, label: `${u.sigla ? `${u.sigla} — ` : ""}${u.nome}` })));
 }
 
 function AbrirProcesso({ onDone }: { onDone: (p: Processo) => void }) {

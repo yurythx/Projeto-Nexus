@@ -11,10 +11,15 @@ import TramitePage from "./page";
 import ProcessoPage from "./[id]/page";
 
 const ORG = [{
-  id: "e1", nome: "Órgão", unidades: [
+  id: "e1", nome: "Órgão", ativo: true, unidades: [
     { id: "u1", nome: "Protocolo", sigla: "PROT", ativo: true, departamentos: [] },
     { id: "u2", nome: "Jurídico", sigla: "", ativo: true, departamentos: [] },
     { id: "u3", nome: "Extinta", sigla: "EXT", ativo: false, departamentos: [] },
+  ],
+}, {
+  // órgão desativado: as unidades dele não servem, mesmo ativas (a API recusa)
+  id: "e2", nome: "Órgão extinto", ativo: false, unidades: [
+    { id: "u4", nome: "Unidade do órgão extinto", sigla: "UOE", ativo: true, departamentos: [] },
   ],
 }];
 
@@ -70,6 +75,7 @@ describe("Trâmite — processos", () => {
     // unidade inativa não aparece; a do usuário vem selecionada
     await waitFor(() => expect(within(dialog).getByLabelText("Unidade de origem *")).toHaveValue("u2"));
     expect(within(dialog).queryByRole("option", { name: /Extinta/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("option", { name: /órgão extinto/ })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("option", { name: "PROT — Protocolo" })).toBeInTheDocument();
 
     await userEvent.selectOptions(within(dialog).getByLabelText("Tipo *"), "t1");

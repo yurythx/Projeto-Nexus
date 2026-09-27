@@ -26,8 +26,9 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 	page := pagination.New(1, 10, 100)
 
 	calls := map[string]func(db database.DBTX) error{
-		"Tipos":     func(db database.DBTX) error { _, err := r.Tipos(ctx, db); return err },
-		"TipoAtivo": func(db database.DBTX) error { _, err := r.TipoAtivo(ctx, db, id); return err },
+		"Tipos":        func(db database.DBTX) error { _, err := r.Tipos(ctx, db); return err },
+		"TipoAtivo":    func(db database.DBTX) error { _, err := r.TipoAtivo(ctx, db, id); return err },
+		"UnidadeAtiva": func(db database.DBTX) error { _, err := r.UnidadeAtiva(ctx, db, id); return err },
 		"NextNumero": func(db database.DBTX) error {
 			_, err := r.NextNumero(ctx, db, 2026)
 			return err
@@ -68,7 +69,7 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 	}
 
 	// Linhas ilegíveis: consultas de lista e de linha única falham.
-	for _, name := range []string{"Tipos", "TipoAtivo", "NextNumero", "Get", "HasGrant", "ListVisible", "Grants", "Documentos",
+	for _, name := range []string{"Tipos", "TipoAtivo", "UnidadeAtiva", "NextNumero", "Get", "HasGrant", "ListVisible", "Grants", "Documentos",
 		"GetDocumento", "DocumentoByEnvelope", "PendingSignatures", "Movimentos"} {
 		if err := calls[name](dbtest.ScanFail{}); err == nil {
 			t.Errorf("%s com linha ilegível deveria falhar", name)

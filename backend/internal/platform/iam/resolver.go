@@ -213,10 +213,12 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 		SELECT p.slug, p.permissoes, s.entidade_id, s.unidade_id, s.departamento_id, 'manual'
 		  FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo
 		 WHERE s.user_id = $1
+		   AND nexus_scope_active(s.entidade_id, s.unidade_id, s.departamento_id)
 		UNION ALL
 		SELECT p.slug, p.permissoes, m.entidade_id, m.unidade_id, m.departamento_id, 'ad'
 		  FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo
-		 WHERE lower(m.ad_group) = ANY($2)`
+		 WHERE lower(m.ad_group) = ANY($2)
+		   AND nexus_scope_active(m.entidade_id, m.unidade_id, m.departamento_id)`
 	rows, err := r.db.Query(ctx, q, userID, groups)
 	if err != nil {
 		return nil, nil, fmt.Errorf("iam: load grants: %w", err)
