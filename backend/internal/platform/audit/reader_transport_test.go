@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,11 +42,11 @@ func TestReaderFiltersAndEscapesWildcards(t *testing.T) {
 			t.Errorf("%q: %% e _ digitados valem como texto, não como curinga (%d, %v)", f, n, err)
 		}
 	}
-	got, err := r.Get(ctx, recs[0].ID)
+	got, err := r.Get(ctx, recs[0].ID, nil)
 	if err != nil || got.ResourceID != sfx || got.Hash == "" {
 		t.Fatalf("Get: %+v %v", got, err)
 	}
-	if _, err := r.Get(ctx, uuid.New()); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := r.Get(ctx, uuid.New(), nil); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("Get inexistente: %v", err)
 	}
 	if res, err := r.Verify(ctx, 1, 5); err != nil || res.Checked > 5 {
@@ -89,7 +90,7 @@ func router(reader *Reader, exp *Exporter) http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			next.ServeHTTP(w, req.WithContext(auth.WithIdentity(req.Context(), auth.Identity{Permissions: []string{"*"}})))
+			next.ServeHTTP(w, req.WithContext(auth.WithIdentity(req.Context(), auth.Identity{Permissions: []string{"*"}, Roles: []string{auth.RoleAdmin}})))
 		})
 	})
 	RegisterRoutes(r, NewHandlers(reader, exp, quietLogger(), 100))
@@ -144,5 +145,76 @@ func TestHandlers(t *testing.T) {
 	noAudit := router(NewReader(&dbtest.Seq{Row: ok}), NewExporter(dbtest.Fail{}, quietLogger()))
 	if rec := get(noAudit, "/audit/verify"); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"valid":true`) {
 		t.Errorf("verificação sem trilha: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Área (ADR 013): o registro entra na área pela lotação do autor gravada
+// nele — unidade, departamento ou entidade; sem lotação, só a trilha toda.
+func TestReaderRestritoAArea(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	sfx := uuid.NewString()[:8]
+	ent, un, dep := uuid.New(), uuid.New(), uuid.New()
+	ids := map[string]uuid.UUID{}
+	for nome, scopes := range map[string]any{
+		"unidade":      []map[string]any{{"entidade_id": ent, "unidade_id": un}},
+		"departamento": []map[string]any{{"departamento_id": dep}},
+		"entidade":     []map[string]any{{"entidade_id": ent}},
+		"sem-lotacao":  nil,
+		"invalido":     "x",
+	} {
+		e := Entry{Action: "area." + sfx, ResourceID: nome}
+		if scopes != nil {
+			e.EntityContext = map[string]any{"scopes": scopes}
+		}
+		if err := NewWriter(pool).Record(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := NewReader(pool)
+	p := pagination.New(1, 10, 10)
+	all, _, err := r.List(ctx, Filter{Action: "area." + sfx}, p)
+	if err != nil || len(all) != 5 {
+		t.Fatalf("trilha toda: %d %v", len(all), err)
+	}
+	for _, rec := range all {
+		ids[rec.ResourceID] = rec.ID
+	}
+	veem := func(area Area) []string {
+		recs, _, err := r.List(ctx, Filter{Action: "area." + sfx, Area: &area}, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, rec := range recs {
+			out = append(out, rec.ResourceID)
+		}
+		slices.Sort(out)
+		return out
+	}
+	if got := veem(Area{Unidades: []uuid.UUID{un}}); !slices.Equal(got, []string{"unidade"}) {
+		t.Errorf("área da unidade: %v", got)
+	}
+	if got := veem(Area{Departamentos: []uuid.UUID{dep}}); !slices.Equal(got, []string{"departamento"}) {
+		t.Errorf("área do departamento: %v", got)
+	}
+	if got := veem(Area{Entidades: []uuid.UUID{ent}}); !slices.Equal(got, []string{"entidade", "unidade"}) {
+		t.Errorf("área da entidade: %v", got)
+	}
+	if got := veem(Area{}); len(got) != 0 {
+		t.Errorf("área vazia: %v", got)
+	}
+	if _, err := r.Get(ctx, ids["unidade"], &Area{Unidades: []uuid.UUID{un}}); err != nil {
+		t.Errorf("detalhe dentro da área: %v", err)
+	}
+	if _, err := r.Get(ctx, ids["sem-lotacao"], &Area{Unidades: []uuid.UUID{un}}); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("detalhe fora da área: %v", err)
+	}
+	if AreaOf(auth.Identity{Roles: []string{auth.RoleAdmin}}) != nil {
+		t.Error("gestão global lê a trilha toda")
+	}
+	escopo := auth.Identity{Scopes: []auth.Scope{{Permissions: []string{"audit:read"}, UnidadeID: &un, Unidades: []uuid.UUID{un}}}}
+	if a := AreaOf(escopo); a == nil || !slices.Equal(a.Unidades, []uuid.UUID{un}) {
+		t.Errorf("audit:read com escopo: %+v", a)
 	}
 }

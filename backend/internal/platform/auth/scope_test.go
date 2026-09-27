@@ -62,7 +62,7 @@ func TestScopeCovers(t *testing.T) {
 func TestCanAndCanGlobal(t *testing.T) {
 	gestorU := Identity{Scopes: []Scope{
 		grant([]string{"blog:*"}, ptr(idE), ptr(idU), nil, idU, idF),
-		grant([]string{"audit:read"}, ptr(idE), ptr(idU), nil, idU, idF), // plataforma com escopo: não vale
+		grant([]string{"monitoring:read"}, ptr(idE), ptr(idU), nil, idU, idF), // plataforma com escopo: não vale
 	}}
 	if !Can(gestorU, PermBlogManage, InUnidade(idF)) {
 		t.Error("curinga blog:* na unidade cobre a subunidade")
@@ -70,11 +70,11 @@ func TestCanAndCanGlobal(t *testing.T) {
 	if Can(gestorU, PermBlogManage, InUnidade(idV)) || Can(gestorU, PermBlogManage, Target{}) {
 		t.Error("gestor da unidade não gerencia a irmã nem o institucional")
 	}
-	if Can(gestorU, PermAuditRead, InUnidade(idU)) || CanGlobal(gestorU, PermAuditRead) || CanGlobal(gestorU, PermBlogManage) {
+	if Can(gestorU, PermMonitoringRead, InUnidade(idU)) || CanGlobal(gestorU, PermMonitoringRead) || CanGlobal(gestorU, PermBlogManage) {
 		t.Error("permissão de plataforma com escopo não vale; nada aqui é global")
 	}
-	global := Identity{Scopes: []Scope{grant([]string{"audit:read", "blog:manage"}, nil, nil, nil)}}
-	if !Can(global, PermAuditRead, Target{}) || !CanGlobal(global, PermAuditRead) || !Can(global, PermBlogManage, InUnidade(idW)) {
+	global := Identity{Scopes: []Scope{grant([]string{"monitoring:read", "blog:manage"}, nil, nil, nil)}}
+	if !Can(global, PermMonitoringRead, Target{}) || !CanGlobal(global, PermMonitoringRead) || !Can(global, PermBlogManage, InUnidade(idW)) {
 		t.Error("concessão global vale em todo lugar, inclusive plataforma")
 	}
 	admin := Identity{Roles: []string{RoleAdmin}}
@@ -100,19 +100,19 @@ func TestCoverageOf(t *testing.T) {
 	if !CoverageOf(Identity{Roles: []string{RoleAdmin}}, PermTramiteManage).All {
 		t.Error("admin cobre tudo")
 	}
-	if c := CoverageOf(id, PermAuditRead); c.All || len(c.Unidades)+len(c.Entidades)+len(c.Departamentos) != 0 {
+	if c := CoverageOf(id, PermMonitoringRead); c.All || len(c.Unidades)+len(c.Entidades)+len(c.Departamentos) != 0 {
 		t.Errorf("permissão de plataforma sem concessão global não cobre nada: %+v", c)
 	}
 }
 
 func TestEffectivePermissions(t *testing.T) {
 	got := EffectivePermissions([]Scope{
-		grant([]string{"audit:read", "users:*"}, nil, nil, nil),                           // global: conta inteira
+		grant([]string{"monitoring:read", "users:*"}, nil, nil, nil),                      // global: conta inteira
 		grant([]string{"*"}, ptr(idE), ptr(idU), nil),                                     // escopo: só as com escopo
 		grant([]string{"tramite:*", "egress:manage"}, ptr(idE), nil, nil),                 // curinga de recurso
 		grant([]string{"modules:manage", "catalog:manage"}, ptr(idE), ptr(idU), ptr(idD)), // plataforma cai
 	})
-	for _, want := range []string{"audit:read", "users:*", "tramite:create", "tramite:route", "tramite:manage", "blog:manage", "catalog:manage", "directory:manage"} {
+	for _, want := range []string{"monitoring:read", "users:*", "tramite:create", "tramite:route", "tramite:manage", "blog:manage", "catalog:manage", "directory:manage"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("faltou %s em %v", want, got)
 		}

@@ -68,6 +68,8 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 			*dst = &t
 		}
 	}
+	identity, _ := auth.IdentityFromContext(r.Context())
+	f.Area = AreaOf(identity)
 	page, _ := strconv.Atoi(q.Get("page"))
 	size, _ := strconv.Atoi(q.Get("page_size"))
 	p := pagination.New(page, size, h.maxPageSize)
@@ -87,7 +89,8 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, r, h.logger, apperrors.BadRequest("id inválido"))
 		return
 	}
-	rec, err := h.reader.Get(r.Context(), id)
+	identity, _ := auth.IdentityFromContext(r.Context())
+	rec, err := h.reader.Get(r.Context(), id, AreaOf(identity))
 	if errors.Is(err, pgx.ErrNoRows) {
 		httputil.WriteError(w, r, h.logger, apperrors.NotFound("registro de auditoria não encontrado"))
 		return

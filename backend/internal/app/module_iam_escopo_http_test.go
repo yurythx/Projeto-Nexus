@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -109,15 +111,54 @@ func TestIAMPermissaoDePlataformaSoGlobal(t *testing.T) {
 	un := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin,
 		`{"entidade_id":"`+ent.ID+`","nome":"Unidade `+sfx+`"}`))
 	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
-		`{"nome":"Auditor `+sfx+`","permissoes":["audit:read"]}`))
+		`{"nome":"Monitor `+sfx+`","permissoes":["monitoring:read"]}`))
 
 	userID, tok := h.user("nexus-user")
 	lot := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+userID.String()+"/lotacoes", admin,
 		`{"perfil_id":"`+perfil.ID+`","unidade_id":"`+un.ID+`"}`))
-	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/monitoring/outbox-stats", tok, "")
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/users/"+userID.String()+"/lotacoes/"+lot.ID, admin, "")
 	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+userID.String()+"/lotacoes", admin, `{"perfil_id":"`+perfil.ID+`"}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/monitoring/outbox-stats", tok, "")
+}
+
+// Auditoria com escopo (ADR 013, fase 3): audit:read numa unidade vê as
+// ações de quem estava lotado na área (ela e as subunidades) quando agiu —
+// na consulta, no detalhe e na exportação. Verificar a cadeia segue global.
+func TestAuditoriaComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	auditorA := h.gestorEm(t, o.a, "audit:read", "audit:verify")
+	naSub := h.gestorEm(t, o.sub, "blog:manage")
+	emB := h.gestorEm(t, o.b, "blog:manage")
+	post := func(tok, unidade string) string {
+		return data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", tok,
+			`{"title":"Post `+uuid.NewString()[:8]+`","summary":"s","body":"b","unidade_id":"`+unidade+`"}`)).ID
+	}
+	daSub, deB := post(naSub, o.sub), post(emB, o.b)
+	type logResp struct {
+		ID string `json:"id"`
+	}
+	logs := func(tok, resource string) []logResp {
+		return data[[]logResp](t, h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs?action=blog.post.created&resource_id="+resource, tok, ""))
+	}
+	if len(logs(auditorA, daSub)) != 1 || len(logs(auditorA, deB)) != 0 {
+		t.Fatal("auditor de A vê as ações de quem é da subunidade, não as de B")
+	}
+	registroB := logs(admin, deB)
+	if len(registroB) != 1 {
+		t.Fatal("a gestão global vê tudo")
+	}
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/audit/logs/"+registroB[0].ID, auditorA, "")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs/"+logs(auditorA, daSub)[0].ID, auditorA, "")
+	hoje := time.Now().UTC().Format("2006-01-02")
+	amanha := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+	export := h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/export?format=json&action=blog.post.created&from="+hoje+"&to="+amanha, auditorA, "").Body.String()
+	if !strings.Contains(export, daSub) || strings.Contains(export, deB) {
+		t.Fatalf("exportação (LAI) restrita à área: %s", export)
+	}
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/verify", auditorA, "")
 }
 
 // Excluir a unidade-mãe com subunidades é recusado (antes as subunidades

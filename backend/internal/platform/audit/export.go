@@ -89,7 +89,8 @@ type exportEnvelope struct {
 }
 
 func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.IdentityFromContext(r.Context()); !ok {
+	identity, ok := auth.IdentityFromContext(r.Context())
+	if !ok {
 		httputil.WriteError(w, r, e.logger, apperrors.Unauthorized("Não autenticado"))
 		return
 	}
@@ -118,9 +119,13 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(resource_type,''), COALESCE(resource_id,''),
 		       COALESCE(correlation_id::text,''), COALESCE(host(ip_address),''),
 		       COALESCE(metadata::text,'{}'), created_at
-		FROM audit_logs
+		FROM audit_logs a
 		WHERE created_at >= $1 AND created_at < $2`)
 	args := []any{from, to}
+	area := AreaOf(identity)
+	if area != nil {
+		sb.WriteString(" AND " + area.cond(&args))
+	}
 	if actionFilter != "" {
 		args = append(args, actionFilter)
 		sb.WriteString(fmt.Sprintf(" AND action = $%d", len(args)))
@@ -218,7 +223,7 @@ func (e *Exporter) handleExport(w http.ResponseWriter, r *http.Request) {
 	entry.ResourceID = meta.Dataset
 	entry.Metadata = map[string]any{
 		"format": format, "window_from": meta.WindowFrom, "window_to": meta.WindowTo,
-		"action_filter": actionFilter, "rows": meta.Rows, "paginated": nextCursor != "",
+		"action_filter": actionFilter, "rows": meta.Rows, "paginated": nextCursor != "", "restrito_a_area": area != nil,
 	}
 	if err := NewWriter(e.db).Record(r.Context(), entry); err != nil {
 		e.logger.Warn("audit: falha ao registrar a própria exportação", slog.Any("error", err))

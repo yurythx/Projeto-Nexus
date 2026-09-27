@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
@@ -43,6 +44,45 @@ type Filter struct {
 	ResourceType string
 	ResourceID   string
 	From, To     *time.Time
+	// Area: nil = a trilha toda (audit:read global).
+	Area *Area
+}
+
+// Area restringe a trilha às ações de quem estava lotado na área quando
+// agiu (ADR 013): a lotação do autor é a gravada no próprio registro
+// (entity_context.scopes), protegida pela cadeia de hash — trocar de
+// lotação depois não reescreve o passado. Ações sem lotação registrada
+// (sistema, contas só globais) ficam só para a gestão global.
+type Area struct {
+	Entidades, Unidades, Departamentos []uuid.UUID
+}
+
+// AreaOf é a área em que identity lê a auditoria; nil = a trilha toda.
+func AreaOf(identity auth.Identity) *Area {
+	c := auth.CoverageOf(identity, auth.PermAuditRead)
+	if c.All {
+		return nil
+	}
+	return &Area{Entidades: c.Entidades, Unidades: c.Unidades, Departamentos: c.Departamentos}
+}
+
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
+}
+
+// cond devolve a condição SQL (sobre o alias "a") e acrescenta os
+// argumentos a args; os placeholders começam em len(*args)+1.
+func (area *Area) cond(args *[]any) string {
+	n := len(*args)
+	*args = append(*args, uuidStrings(area.Entidades), uuidStrings(area.Unidades), uuidStrings(area.Departamentos))
+	return fmt.Sprintf(`EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(a.entity_context->'scopes') = 'array'
+		THEN a.entity_context->'scopes' ELSE '[]'::jsonb END) s
+		WHERE s->>'entidade_id' = ANY($%d::text[]) OR s->>'unidade_id' = ANY($%d::text[]) OR s->>'departamento_id' = ANY($%d::text[]))`,
+		n+1, n+2, n+3)
 }
 
 // VerifyResult é o resultado de audit_verify_chain.
@@ -109,6 +149,9 @@ func (r *Reader) List(ctx context.Context, f Filter, p pagination.Params) ([]Rec
 	if f.To != nil {
 		add("a.created_at < $%d", *f.To)
 	}
+	if f.Area != nil {
+		where = append(where, f.Area.cond(&args))
+	}
 	cond := ""
 	if len(where) > 0 {
 		cond = "WHERE " + strings.Join(where, " AND ")
@@ -138,10 +181,15 @@ func (r *Reader) List(ctx context.Context, f Filter, p pagination.Params) ([]Rec
 	return out, total, rows.Err()
 }
 
-// Get devolve um registro pelo id.
-func (r *Reader) Get(ctx context.Context, id uuid.UUID) (Record, error) {
-	q := fmt.Sprintf(`SELECT %s FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id WHERE a.id = $1`, recordColumns)
-	return scanRecord(r.db.QueryRow(ctx, q, id))
+// Get devolve um registro pelo id (fora da área: pgx.ErrNoRows).
+func (r *Reader) Get(ctx context.Context, id uuid.UUID, area *Area) (Record, error) {
+	args := []any{id}
+	cond := ""
+	if area != nil {
+		cond = " AND " + area.cond(&args)
+	}
+	q := fmt.Sprintf(`SELECT %s FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id WHERE a.id = $1%s`, recordColumns, cond)
+	return scanRecord(r.db.QueryRow(ctx, q, args...))
 }
 
 // Verify recalcula a cadeia SHA-256 a partir de from (1 = desde o início),
