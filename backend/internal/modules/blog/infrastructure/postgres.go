@@ -50,7 +50,7 @@ func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter
 		status = domain.StatusPublished
 	}
 	const where = `WHERE ($1 = 'all' OR p.status = $1) AND ($2 = '' OR p.kind = $2)
-		AND ($3 = '' OR p.search @@ websearch_to_tsquery('portuguese', nexus_unaccent($3)))`
+		AND ($3 = '' OR p.search @@ nexus_search_tsquery('portuguese', $3))`
 	var total int64
 	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, status, f.Kind, f.Query).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
@@ -121,7 +121,7 @@ func (r *Repository) Delete(ctx context.Context, db database.DBTX, id uuid.UUID)
 func (r *Repository) Search(ctx context.Context, db database.DBTX, query string, limit int) ([]domain.Post, []float64, error) {
 	rows, err := db.Query(ctx, `
 		SELECT `+cols+`, ts_rank(p.search, q) AS rank`+from+`,
-		       websearch_to_tsquery('portuguese', nexus_unaccent($1)) q
+		       nexus_search_tsquery('portuguese', $1) q
 		WHERE p.status = 'published' AND p.search @@ q
 		ORDER BY rank DESC LIMIT $2`, query, limit)
 	if err != nil {

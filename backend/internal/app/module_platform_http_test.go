@@ -166,6 +166,34 @@ func TestSearchHTTP(t *testing.T) {
 	}
 }
 
+// Busca por prefixo (nexus_search_tsquery): quem digita o começo das
+// palavras acha o conteúdo — antes "vacina" não achava "vacinação" —,
+// vários prefixos são E, e consulta com operador mantém o sentido.
+func TestSearchPrefixHTTP(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	_, reader := h.user("nexus-user")
+	term := "Zircônio" + strings.ReplaceAll(uuid.NewString()[:6], "-", "")
+
+	post := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"Campanha de vacinação `+term+`","summary":"s","body":"b"}`))
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+post.ID+"/publish", admin, "")
+	page := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", reader, `{"title":"Rotina `+term+`","body":"corpo"}`))
+
+	partial := term[:len(term)-3]
+	res := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+partial, reader, "").Body.String()
+	if !strings.Contains(res, post.ID) || !strings.Contains(res, page.ID) {
+		t.Fatalf("prefixo %q deveria achar blog e wiki: %s", partial, res)
+	}
+	res = h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q=vacina+"+partial, reader, "").Body.String()
+	if !strings.Contains(res, post.ID) || strings.Contains(res, page.ID) {
+		t.Fatalf("prefixos combinados (E) — só o post tem 'vacina…': %s", res)
+	}
+	res = h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+term+"+-campanha", reader, "").Body.String()
+	if strings.Contains(res, post.ID) || !strings.Contains(res, page.ID) {
+		t.Fatalf("exclusão (-campanha) mantém o sentido: %s", res)
+	}
+}
+
 func TestAuditHTTP(t *testing.T) {
 	h := newHarness(t)
 	admin := h.admin()

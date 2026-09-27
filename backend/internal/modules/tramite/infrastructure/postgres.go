@@ -127,7 +127,7 @@ func (r *Repository) ListVisible(ctx context.Context, db database.DBTX, identity
 		AND ($4 = '' OR p.status = $4)
 		AND ($5::uuid IS NULL OR p.unidade_atual_id = $5)
 		AND (NOT $6 OR p.unidade_atual_id = ANY($3::uuid[]))
-		AND ($7 = '' OR p.search @@ websearch_to_tsquery('portuguese', nexus_unaccent($7)) OR starts_with(p.numero, $7))`
+		AND ($7 = '' OR p.search @@ nexus_search_tsquery('portuguese', $7) OR starts_with(p.numero, $7))`
 	args := []any{identity.UserID, auth.HasPermission(identity, auth.PermTramiteManage), unidadesOf(identity),
 		f.Status, f.UnidadeID, f.Mine, f.Query}
 	var total int64

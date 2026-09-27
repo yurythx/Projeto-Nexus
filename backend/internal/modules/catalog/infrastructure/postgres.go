@@ -57,7 +57,7 @@ func wrap(err error) error {
 
 func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter, p pagination.Params) ([]domain.Service, int64, error) {
 	const where = `WHERE ($1 = 'all' OR s.status = $1) AND ($2 = '' OR s.category = $2)
-		AND ($3 = '' OR s.search @@ websearch_to_tsquery('portuguese', nexus_unaccent($3)))`
+		AND ($3 = '' OR s.search @@ nexus_search_tsquery('portuguese', $3))`
 	var total int64
 	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, f.Status, f.Category, f.Query).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
@@ -135,7 +135,7 @@ func (r *Repository) Categories(ctx context.Context, db database.DBTX) ([]domain
 }
 
 func (r *Repository) Search(ctx context.Context, db database.DBTX, query string, limit int) ([]domain.Service, []float64, error) {
-	rows, err := db.Query(ctx, `SELECT `+cols+`, ts_rank(s.search, q)`+from+`, websearch_to_tsquery('portuguese', nexus_unaccent($1)) q
+	rows, err := db.Query(ctx, `SELECT `+cols+`, ts_rank(s.search, q)`+from+`, nexus_search_tsquery('portuguese', $1) q
 		WHERE s.status = 'published' AND s.search @@ q ORDER BY 21 DESC LIMIT $2`, query, limit)
 	if err != nil {
 		return nil, nil, wrap(err)

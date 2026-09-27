@@ -97,7 +97,7 @@ func (r *Reauthenticator) Reauthenticate(ctx context.Context, userID uuid.UUID, 
 		}
 		if json.Unmarshal(raw, &body) == nil && body.Error != "" && body.Error != "invalid_grant" {
 			return "", apperrors.DependencyUnavailable(
-				"reautenticação federada mal configurada no Keycloak: o client "+clientID+" precisa ser confidencial com Direct Access Grants habilitado").
+				"reautenticação federada mal configurada no Keycloak: o client " + clientID + " precisa ser confidencial com Direct Access Grants habilitado").
 				WithCause(fmt.Errorf("keycloak: HTTP %d %s", resp.StatusCode, body.Error))
 		}
 		return "", domain.ErrReauth
