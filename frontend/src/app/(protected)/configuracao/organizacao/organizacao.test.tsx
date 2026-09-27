@@ -26,6 +26,32 @@ const TREE = [
 describe("Configurações > Organização", () => {
   beforeEach(() => resetNavigation());
 
+  it("administração delegada (ADR 013): só a estrutura que cobre; entidades, só a global", async () => {
+    const api = mockBackend({
+      ...identityRoutes({ permissions: ["iam:manage"], scopes: [{ perfil: "p", origem: "manual", entidade_id: "e1", unidade_id: "u0", permissions: ["iam:manage"] }] }),
+      "GET v1/iam/org-tree": {
+        data: [{ ...TREE[0], unidades: [{ ...TREE[0]!.unidades[0], parent_id: "u0" }, { id: "u0", entidade_id: "e1", nome: "Governo", sigla: "", slug: "gov", ativo: true, ad_group: "", email: "", telefone: "", endereco: "", departamentos: [] }] }],
+      },
+      "POST v1/iam/unidades": { data: {} },
+    });
+    renderApp(<OrganizacaoPage />);
+    expect(await screen.findByRole("heading", { name: /Prefeitura/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Nova entidade/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar Prefeitura" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Unidade$/ })).not.toBeInTheDocument();
+    // u0 (a dele): edita, mas não exclui (fica na entidade); u1 (filha): edita e exclui.
+    expect(screen.getByRole("button", { name: "Editar Governo" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Excluir Governo" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir Secretaria de Saúde" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir Vigilância" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Nova subunidade de Governo" }));
+    const d = await screen.findByRole("dialog", { name: "Nova unidade" });
+    await userEvent.type(within(d).getByLabelText("Nome *"), "Ouvidoria");
+    await userEvent.click(within(d).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.to("POST v1/iam/unidades")[0]?.body).toMatchObject({ entidade_id: "e1", parent_id: "u0", nome: "Ouvidoria" }));
+  });
+
   it("mostra a árvore e cria entidade, unidade e departamento", async () => {
     const api = mockBackend({
       ...identityRoutes(),

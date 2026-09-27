@@ -10,8 +10,8 @@ import { useNexus } from "@/lib/nexus/NexusProvider";
 // permissão correspondente (e, no caso do Egress, com o plugin ativo).
 // Esconder a aba é só UX — cada rota da API revalida a permissão (A01).
 export default function ConfiguracaoLayout({ children }: { children: ReactNode }) {
-  const { can, enabled } = useNexus();
-  const tabs = visibleTabs(CONFIG_TABS, can, enabled);
+  const { can, canGlobal, enabled } = useNexus();
+  const tabs = visibleTabs(CONFIG_TABS, can, enabled, canGlobal);
 
   return (
     <div className="flex flex-col gap-6">

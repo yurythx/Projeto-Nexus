@@ -13,6 +13,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { apiClient } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/swr";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import { hasPermission, unidadesGeridas } from "@/lib/nexus/permissions";
 import type { Departamento, Entidade, OrgTree, Unidade } from "@/lib/nexus/types";
 
 type Kind = "entidade" | "unidade" | "departamento";
@@ -92,23 +94,35 @@ export default function OrganizacaoPage() {
   const { data: tree, error, isLoading, mutate } = useApiQuery<OrgTree[]>("v1/iam/org-tree");
   const [editing, setEditing] = useState<Editing | null>(null);
   const { run } = useAction();
+  const { me } = useNexus();
+  // Administração delegada (ADR 013): a global faz tudo; a delegada, só o
+  // que cobre — entidades só a global. A API confere de novo.
+  const geridas = unidadesGeridas(me, tree, "iam:manage");
+  const naEntidade = (entidadeId: string) =>
+    geridas.global ||
+    (me?.scopes ?? []).some((s) => s.entidade_id === entidadeId && !s.unidade_id && !s.departamento_id && hasPermission(s.permissions, "iam:manage"));
+  const naUnidade = (unidadeId?: string) => !!unidadeId && geridas.unidades.has(unidadeId);
 
   const remove = (kind: Kind, id: string) => run(() => apiClient.delete(`${PATH[kind]}/${id}`), `${LABEL[kind]} removida`).then(() => mutate());
 
-  const actions = (kind: Kind, record: Editing["record"] & { id: string; nome: string }) => (
+  const actions = (kind: Kind, record: Editing["record"] & { id: string; nome: string }, pode: { editar: boolean; excluir: boolean }) => (
     <span className="flex shrink-0 items-center gap-1">
-      <Button variant="ghost" size="sm" aria-label={`Editar ${record.nome}`} onClick={() => setEditing({ kind, record })}>
-        <Pencil size={14} aria-hidden="true" />
-      </Button>
-      <ConfirmButton
-        aria-label={`Excluir ${record.nome}`}
-        title={`Excluir ${LABEL[kind].toLowerCase()} "${record.nome}"?`}
-        description="A exclusão é recusada se houver itens vinculados (lotações, mapeamentos AD ou estrutura filha)."
-        confirmLabel="Excluir"
-        onConfirm={() => remove(kind, record.id)}
-      >
-        <Trash2 size={14} aria-hidden="true" />
-      </ConfirmButton>
+      {pode.editar && (
+        <Button variant="ghost" size="sm" aria-label={`Editar ${record.nome}`} onClick={() => setEditing({ kind, record })}>
+          <Pencil size={14} aria-hidden="true" />
+        </Button>
+      )}
+      {pode.excluir && (
+        <ConfirmButton
+          aria-label={`Excluir ${record.nome}`}
+          title={`Excluir ${LABEL[kind].toLowerCase()} "${record.nome}"?`}
+          description="A exclusão é recusada se houver itens vinculados (lotações, mapeamentos AD ou estrutura filha)."
+          confirmLabel="Excluir"
+          onConfirm={() => remove(kind, record.id)}
+        >
+          <Trash2 size={14} aria-hidden="true" />
+        </ConfirmButton>
+      )}
     </span>
   );
 
@@ -119,9 +133,11 @@ export default function OrganizacaoPage() {
           Escopos organizacionais do RBAC multi-tenant. Unidades e departamentos podem ser vinculados a um grupo do AD, usado na
           sincronização do Diretório e nas salas departamentais do Mercúrio.
         </p>
-        <Button onClick={() => setEditing({ kind: "entidade" })}>
-          <Plus size={16} aria-hidden="true" className="mr-1" /> Nova entidade
-        </Button>
+        {geridas.global && (
+          <Button onClick={() => setEditing({ kind: "entidade" })}>
+            <Plus size={16} aria-hidden="true" className="mr-1" /> Nova entidade
+          </Button>
+        )}
       </div>
 
       <DataState
@@ -150,10 +166,12 @@ export default function OrganizacaoPage() {
                     {!ent.ativo && <Badge tone="warning">Inativa</Badge>}
                   </div>
                   <span className="flex items-center gap-1">
-                    <Button variant="secondary" size="sm" onClick={() => setEditing({ kind: "unidade", parentId: ent.id })}>
-                      <Plus size={14} aria-hidden="true" className="mr-1" /> Unidade
-                    </Button>
-                    {actions("entidade", ent)}
+                    {naEntidade(ent.id) && (
+                      <Button variant="secondary" size="sm" onClick={() => setEditing({ kind: "unidade", parentId: ent.id })}>
+                        <Plus size={14} aria-hidden="true" className="mr-1" /> Unidade
+                      </Button>
+                    )}
+                    {actions("entidade", ent, { editar: geridas.global, excluir: geridas.global })}
                   </span>
                 </div>
 
@@ -170,10 +188,22 @@ export default function OrganizacaoPage() {
                             {un.ad_group && <p className="truncate font-mono text-[11px] text-muted">{un.ad_group}</p>}
                           </div>
                           <span className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => setEditing({ kind: "departamento", parentId: un.id })}>
-                              <Plus size={14} aria-hidden="true" className="mr-1" /> Depto.
-                            </Button>
-                            {actions("unidade", un)}
+                            {naUnidade(un.id) && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Nova subunidade de ${un.nome}`}
+                                  onClick={() => setEditing({ kind: "unidade", parentId: ent.id, record: { parent_id: un.id } })}
+                                >
+                                  <Plus size={14} aria-hidden="true" className="mr-1" /> Sub.
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setEditing({ kind: "departamento", parentId: un.id })}>
+                                  <Plus size={14} aria-hidden="true" className="mr-1" /> Depto.
+                                </Button>
+                              </>
+                            )}
+                            {actions("unidade", un, { editar: naUnidade(un.id), excluir: un.parent_id ? naUnidade(un.parent_id) : naEntidade(ent.id) })}
                           </span>
                         </div>
                         {un.departamentos.length > 0 && (
@@ -184,7 +214,7 @@ export default function OrganizacaoPage() {
                                   {d.nome} {d.sigla && <span className="text-muted">({d.sigla})</span>}
                                   {d.ad_group && <span className="ml-2 font-mono text-[11px] text-muted">{d.ad_group}</span>}
                                 </span>
-                                {actions("departamento", d)}
+                                {actions("departamento", d, { editar: naUnidade(un.id), excluir: naUnidade(un.id) })}
                               </li>
                             ))}
                           </ul>

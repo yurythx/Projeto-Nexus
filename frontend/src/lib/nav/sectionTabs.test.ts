@@ -21,6 +21,12 @@ describe("abas de Configurações", () => {
     expect(visibleTabs(CONFIG_TABS, can, (m) => m !== "egress").some((t) => t.href.endsWith("egress"))).toBe(false);
   });
 
+  it("administração delegada (ADR 013): perfis e mapeamentos só com concessão global", () => {
+    const can = (p: string) => hasPermission(["users:read", "iam:*"], p);
+    const tabs = visibleTabs(CONFIG_TABS, can, () => true, () => false);
+    expect(tabs.map((t) => t.href)).toEqual(["/configuracao/organizacao", "/configuracao/usuarios"]);
+  });
+
   it("sem permissões: nenhuma aba", () => {
     expect(visibleTabs(CONFIG_TABS, () => false, () => true)).toEqual([]);
   });

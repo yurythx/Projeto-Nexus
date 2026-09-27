@@ -33,7 +33,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	pool := dbtest.Pool(t)
-	admin := auth.Identity{UserID: dbtest.User(t, pool), Username: "admin", Permissions: []string{"*"}}
+	admin := auth.Identity{UserID: dbtest.User(t, pool), Username: "admin", Permissions: []string{"*"}, Scopes: []auth.Scope{{Permissions: []string{"*"}}}}
 	return &env{t: t, pool: pool, admin: admin, ctx: auth.WithIdentity(context.Background(), admin)}
 }
 

@@ -152,6 +152,15 @@ func ValidPermission(p string) bool { return permissionPattern.MatchString(p) }
 type UserFilter struct {
 	Query  string
 	Active *bool
+	// Area: nil = todas as contas (users:read global).
+	Area *Area
+}
+
+// Area é onde uma administração delegada alcança (ADR 013). Uma conta está
+// visível nela se tem alguma lotação (manual ou por grupo do AD) na área —
+// ou nenhuma lotação, para poder ser lotada.
+type Area struct {
+	Entidades, Unidades, Departamentos []uuid.UUID
 }
 
 // Repository é a porta de persistência do IAM. Todo método recebe o DBTX
@@ -194,6 +203,11 @@ type Repository interface {
 	// UserPermissions devolve as permissões efetivas de uma conta (lotações,
 	// grupos do AD mapeados e o papel nexus-admin), como o resolvedor faz.
 	UserPermissions(ctx context.Context, db database.DBTX, id uuid.UUID) ([]string, error)
+	// UserGrants devolve os escopos de todas as lotações da conta (manuais
+	// e por grupo do AD).
+	UserGrants(ctx context.Context, db database.DBTX, id uuid.UUID) ([]Scope, error)
+	// UserVisible reporta se a conta está visível na área (ver Area).
+	UserVisible(ctx context.Context, db database.DBTX, id uuid.UUID, a Area) (bool, error)
 	UpdateUser(ctx context.Context, db database.DBTX, id uuid.UUID, displayName string, active bool, roles []string) error
 	CreateLocalUser(ctx context.Context, db database.DBTX, username, email, displayName, hash string, roles []string) (uuid.UUID, error)
 	SetPassword(ctx context.Context, db database.DBTX, id uuid.UUID, hash string) error

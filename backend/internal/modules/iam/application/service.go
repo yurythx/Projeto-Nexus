@@ -49,6 +49,117 @@ func (s *Service) WithLoginLockoutReset(fn func(ctx context.Context, username st
 	return s
 }
 
+// ------------------------------------------------ administração delegada
+//
+// ADR 013, fase 3: iam:manage, users:read e users:manage valem no escopo
+// em que foram concedidos. Entidades, perfis e mapeamentos do AD continuam
+// da gestão global; a estrutura, as lotações e as contas, da área.
+
+// soGlobal: entidades, perfis e mapeamentos do AD são da gestão global.
+func soGlobal(ctx context.Context) error {
+	identity, _ := auth.IdentityFromContext(ctx)
+	if !auth.CanGlobal(identity, auth.PermIAMManage) {
+		return apperrors.Forbidden("só a administração global altera entidades, perfis e mapeamentos do AD")
+	}
+	return nil
+}
+
+// alcanca: a permissão de administração precisa cobrir a posição t.
+func alcanca(ctx context.Context, permission auth.Permission, t auth.Target) error {
+	identity, _ := auth.IdentityFromContext(ctx)
+	if !auth.Can(identity, permission, t) {
+		return apperrors.Forbidden("fora da sua área de administração (" + string(permission) + ")")
+	}
+	return nil
+}
+
+// alvo é a posição de um escopo organizacional.
+func alvo(s domain.Scope) auth.Target {
+	return auth.Target{EntidadeID: s.EntidadeID, UnidadeID: s.UnidadeID, DepartamentoID: s.DepartamentoID}
+}
+
+// posicaoUnidade é onde uma unidade "fica" para ser criada ou excluída: na
+// mãe, ou na entidade quando é de primeiro nível.
+func posicaoUnidade(u domain.Unidade) auth.Target {
+	if u.ParentID != nil {
+		return auth.InUnidade(*u.ParentID)
+	}
+	return auth.Target{EntidadeID: &u.EntidadeID}
+}
+
+// areaOf é a área em que identity exerce permission; nil = tudo.
+func areaOf(identity auth.Identity, permission auth.Permission) *domain.Area {
+	c := auth.CoverageOf(identity, permission)
+	if c.All {
+		return nil
+	}
+	return &domain.Area{Entidades: c.Entidades, Unidades: c.Unidades, Departamentos: c.Departamentos}
+}
+
+// concedivel: identity pode conceder (ou retirar) a permissão p a quem
+// fica na posição t — tem p numa concessão global, ou numa que cobre t
+// quando p vale com escopo (curingas contam: fora das permissões com
+// escopo, uma concessão com escopo não vale mesmo).
+func concedivel(identity auth.Identity, p string, t auth.Target) bool {
+	if identity.HasRole(auth.RoleAdmin) {
+		return true
+	}
+	curinga := p == "*" || strings.HasSuffix(p, ":*")
+	for _, s := range identity.Scopes {
+		if !auth.MatchPermission(s.Permissions, p) {
+			continue
+		}
+		if s.Global() || (s.Covers(t) && (curinga || auth.IsScoped(auth.Permission(p)))) {
+			return true
+		}
+	}
+	return false
+}
+
+// guardPerfilAt: lotar (ou retirar a lotação) com um perfil na posição t
+// exige poder conceder ali cada permissão dele.
+func (s *Service) guardPerfilAt(ctx context.Context, tx pgx.Tx, perfilID uuid.UUID, t auth.Target, verbo string) error {
+	p, err := s.repo.GetPerfil(ctx, tx, perfilID)
+	if err != nil {
+		return err
+	}
+	identity, _ := auth.IdentityFromContext(ctx)
+	for _, perm := range p.Permissoes {
+		if !concedivel(identity, perm, t) {
+			return apperrors.Forbidden("você não pode " + verbo + " a permissão " + perm + " neste escopo, porque não a possui nele")
+		}
+	}
+	return nil
+}
+
+// guardArea: com administração delegada, a conta precisa estar
+// inteiramente na área — ao menos uma lotação, todas cobertas, e sem o
+// papel de administrador da plataforma. Senão o delegado redefiniria a
+// senha de alguém de fora (ou de um administrador) e entraria como ele.
+func (s *Service) guardArea(ctx context.Context, db database.DBTX, u domain.User, permission auth.Permission) error {
+	identity, _ := auth.IdentityFromContext(ctx)
+	if auth.CanGlobal(identity, permission) {
+		return nil
+	}
+	fora := apperrors.Forbidden("esta conta não está inteiramente na sua área de administração")
+	if slices.Contains(u.Roles, auth.RoleAdmin) {
+		return fora
+	}
+	grants, err := s.repo.UserGrants(ctx, db, u.ID)
+	if err != nil {
+		return err
+	}
+	if len(grants) == 0 {
+		return fora
+	}
+	for _, g := range grants {
+		if !auth.Can(identity, permission, alvo(g)) {
+			return fora
+		}
+	}
+	return nil
+}
+
 // guardGrant aplica "ninguém concede nem retira o que não tem" (A01): cada
 // permissão que muda (adicionada ou removida) precisa estar coberta pelas
 // permissões efetivas de quem altera — senão um detentor de iam:manage
@@ -188,6 +299,9 @@ func (s *Service) ListEntidades(ctx context.Context) ([]domain.Entidade, error) 
 // "ativo" de cada nível liga ou desliga as lotações e mapeamentos nele
 // (nexus_scope_active, migration 000126).
 func (s *Service) SaveEntidade(ctx context.Context, in domain.Entidade) (domain.Entidade, error) {
+	if err := soGlobal(ctx); err != nil {
+		return domain.Entidade{}, err
+	}
 	if in.Slug == "" {
 		in.Slug = modkit.Slugify(in.Nome)
 	}
@@ -209,6 +323,9 @@ func (s *Service) SaveEntidade(ctx context.Context, in domain.Entidade) (domain.
 }
 
 func (s *Service) DeleteEntidade(ctx context.Context, id uuid.UUID) error {
+	if err := soGlobal(ctx); err != nil {
+		return err
+	}
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetEntidade(ctx, tx, id)
 		if err != nil {
@@ -230,12 +347,25 @@ func (s *Service) SaveUnidade(ctx context.Context, in domain.Unidade) (domain.Un
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		var before any
 		if in.ID == uuid.Nil {
+			// Criar: a administração precisa cobrir onde a unidade fica.
+			if err := alcanca(ctx, auth.PermIAMManage, posicaoUnidade(in)); err != nil {
+				return audit.Entry{}, err
+			}
 			in.ID = uuid.New()
 		} else if prev, err := s.repo.GetUnidade(ctx, tx, in.ID); err == nil {
 			// Lotações e mapeamentos gravam a entidade da unidade: mudar a
 			// unidade de entidade deixaria esses escopos inconsistentes.
 			if prev.EntidadeID != in.EntidadeID {
 				return audit.Entry{}, fmt.Errorf("%w: a unidade não pode mudar de entidade", domain.ErrInvalidScope)
+			}
+			// Editar: cobrir a unidade; mudar de mãe, cobrir também o destino.
+			if err := alcanca(ctx, auth.PermIAMManage, auth.InUnidade(in.ID)); err != nil {
+				return audit.Entry{}, err
+			}
+			if !sameID(prev.ParentID, in.ParentID) {
+				if err := alcanca(ctx, auth.PermIAMManage, posicaoUnidade(in)); err != nil {
+					return audit.Entry{}, err
+				}
 			}
 			before = prev
 		} else {
@@ -273,6 +403,9 @@ func (s *Service) DeleteUnidade(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return audit.Entry{}, err
 		}
+		if err := alcanca(ctx, auth.PermIAMManage, posicaoUnidade(prev)); err != nil {
+			return audit.Entry{}, err
+		}
 		return audit.Meta(ctx, "iam.unidade.deleted", "unidade", id.String(), prev, nil), s.repo.DeleteUnidade(ctx, tx, id)
 	})
 }
@@ -287,6 +420,9 @@ func (s *Service) SaveDepartamento(ctx context.Context, in domain.Departamento) 
 	}
 	var out domain.Departamento
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
+		if err := alcanca(ctx, auth.PermIAMManage, auth.InUnidade(in.UnidadeID)); err != nil {
+			return audit.Entry{}, err
+		}
 		var before any
 		if in.ID == uuid.Nil {
 			in.ID = uuid.New()
@@ -309,6 +445,9 @@ func (s *Service) DeleteDepartamento(ctx context.Context, id uuid.UUID) error {
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetDepartamento(ctx, tx, id)
 		if err != nil {
+			return audit.Entry{}, err
+		}
+		if err := alcanca(ctx, auth.PermIAMManage, auth.InUnidade(prev.UnidadeID)); err != nil {
 			return audit.Entry{}, err
 		}
 		return audit.Meta(ctx, "iam.departamento.deleted", "departamento", id.String(), prev, nil), s.repo.DeleteDepartamento(ctx, tx, id)
@@ -341,6 +480,9 @@ func normalizePermissions(perms []string) ([]string, error) {
 }
 
 func (s *Service) SavePerfil(ctx context.Context, in domain.Perfil) (domain.Perfil, error) {
+	if err := soGlobal(ctx); err != nil {
+		return domain.Perfil{}, err
+	}
 	perms, err := normalizePermissions(in.Permissoes)
 	if err != nil {
 		return domain.Perfil{}, MapError(err)
@@ -391,6 +533,9 @@ func (s *Service) SavePerfil(ctx context.Context, in domain.Perfil) (domain.Perf
 }
 
 func (s *Service) DeletePerfil(ctx context.Context, id uuid.UUID) error {
+	if err := soGlobal(ctx); err != nil {
+		return err
+	}
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetPerfil(ctx, tx, id)
 		if err != nil {
@@ -403,10 +548,16 @@ func (s *Service) DeletePerfil(ctx context.Context, id uuid.UUID) error {
 // ------------------------------------------------------- mapeamentos do AD
 
 func (s *Service) ListMappings(ctx context.Context) ([]domain.ADMapping, error) {
+	if err := soGlobal(ctx); err != nil {
+		return nil, err
+	}
 	return s.repo.ListMappings(ctx, s.pool)
 }
 
 func (s *Service) CreateMapping(ctx context.Context, in domain.ADMapping) (uuid.UUID, error) {
+	if err := soGlobal(ctx); err != nil {
+		return uuid.Nil, err
+	}
 	in.ADGroup = strings.TrimSpace(in.ADGroup)
 	if in.ADGroup == "" {
 		return uuid.Nil, apperrors.Validation("ad_group é obrigatório")
@@ -433,6 +584,9 @@ func (s *Service) CreateMapping(ctx context.Context, in domain.ADMapping) (uuid.
 }
 
 func (s *Service) DeleteMapping(ctx context.Context, id uuid.UUID) error {
+	if err := soGlobal(ctx); err != nil {
+		return err
+	}
 	return s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetMapping(ctx, tx, id)
 		if err != nil {
@@ -447,13 +601,30 @@ func (s *Service) DeleteMapping(ctx context.Context, id uuid.UUID) error {
 
 // ---------------------------------------------------------------- usuários
 
+// ListUsers lista as contas; com users:read delegado, só as da área (e as
+// sem lotação nenhuma, para poderem ser lotadas).
 func (s *Service) ListUsers(ctx context.Context, f domain.UserFilter, p pagination.Params) ([]domain.User, int64, error) {
+	identity, _ := auth.IdentityFromContext(ctx)
+	f.Area = areaOf(identity, auth.PermUsersRead)
 	return s.repo.ListUsers(ctx, s.pool, f, p)
 }
 
 func (s *Service) GetUser(ctx context.Context, id uuid.UUID) (domain.User, error) {
 	u, err := s.repo.GetUser(ctx, s.pool, id)
-	return u, MapError(err)
+	if err != nil {
+		return u, MapError(err)
+	}
+	identity, _ := auth.IdentityFromContext(ctx)
+	if area := areaOf(identity, auth.PermUsersRead); area != nil {
+		ok, err := s.repo.UserVisible(ctx, s.pool, id, *area)
+		if err != nil {
+			return domain.User{}, err
+		}
+		if !ok {
+			return domain.User{}, MapError(domain.ErrNotFound)
+		}
+	}
+	return u, nil
 }
 
 // UpdateUserInput são os campos administráveis de uma conta.
@@ -475,6 +646,9 @@ func (s *Service) UpdateUser(ctx context.Context, id uuid.UUID, in UpdateUserInp
 	err := s.tx(ctx, true, func(ctx context.Context, tx pgx.Tx) (audit.Entry, error) {
 		prev, err := s.repo.GetUser(ctx, tx, id)
 		if err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardArea(ctx, tx, prev, auth.PermUsersManage); err != nil {
 			return audit.Entry{}, err
 		}
 		if err := s.guardTarget(ctx, tx, id); err != nil {
@@ -552,6 +726,9 @@ func (s *Service) ResetPassword(ctx context.Context, id uuid.UUID, password stri
 		if u.Federated {
 			return audit.Entry{}, apperrors.Validation("conta federada (Keycloak/AD) não tem senha local; a senha é trocada no AD")
 		}
+		if err := s.guardArea(ctx, tx, u, auth.PermUsersManage); err != nil {
+			return audit.Entry{}, err
+		}
 		if err := s.guardTarget(ctx, tx, id); err != nil {
 			return audit.Entry{}, err
 		}
@@ -570,6 +747,9 @@ func (s *Service) Unlock(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return audit.Entry{}, err
 		}
+		if err := s.guardArea(ctx, tx, u, auth.PermUsersManage); err != nil {
+			return audit.Entry{}, err
+		}
 		username = u.Username
 		return audit.Meta(ctx, "user.unlocked", "user", id.String(), nil, nil), s.repo.Unlock(ctx, tx, id)
 	})
@@ -580,6 +760,13 @@ func (s *Service) Unlock(ctx context.Context, id uuid.UUID) error {
 		return apperrors.DependencyUnavailable("conta desbloqueada, mas o bloqueio de login distribuído não pôde ser limpo — tente novamente").WithCause(err)
 	}
 	return nil
+}
+
+func sameID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{3,80}$`)
@@ -626,8 +813,21 @@ func (s *Service) guardPerfilGrant(ctx context.Context, tx pgx.Tx, perfilID uuid
 	return guardGrant(ctx, nil, p.Permissoes)
 }
 
+// ListLotacoes lista as lotações da conta; com iam:manage delegado, só as
+// que a administração cobre.
 func (s *Service) ListLotacoes(ctx context.Context, userID uuid.UUID) ([]domain.Lotacao, error) {
-	return s.repo.ListLotacoes(ctx, s.pool, userID)
+	all, err := s.repo.ListLotacoes(ctx, s.pool, userID)
+	if err != nil {
+		return nil, err
+	}
+	identity, _ := auth.IdentityFromContext(ctx)
+	out := []domain.Lotacao{}
+	for _, l := range all {
+		if auth.Can(identity, auth.PermIAMManage, alvo(l.Scope)) {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) CreateLotacao(ctx context.Context, in domain.Lotacao) (uuid.UUID, error) {
@@ -638,14 +838,19 @@ func (s *Service) CreateLotacao(ctx context.Context, in domain.Lotacao) (uuid.UU
 		if _, err := s.repo.GetUser(ctx, tx, in.UserID); err != nil {
 			return audit.Entry{}, err
 		}
-		if err := s.guardPerfilGrant(ctx, tx, in.PerfilID); err != nil {
-			return audit.Entry{}, err
-		}
 		scope, err := s.repo.ScopeConsistent(ctx, tx, in.Scope)
 		if err != nil {
 			return audit.Entry{}, err
 		}
 		in.Scope = scope
+		// A lotação precisa cair na área de quem lota, com um perfil cujas
+		// permissões ele próprio tem ali (ADR 013).
+		if err := alcanca(ctx, auth.PermIAMManage, alvo(scope)); err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardPerfilAt(ctx, tx, in.PerfilID, alvo(scope), "conceder"); err != nil {
+			return audit.Entry{}, err
+		}
 		if id, err = s.repo.CreateLotacao(ctx, tx, in); err != nil {
 			return audit.Entry{}, err
 		}
@@ -664,7 +869,10 @@ func (s *Service) DeleteLotacao(ctx context.Context, userID, id uuid.UUID) error
 		if err != nil {
 			return audit.Entry{}, err
 		}
-		if err := s.guardPerfilGrant(ctx, tx, prev.PerfilID); err != nil {
+		if err := alcanca(ctx, auth.PermIAMManage, alvo(prev.Scope)); err != nil {
+			return audit.Entry{}, err
+		}
+		if err := s.guardPerfilAt(ctx, tx, prev.PerfilID, alvo(prev.Scope), "retirar"); err != nil {
 			return audit.Entry{}, err
 		}
 		return audit.Meta(ctx, "iam.lotacao.deleted", "user", userID.String(), prev, nil), s.repo.DeleteLotacao(ctx, tx, userID, id)

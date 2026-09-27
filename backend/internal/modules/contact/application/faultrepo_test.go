@@ -86,14 +86,6 @@ func (fr *faultRepo) UpdateTriage(ctx context.Context, db database.DBTX, id uuid
 	return fr.inner.UpdateTriage(ctx, db, id, t)
 }
 
-func (fr *faultRepo) ActiveUnidade(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
-	if err := fr.hook("ActiveUnidade"); err != nil {
-		return false, err
-	}
-	defer fr.post(ctx, db)
-	return fr.inner.ActiveUnidade(ctx, db, id)
-}
-
 func (fr *faultRepo) ActiveUser(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
 	if err := fr.hook("ActiveUser"); err != nil {
 		var z0 bool
@@ -101,4 +93,13 @@ func (fr *faultRepo) ActiveUser(ctx context.Context, db database.DBTX, id uuid.U
 	}
 	defer fr.post(ctx, db)
 	return fr.inner.ActiveUser(ctx, db, id)
+}
+
+func (fr *faultRepo) ActiveUnidade(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	if err := fr.hook("ActiveUnidade"); err != nil {
+		var z0 bool
+		return z0, err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.ActiveUnidade(ctx, db, id)
 }

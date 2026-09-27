@@ -56,6 +56,8 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 		"ListUsers":       func(db database.DBTX) error { _, _, err := r.ListUsers(ctx, db, domain.UserFilter{}, page); return err },
 		"GetUser":         func(db database.DBTX) error { _, err := r.GetUser(ctx, db, id); return err },
 		"UserPermissions": func(db database.DBTX) error { _, err := r.UserPermissions(ctx, db, id); return err },
+		"UserGrants":      func(db database.DBTX) error { _, err := r.UserGrants(ctx, db, id); return err },
+		"UserVisible":     func(db database.DBTX) error { _, err := r.UserVisible(ctx, db, id, domain.Area{}); return err },
 		"UpdateUser":      func(db database.DBTX) error { return r.UpdateUser(ctx, db, id, "", true, nil) },
 		"CreateLocalUser": func(db database.DBTX) error {
 			_, err := r.CreateLocalUser(ctx, db, "u", "e", "d", "h", nil)
@@ -69,7 +71,7 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 			t.Errorf("%s com o banco fora: %v", name, err)
 		}
 	}
-	for _, name := range []string{"ListEntidades", "ListUnidades", "ListDepartamentos", "ListPerfis", "ListMappings", "ListLotacoes", "ListUsers"} {
+	for _, name := range []string{"ListEntidades", "ListUnidades", "ListDepartamentos", "ListPerfis", "ListMappings", "ListLotacoes", "ListUsers", "UserGrants"} {
 		if err := calls[name](dbtest.ScanFail{}); err == nil {
 			t.Errorf("%s com linha ilegível deveria falhar", name)
 		}

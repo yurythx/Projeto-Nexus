@@ -306,6 +306,24 @@ func (fr *faultRepo) UserPermissions(ctx context.Context, db database.DBTX, id u
 	return fr.inner.UserPermissions(ctx, db, id)
 }
 
+func (fr *faultRepo) UserGrants(ctx context.Context, db database.DBTX, id uuid.UUID) ([]domain.Scope, error) {
+	if err := fr.hook("UserGrants"); err != nil {
+		var z0 []domain.Scope
+		return z0, err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.UserGrants(ctx, db, id)
+}
+
+func (fr *faultRepo) UserVisible(ctx context.Context, db database.DBTX, id uuid.UUID, a domain.Area) (bool, error) {
+	if err := fr.hook("UserVisible"); err != nil {
+		var z0 bool
+		return z0, err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.UserVisible(ctx, db, id, a)
+}
+
 func (fr *faultRepo) UpdateUser(ctx context.Context, db database.DBTX, id uuid.UUID, displayName string, active bool, roles []string) error {
 	if err := fr.hook("UpdateUser"); err != nil {
 		return err

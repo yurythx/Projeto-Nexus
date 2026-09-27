@@ -214,3 +214,99 @@ func (h *apiHarness) gestorEm(t *testing.T, unidade string, permissoes ...string
 		`{"perfil_id":"`+perfil+`","unidade_id":"`+unidade+`"}`)
 	return tok
 }
+
+// IAM delegado (ADR 013, fase 3): iam:manage / users:* numa unidade
+// administram a estrutura abaixo dela, as lotações e as contas da área —
+// sem entidades, perfis ou mapeamentos do AD, e sem conceder o que o
+// delegado não tem ali.
+func TestIAMDelegado(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	sfx := uuid.NewString()[:6]
+	delegado := h.gestorEm(t, o.a, "iam:manage", "users:read", "users:manage", "blog:manage")
+	perfil := func(perms string) string {
+		return data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
+			`{"nome":"P `+uuid.NewString()[:8]+`","permissoes":`+perms+`}`)).ID
+	}
+	perfilBlog, perfilPlataforma := perfil(`["blog:manage"]`), perfil(`["modules:manage"]`)
+	unidade := func(want int, parent, nome string) string {
+		body := `{"entidade_id":"` + o.ent + `","nome":"` + nome + ` ` + sfx + `"`
+		if parent != "" {
+			body += `,"parent_id":"` + parent + `"`
+		}
+		rec := h.expect(want, http.MethodPost, "/api/v1/iam/unidades", delegado, body+`}`)
+		if want != http.StatusCreated {
+			return ""
+		}
+		return data[idResp](t, rec).ID
+	}
+
+	// Estrutura: abaixo de A, sim; no nível da entidade e em B, não.
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/entidades", delegado, `{"nome":"Outra `+sfx+`"}`)
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/perfis", delegado, `{"nome":"X `+sfx+`","permissoes":["blog:manage"]}`)
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/iam/ad-mappings", delegado, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/ad-mappings", delegado, `{"ad_group":"G-`+sfx+`","perfil_id":"`+perfilBlog+`","unidade_id":"`+o.a+`"}`)
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/iam/ad-mappings/"+uuid.NewString(), delegado, "")
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/iam/perfis/"+perfilBlog, delegado, "")
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/iam/entidades/"+o.ent, delegado, "")
+	nova := unidade(http.StatusCreated, o.a, "Nova")
+	unidade(http.StatusForbidden, "", "Topo")
+	unidade(http.StatusForbidden, o.b, "Em B")
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/iam/unidades/"+o.sub, delegado, `{"entidade_id":"`+o.ent+`","parent_id":"`+o.a+`","nome":"Sub renomeada `+sfx+`"}`)
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/iam/unidades/"+o.sub, delegado, `{"entidade_id":"`+o.ent+`","parent_id":"`+o.b+`","nome":"Sub movida `+sfx+`"}`)
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/iam/unidades/"+o.b, delegado, `{"entidade_id":"`+o.ent+`","nome":"B tomada `+sfx+`"}`)
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/iam/unidades/"+o.a, delegado, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/iam/unidades/"+nova, delegado, "")
+	dep := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/departamentos", delegado, `{"unidade_id":"`+o.sub+`","nome":"Protocolo `+sfx+`"}`)).ID
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/iam/departamentos", delegado, `{"unidade_id":"`+o.b+`","nome":"Protocolo `+sfx+`"}`)
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/iam/departamentos/"+dep, delegado, "")
+	depB := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/departamentos", admin, `{"unidade_id":"`+o.b+`","nome":"Protocolo `+sfx+`"}`)).ID
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/iam/departamentos/"+depB, delegado, "")
+
+	// Contas: as sem lotação e as da área aparecem; as de fora, não.
+	novoID, _ := h.user("nexus-user")
+	deBID, _ := h.user("nexus-user")
+	adminID, _ := h.user("nexus-admin")
+	lotar := func(want int, tok string, user uuid.UUID, perfilID, unidadeID string) string {
+		body := `{"perfil_id":"` + perfilID + `"`
+		if unidadeID != "" {
+			body += `,"unidade_id":"` + unidadeID + `"`
+		}
+		rec := h.expect(want, http.MethodPost, "/api/v1/users/"+user.String()+"/lotacoes", tok, body+`}`)
+		if want != http.StatusCreated {
+			return ""
+		}
+		return data[idResp](t, rec).ID
+	}
+	emB := lotar(http.StatusCreated, admin, deBID, perfilBlog, o.b)
+	lotar(http.StatusCreated, admin, deBID, perfilBlog, o.sub)
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/users/"+novoID.String(), delegado, "")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/users/"+deBID.String(), delegado, "") // tem uma lotação na área
+	if lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/users?page_size=100&q=t_", delegado, "").Body.String(); !strings.Contains(lista, novoID.String()) {
+		t.Fatalf("conta sem lotação aparece para o delegado: %s", lista)
+	}
+	if lotacoes := data[[]idResp](t, h.expect(http.StatusOK, http.MethodGet, "/api/v1/users/"+deBID.String()+"/lotacoes", delegado, "")); len(lotacoes) != 1 {
+		t.Fatalf("o delegado vê só as lotações da área: %v", lotacoes)
+	}
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/users/"+deBID.String()+"/lotacoes/"+emB, delegado, "")
+	h.expect(http.StatusForbidden, http.MethodPatch, "/api/v1/users/"+deBID.String(), delegado, `{"display_name":"B","active":true}`)
+	soB, _ := h.user("nexus-user")
+	lotar(http.StatusCreated, admin, soB, perfilBlog, o.b)
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/users/"+soB.String(), delegado, "")
+
+	// Lotar: na área, com perfil que o delegado tem ali.
+	lotar(http.StatusForbidden, delegado, novoID, perfilBlog, "")
+	lotar(http.StatusForbidden, delegado, novoID, perfilBlog, o.b)
+	lotar(http.StatusForbidden, delegado, novoID, perfilPlataforma, o.sub)
+	lot := lotar(http.StatusCreated, delegado, novoID, perfilBlog, o.sub)
+
+	// Administrar a conta: só a que está inteiramente na área.
+	h.expect(http.StatusNoContent, http.MethodPost, "/api/v1/users/"+novoID.String()+"/password", delegado, `{"password":"Outra-Senha-Forte-9"}`)
+	h.expect(http.StatusNoContent, http.MethodPost, "/api/v1/users/"+novoID.String()+"/unlock", delegado, "")
+	h.expect(http.StatusOK, http.MethodPatch, "/api/v1/users/"+novoID.String(), delegado, `{"display_name":"Nova pessoa","active":true,"roles":["nexus-user"]}`)
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/users/"+deBID.String()+"/unlock", delegado, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/users/"+adminID.String()+"/password", delegado, `{"password":"Outra-Senha-Forte-9"}`)
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/users/"+novoID.String()+"/lotacoes/"+lot, delegado, "")
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/users/"+novoID.String()+"/unlock", delegado, "") // sem lotação: fora
+}

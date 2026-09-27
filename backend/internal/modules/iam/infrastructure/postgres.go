@@ -425,16 +425,73 @@ func scanUser(row interface{ Scan(...any) error }) (domain.User, error) {
 	return u, err
 }
 
+// userGrantsSQL são os escopos das lotações da conta "users" da consulta
+// externa: as manuais e as dos grupos do AD dela.
+const userGrantsSQL = `(SELECT s.entidade_id, s.unidade_id, s.departamento_id FROM user_scopes s WHERE s.user_id = users.id
+	UNION ALL
+	SELECT m.entidade_id, m.unidade_id, m.departamento_id FROM ad_group_mappings m
+	 WHERE lower(m.ad_group) = ANY (SELECT lower(g) FROM unnest(users.groups) g))`
+
+// visibleSQL: a conta não tem lotação nenhuma, ou tem alguma na área
+// (placeholders: entidades, unidades, departamentos).
+func visibleSQL(e, u, d int) string {
+	return fmt.Sprintf(`(NOT EXISTS %s OR EXISTS (SELECT 1 FROM %s g
+		WHERE g.unidade_id = ANY($%d::uuid[]) OR g.departamento_id = ANY($%d::uuid[])
+		   OR (g.unidade_id IS NULL AND g.entidade_id = ANY($%d::uuid[]))))`, userGrantsSQL, userGrantsSQL, u, d, e)
+}
+
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
+}
+
+func areaArgs(a domain.Area) []any {
+	return []any{uuidStrings(a.Entidades), uuidStrings(a.Unidades), uuidStrings(a.Departamentos)}
+}
+
+func (r *Repository) UserVisible(ctx context.Context, db database.DBTX, id uuid.UUID, a domain.Area) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND `+visibleSQL(2, 3, 4)+`)`,
+		append([]any{id}, areaArgs(a)...)...).Scan(&ok)
+	return ok, wrap("user visible", err)
+}
+
+func (r *Repository) UserGrants(ctx context.Context, db database.DBTX, id uuid.UUID) ([]domain.Scope, error) {
+	rows, err := db.Query(ctx, `SELECT g.entidade_id, g.unidade_id, g.departamento_id FROM users CROSS JOIN LATERAL `+userGrantsSQL+` g WHERE users.id = $1`, id)
+	if err != nil {
+		return nil, wrap("user grants", err)
+	}
+	defer rows.Close()
+	out := []domain.Scope{}
+	for rows.Next() {
+		var s domain.Scope
+		if err := rows.Scan(&s.EntidadeID, &s.UnidadeID, &s.DepartamentoID); err != nil {
+			return nil, wrap("scan grant", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func (r *Repository) ListUsers(ctx context.Context, db database.DBTX, f domain.UserFilter, p pagination.Params) ([]domain.User, int64, error) {
 	q := "%" + strings.ToLower(f.Query) + "%"
-	const where = `WHERE ($1 = '%%' OR nexus_unaccent(lower(display_name || ' ' || username || ' ' || email)) LIKE nexus_unaccent($1))
+	where := `WHERE ($1 = '%%' OR nexus_unaccent(lower(display_name || ' ' || username || ' ' || email)) LIKE nexus_unaccent($1))
 		AND ($2::boolean IS NULL OR active = $2)`
+	args := []any{q, f.Active}
+	if f.Area != nil {
+		where += " AND " + visibleSQL(3, 4, 5)
+		args = append(args, areaArgs(*f.Area)...)
+	}
 	var total int64
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM users `+where, q, f.Active).Scan(&total); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM users `+where, args...).Scan(&total); err != nil {
 		return nil, 0, wrap("count users", err)
 	}
-	rows, err := db.Query(ctx, `SELECT `+userCols+` FROM users `+where+`
-		ORDER BY lower(COALESCE(NULLIF(display_name,''), username)) LIMIT $3 OFFSET $4`, q, f.Active, p.Limit(), p.Offset())
+	n := len(args)
+	rows, err := db.Query(ctx, `SELECT `+userCols+` FROM users `+where+fmt.Sprintf(`
+		ORDER BY lower(COALESCE(NULLIF(display_name,''), username)) LIMIT $%d OFFSET $%d`, n+1, n+2), append(args, p.Limit(), p.Offset())...)
 	if err != nil {
 		return nil, 0, wrap("list users", err)
 	}
