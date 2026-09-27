@@ -8,7 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	apperrors "github.com/yurythx/projeto-nexus/internal/domain/errors"
 	"github.com/yurythx/projeto-nexus/internal/modules/contact/application"
+	"github.com/yurythx/projeto-nexus/internal/modules/contact/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
@@ -87,7 +89,17 @@ func (h *Handlers) Submit(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 	p := httputil.Page(r, h.maxPageSize)
-	items, total, err := h.svc.List(r.Context(), httputil.Query(r, "status", 20), p)
+	f := domain.Filter{Status: httputil.Query(r, "status", 20)}
+	if v := httputil.Query(r, "unidade_id", 36); v != "" {
+		u, err := uuid.Parse(v)
+		if err != nil {
+			h.fail(w, r, apperrors.Validation("unidade_id inválido"))
+			return
+		}
+		f.UnidadeID = &u
+	}
+	identity, _ := auth.IdentityFromContext(r.Context())
+	items, total, err := h.svc.List(r.Context(), identity, f, p)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -101,7 +113,8 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	m, err := h.svc.Get(r.Context(), id)
+	identity, _ := auth.IdentityFromContext(r.Context())
+	m, err := h.svc.Get(r.Context(), identity, id)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -114,6 +127,8 @@ type triageRequest struct {
 	Status     string     `json:"status" validate:"required,oneof=new in_progress answered archived"`
 	Notes      string     `json:"notes" validate:"max=5000"`
 	AssignedTo *uuid.UUID `json:"assigned_to"`
+	// UnidadeID é o setor para onde a mensagem vai; vazio = caixa geral.
+	UnidadeID *uuid.UUID `json:"unidade_id"`
 }
 
 func (h *Handlers) Triage(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +142,8 @@ func (h *Handlers) Triage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	m, err := h.svc.Triage(r.Context(), id, req.Status, req.Notes, req.AssignedTo)
+	identity, _ := auth.IdentityFromContext(r.Context())
+	m, err := h.svc.Triage(r.Context(), identity, id, domain.Triage{Status: req.Status, Notes: req.Notes, AssignedTo: req.AssignedTo, UnidadeID: req.UnidadeID})
 	if err != nil {
 		h.fail(w, r, err)
 		return

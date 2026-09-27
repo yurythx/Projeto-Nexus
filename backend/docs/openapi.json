@@ -1108,6 +1108,10 @@
           "subject": {
             "type": "string"
           },
+          "unidade_id": {
+            "format": "uuid",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -1210,6 +1214,10 @@
           },
           "subject": {
             "type": "string"
+          },
+          "unidade_id": {
+            "format": "uuid",
+            "type": "string"
           }
         },
         "required": [
@@ -1243,6 +1251,11 @@
               "answered",
               "archived"
             ],
+            "type": "string"
+          },
+          "unidade_id": {
+            "format": "uuid",
+            "nullable": true,
             "type": "string"
           }
         },
@@ -7876,6 +7889,16 @@
             "required": false,
             "schema": {
               "maxLength": 20,
+              "type": "string"
+            },
+            "x-nexus-generated": true
+          },
+          {
+            "in": "query",
+            "name": "unidade_id",
+            "required": false,
+            "schema": {
+              "maxLength": 36,
               "type": "string"
             },
             "x-nexus-generated": true

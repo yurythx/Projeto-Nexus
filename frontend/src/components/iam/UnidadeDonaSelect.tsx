@@ -13,7 +13,8 @@ import type { OrgTree } from "@/lib/nexus/types";
  *
  * Com `lotacao` (Wiki: qualquer autenticado cria e edita), oferece também
  * as unidades em que a pessoa está lotada e a dona atual; o campo é
- * opcional e o vazio tem o sentido dado por `placeholder`. */
+ * opcional e o vazio tem o sentido dado por `placeholder`. Com `optional`,
+ * só o campo fica opcional (e a atual sempre aparece), sem as lotadas. */
 export function UnidadeDonaSelect({
   id,
   name = "unidade_id",
@@ -21,6 +22,7 @@ export function UnidadeDonaSelect({
   defaultValue,
   label = "Unidade dona",
   lotacao = false,
+  optional = false,
   placeholder,
 }: {
   id: string;
@@ -29,17 +31,16 @@ export function UnidadeDonaSelect({
   defaultValue?: string | null;
   label?: string;
   lotacao?: boolean;
+  optional?: boolean;
   placeholder?: string;
 }) {
   const { me } = useNexus();
   const tree = useApiQuery<OrgTree[]>("v1/iam/org-tree");
   const geridas = unidadesGeridas(me, tree.data, permission);
   const oferecidas = new Set(geridas.unidades);
-  if (lotacao) {
-    for (const u of unidadesLotadas(me, tree.data)) oferecidas.add(u);
-    if (defaultValue) oferecidas.add(defaultValue);
-  }
-  const opcional = geridas.global || lotacao;
+  if (lotacao) for (const u of unidadesLotadas(me, tree.data)) oferecidas.add(u);
+  if ((lotacao || optional) && defaultValue) oferecidas.add(defaultValue);
+  const opcional = geridas.global || lotacao || optional;
   const options = (tree.data ?? []).flatMap((e) =>
     e.unidades.filter((u) => oferecidas.has(u.id)).map((u) => ({ value: u.id, label: u.sigla ? `${u.sigla} — ${u.nome}` : u.nome })),
   );

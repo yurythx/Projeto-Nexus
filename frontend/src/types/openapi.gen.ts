@@ -2773,6 +2773,8 @@ export interface components {
             protocol: string;
             status: string;
             subject: string;
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -2799,6 +2801,8 @@ export interface components {
             protocol: string;
             status: string;
             subject: string;
+            /** Format: uuid */
+            unidade_id?: string;
         };
         ContactTriageRequest: {
             /** Format: uuid */
@@ -2806,6 +2810,8 @@ export interface components {
             notes?: string;
             /** @enum {string} */
             status: "new" | "in_progress" | "answered" | "archived";
+            /** Format: uuid */
+            unidade_id?: string | null;
         };
         DirectoryPerson: {
             bio: string;
@@ -5475,6 +5481,7 @@ export interface operations {
                 page?: components["parameters"]["Page"];
                 page_size?: components["parameters"]["PageSize"];
                 status?: string;
+                unidade_id?: string;
             };
             header?: never;
             path?: never;

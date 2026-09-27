@@ -140,7 +140,7 @@ describe("Gestão > Contato", () => {
     await userEvent.type(within(d).getByLabelText("Anotações internas"), " respondido por e-mail ");
     await userEvent.click(within(d).getByRole("button", { name: "Salvar triagem" }));
     await waitFor(() => expect(api.to("PATCH v1/contact/messages/1")).toHaveLength(1));
-    expect(api.to("PATCH v1/contact/messages/1")[0]!.body).toEqual({ status: "answered", notes: "respondido por e-mail", assigned_to: "u9" });
+    expect(api.to("PATCH v1/contact/messages/1")[0]!.body).toEqual({ status: "answered", notes: "respondido por e-mail", assigned_to: "u9", unidade_id: null });
 
     await userEvent.keyboard("{Escape}");
     await userEvent.selectOptions(screen.getAllByLabelText("Situação")[0]!, "archived");
@@ -179,6 +179,27 @@ describe("Gestão > Contato", () => {
     await userEvent.click(screen.getByRole("button", { name: "Abrir 2026-4" }));
     d = await screen.findByRole("dialog", { name: "Mensagem 2026-4" });
     expect(await within(d).findByText("mensagem não encontrada")).toBeInTheDocument();
+  });
+
+  it("setor (ADR 013): mostra na lista e encaminha; a caixa geral é a opção vazia", async () => {
+    const api = mockBackend({
+      ...identityRoutes(),
+      "GET v1/iam/org-tree": { data: ORG },
+      "GET v1/contact/messages": page([msg("5", { unidade_id: "u1" }), msg("6"), msg("7", { unidade_id: "sumiu" })]),
+      "GET v1/contact/messages/6": { data: { ...msg("6"), phone: "", message: "m", consent_at: "2026-01-01T00:00:00Z", notes: "" } },
+      "PATCH v1/contact/messages/6": { data: null },
+    });
+    renderApp(<GestaoContatoPage />);
+    await waitFor(() => expect(screen.getAllByText("Protocolo")).toHaveLength(2)); // cabeçalho + setor u1
+    expect(screen.getByText("Caixa geral")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Abrir 2026-6" }));
+    const d = await screen.findByRole("dialog", { name: "Mensagem 2026-6" });
+    const setor = await within(d).findByLabelText("Setor (encaminhar para)");
+    expect(setor).toHaveValue("");
+    await userEvent.selectOptions(setor, "u1");
+    await userEvent.click(within(d).getByRole("button", { name: "Salvar triagem" }));
+    await waitFor(() => expect(api.to("PATCH v1/contact/messages/6")[0]?.body).toMatchObject({ unidade_id: "u1" }));
   });
 
   it("erro ao listar", async () => {

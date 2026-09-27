@@ -15,6 +15,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/contact/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
@@ -41,8 +42,10 @@ func MapError(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return apperrors.NotFound("mensagem não encontrada")
-	case errors.Is(err, domain.ErrAssignee):
+	case errors.Is(err, domain.ErrAssignee), errors.Is(err, domain.ErrUnidade):
 		return apperrors.Validation(err.Error())
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
@@ -81,31 +84,58 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) (domain.Message, e
 	return m, err
 }
 
-// List lista mensagens (sem corpo).
-func (s *Service) List(ctx context.Context, status string, p pagination.Params) ([]domain.Summary, int64, error) {
-	return s.repo.List(ctx, s.pool, status, p)
+// List lista mensagens (sem corpo): a gestão global vê todas; com escopo,
+// só as encaminhadas aos setores que cobre (ADR 013).
+func (s *Service) List(ctx context.Context, identity auth.Identity, f domain.Filter, p pagination.Params) ([]domain.Summary, int64, error) {
+	cobertura := auth.CoverageOf(identity, auth.PermContactRead)
+	f.Restrito, f.Unidades = !cobertura.All, cobertura.Unidades
+	return s.repo.List(ctx, s.pool, f, p)
 }
 
-// Get lê a mensagem completa — um acesso a PII, portanto auditado.
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (domain.Message, error) {
+// Get lê a mensagem completa — um acesso a PII, portanto auditado. Fora do
+// escopo, responde como inexistente.
+func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID) (domain.Message, error) {
 	m, err := s.repo.Get(ctx, s.pool, id)
 	if err != nil {
 		return m, MapError(err)
+	}
+	if !auth.Can(identity, auth.PermContactRead, m.Posicao()) {
+		return domain.Message{}, MapError(domain.ErrNotFound)
 	}
 	_ = audit.NewWriter(s.pool).Record(ctx, audit.Meta(ctx, "contact.message.viewed", "contact_message", id.String(), nil, nil))
 	return m, nil
 }
 
-// Triage atualiza status/anotações/responsável.
-func (s *Service) Triage(ctx context.Context, id uuid.UUID, status, notes string, assignedTo *uuid.UUID) (domain.Message, error) {
+// Triage atualiza status, anotações, responsável e setor. Exige
+// contact:manage onde a mensagem está; encaminhar exige cobrir também o
+// setor de destino — devolver à caixa geral (sem setor) é sempre possível.
+func (s *Service) Triage(ctx context.Context, identity auth.Identity, id uuid.UUID, t domain.Triage) (domain.Message, error) {
 	var out domain.Message
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		if assignedTo != nil {
-			ok, err := s.repo.ActiveUser(ctx, tx, *assignedTo)
+		if !auth.Can(identity, auth.PermContactManage, prev.Posicao()) {
+			if auth.Can(identity, auth.PermContactRead, prev.Posicao()) {
+				return domain.ErrOutOfScope
+			}
+			return domain.ErrNotFound
+		}
+		if t.UnidadeID != nil && !sameUnidade(prev.UnidadeID, t.UnidadeID) {
+			if !auth.Can(identity, auth.PermContactManage, auth.InUnidade(*t.UnidadeID)) {
+				return domain.ErrOutOfScope
+			}
+			ok, err := s.repo.ActiveUnidade(ctx, tx, *t.UnidadeID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return domain.ErrUnidade
+			}
+		}
+		if t.AssignedTo != nil {
+			ok, err := s.repo.ActiveUser(ctx, tx, *t.AssignedTo)
 			if err != nil {
 				return err
 			}
@@ -113,15 +143,22 @@ func (s *Service) Triage(ctx context.Context, id uuid.UUID, status, notes string
 				return domain.ErrAssignee
 			}
 		}
-		if err := s.repo.UpdateTriage(ctx, tx, id, status, notes, assignedTo); err != nil {
+		if err := s.repo.UpdateTriage(ctx, tx, id, t); err != nil {
 			return err
 		}
 		if out, err = s.repo.Get(ctx, tx, id); err != nil {
 			return err
 		}
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "contact.message.triaged", "contact_message", id.String(),
-			map[string]any{"status": prev.Status, "assigned_to": prev.AssignedTo},
-			map[string]any{"status": out.Status, "assigned_to": out.AssignedTo}))
+			map[string]any{"status": prev.Status, "assigned_to": prev.AssignedTo, "unidade_id": prev.UnidadeID},
+			map[string]any{"status": out.Status, "assigned_to": out.AssignedTo, "unidade_id": out.UnidadeID}))
 	})
 	return out, MapError(err)
+}
+
+func sameUnidade(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

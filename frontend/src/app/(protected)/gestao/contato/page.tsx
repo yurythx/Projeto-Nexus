@@ -3,6 +3,7 @@
 import { Eye } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
 import { Pagination } from "@/components/nexus/Pagination";
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { apiClient } from "@/lib/api/client";
 import { useApiPage, useApiQuery, withQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
-import type { ContactMessage, ContactSummary } from "@/lib/nexus/types";
+import type { ContactMessage, ContactSummary, OrgTree } from "@/lib/nexus/types";
 
 const STATUS: Record<ContactSummary["status"], { label: string; tone: "info" | "warning" | "success" | "neutral" }> = {
   new: { label: "Nova", tone: "info" },
@@ -36,7 +37,12 @@ function MessageDetail({ id, onChanged }: { id: string; onChanged: () => void })
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const ok = await run(
-      () => apiClient.patch(`v1/contact/messages/${id}`, { status: String(fd.get("status")), notes: String(fd.get("notes") ?? "").trim(), assigned_to: m!.assigned_to ?? null }),
+      () => apiClient.patch(`v1/contact/messages/${id}`, {
+        status: String(fd.get("status")),
+        notes: String(fd.get("notes") ?? "").trim(),
+        assigned_to: m!.assigned_to ?? null,
+        unidade_id: String(fd.get("unidade_id") ?? "") || null,
+      }),
       "Mensagem atualizada",
     );
     if (ok) {
@@ -63,6 +69,9 @@ function MessageDetail({ id, onChanged }: { id: string; onChanged: () => void })
       {can("contact:manage") ? (
         <form onSubmit={triage} className="flex flex-col gap-3 border-t border-surface-border pt-4">
           <Select id="ct-status" name="status" label="Situação" defaultValue={m.status} options={Object.entries(STATUS).map(([value, s]) => ({ value, label: s.label }))} />
+          {/* Encaminhar (ADR 013): a gestão com escopo só encaminha dentro da
+              área dela e sempre pode devolver à caixa geral. */}
+          <UnidadeDonaSelect id="ct-unidade" label="Setor (encaminhar para)" permission="contact:manage" optional defaultValue={m.unidade_id} placeholder="Caixa geral (triagem)" />
           <Textarea id="ct-notes" name="notes" label="Anotações internas" rows={3} maxLength={5000} defaultValue={m.notes} />
           <Button type="submit" className="self-end" loading={pending}>
             Salvar triagem
@@ -80,6 +89,8 @@ export default function GestaoContatoPage() {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<ContactSummary | null>(null);
   const list = useApiPage<ContactSummary>(withQuery("v1/contact/messages", { status, page, page_size: 25 }));
+  const tree = useApiQuery<OrgTree[]>("v1/iam/org-tree");
+  const setor = (id?: string) => (id && (tree.data ?? []).flatMap((e) => e.unidades).find((u) => u.id === id)?.nome) || (id ? "—" : "Caixa geral");
 
   return (
     <div className="flex flex-col gap-6">
@@ -102,6 +113,7 @@ export default function GestaoContatoPage() {
               <TableHeaderCell>Protocolo</TableHeaderCell>
               <TableHeaderCell>Assunto</TableHeaderCell>
               <TableHeaderCell>Remetente</TableHeaderCell>
+              <TableHeaderCell>Setor</TableHeaderCell>
               <TableHeaderCell>Situação</TableHeaderCell>
               <TableHeaderCell>Recebida</TableHeaderCell>
               <TableHeaderCell>
@@ -118,6 +130,7 @@ export default function GestaoContatoPage() {
                   <span className="block text-xs text-muted">{m.category}</span>
                 </TableCell>
                 <TableCell className="text-sm">{m.name}</TableCell>
+                <TableCell className="text-sm">{setor(m.unidade_id)}</TableCell>
                 <TableCell>
                   <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
                 </TableCell>

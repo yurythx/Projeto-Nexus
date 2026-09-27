@@ -33,6 +33,7 @@ import (
 	catDomain "github.com/yurythx/projeto-nexus/internal/modules/catalog/domain"
 	catInfra "github.com/yurythx/projeto-nexus/internal/modules/catalog/infrastructure"
 	contactApp "github.com/yurythx/projeto-nexus/internal/modules/contact/application"
+	contactDomain "github.com/yurythx/projeto-nexus/internal/modules/contact/domain"
 	contactInfra "github.com/yurythx/projeto-nexus/internal/modules/contact/infrastructure"
 	dirApp "github.com/yurythx/projeto-nexus/internal/modules/directory/application"
 	dirDomain "github.com/yurythx/projeto-nexus/internal/modules/directory/domain"
@@ -246,12 +247,12 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if !strings.HasPrefix(m.Protocol, "CT-") {
 			t.Fatalf("protocolo inesperado %q", m.Protocol)
 		}
-		_, total, err := svc.List(ctx, "new", p)
+		_, total, err := svc.List(ctx, gestaoGlobal, contactDomain.Filter{Status: "new"}, p)
 		must(t, err)
 		if total < 1 {
 			t.Fatal("mensagem não listada")
 		}
-		_, err = svc.Triage(ctx, m.ID, "answered", "Respondido por e-mail", nil)
+		_, err = svc.Triage(ctx, gestaoGlobal, m.ID, contactDomain.Triage{Status: "answered", Notes: "Respondido por e-mail"})
 		must(t, err)
 		var payload []byte
 		must(t, e.pool.QueryRow(ctx, `SELECT payload FROM outbox_events WHERE aggregate_id = $1`, m.ID.String()).Scan(&payload))

@@ -160,6 +160,21 @@ func TestContactHTTP(t *testing.T) {
 	h.expect(http.StatusUnprocessableEntity, http.MethodPatch, "/api/v1/contact/messages/"+id, admin, `{"status":"sumiu"}`)
 	h.expect(http.StatusOK, http.MethodPatch, "/api/v1/contact/messages/"+id, admin, `{"status":"answered","notes":"respondido por e-mail"}`)
 	h.expect(http.StatusForbidden, http.MethodPatch, "/api/v1/contact/messages/"+id, plain, `{"status":"archived"}`)
+
+	// Encaminhado por setor (ADR 013, fase 3): a gestão da unidade A vê e
+	// trata só o que a triagem encaminhou à área dela.
+	o := h.orgEscopo(t)
+	setorA := h.gestorEm(t, o.a, "contact:read", "contact:manage")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/contact/messages/"+id, setorA, "")
+	h.expect(http.StatusUnprocessableEntity, http.MethodGet, "/api/v1/contact/messages?unidade_id=x", setorA, "")
+	h.expect(http.StatusOK, http.MethodPatch, "/api/v1/contact/messages/"+id, admin, `{"status":"new","unidade_id":"`+o.sub+`"}`)
+	if lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/contact/messages?unidade_id="+o.sub, setorA, "").Body.String(); !strings.Contains(lista, ok.Protocol) {
+		t.Fatalf("encaminhada à subunidade de A aparece para A: %s", lista)
+	}
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/contact/messages/"+id, setorA, "")
+	h.expect(http.StatusForbidden, http.MethodPatch, "/api/v1/contact/messages/"+id, setorA, `{"status":"new","unidade_id":"`+o.b+`"}`)
+	h.expect(http.StatusOK, http.MethodPatch, "/api/v1/contact/messages/"+id, setorA, `{"status":"answered"}`) // devolve à caixa geral
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/contact/messages/"+id, setorA, "")
 	if outboxCount(t, h, "contact.message.submitted", id) != 1 {
 		t.Fatal("envio deveria emitir contact.message.submitted no outbox")
 	}

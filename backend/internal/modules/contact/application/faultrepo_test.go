@@ -59,14 +59,14 @@ func (fr *faultRepo) Insert(ctx context.Context, db database.DBTX, m domain.Mess
 	return fr.inner.Insert(ctx, db, m)
 }
 
-func (fr *faultRepo) List(ctx context.Context, db database.DBTX, status string, p pagination.Params) ([]domain.Summary, int64, error) {
+func (fr *faultRepo) List(ctx context.Context, db database.DBTX, f domain.Filter, p pagination.Params) ([]domain.Summary, int64, error) {
 	if err := fr.hook("List"); err != nil {
 		var z0 []domain.Summary
 		var z1 int64
 		return z0, z1, err
 	}
 	defer fr.post(ctx, db)
-	return fr.inner.List(ctx, db, status, p)
+	return fr.inner.List(ctx, db, f, p)
 }
 
 func (fr *faultRepo) Get(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.Message, error) {
@@ -78,12 +78,20 @@ func (fr *faultRepo) Get(ctx context.Context, db database.DBTX, id uuid.UUID) (d
 	return fr.inner.Get(ctx, db, id)
 }
 
-func (fr *faultRepo) UpdateTriage(ctx context.Context, db database.DBTX, id uuid.UUID, status string, notes string, assignedTo *uuid.UUID) error {
+func (fr *faultRepo) UpdateTriage(ctx context.Context, db database.DBTX, id uuid.UUID, t domain.Triage) error {
 	if err := fr.hook("UpdateTriage"); err != nil {
 		return err
 	}
 	defer fr.post(ctx, db)
-	return fr.inner.UpdateTriage(ctx, db, id, status, notes, assignedTo)
+	return fr.inner.UpdateTriage(ctx, db, id, t)
+}
+
+func (fr *faultRepo) ActiveUnidade(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {
+	if err := fr.hook("ActiveUnidade"); err != nil {
+		return false, err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.ActiveUnidade(ctx, db, id)
 }
 
 func (fr *faultRepo) ActiveUser(ctx context.Context, db database.DBTX, id uuid.UUID) (bool, error) {

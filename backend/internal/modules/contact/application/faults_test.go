@@ -46,6 +46,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 	e := &env{t: t, pool: dbtest.Pool(t)}
 	ctx := context.Background()
 	assignee := dbtest.User(t, e.pool)
+	setor := dbtest.Unidade(t, e.pool)
 	type op = func() func(s *application.Service) error
 	ops := map[string]op{
 		"Submit": func() func(*application.Service) error {
@@ -55,16 +56,19 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 			}
 		},
 		"List": func() func(*application.Service) error {
-			return func(s *application.Service) error { _, _, err := s.List(ctx, "", pagination.New(1, 5, 5)); return err }
+			return func(s *application.Service) error {
+				_, _, err := s.List(ctx, gestor, domain.Filter{}, pagination.New(1, 5, 5))
+				return err
+			}
 		},
 		"Get": func() func(*application.Service) error {
 			m := e.submit()
-			return func(s *application.Service) error { _, err := s.Get(ctx, m.ID); return err }
+			return func(s *application.Service) error { _, err := s.Get(ctx, gestor, m.ID); return err }
 		},
 		"Triage": func() func(*application.Service) error {
 			m := e.submit()
 			return func(s *application.Service) error {
-				_, err := s.Triage(ctx, m.ID, "in_progress", "nota", &assignee)
+				_, err := s.Triage(ctx, gestor, m.ID, domain.Triage{Status: "in_progress", Notes: "nota", AssignedTo: &assignee, UnidadeID: &setor})
 				return err
 			}
 		},

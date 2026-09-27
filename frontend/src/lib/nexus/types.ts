@@ -287,6 +287,8 @@ export interface ContactSummary {
   subject: string;
   category: string;
   status: "new" | "in_progress" | "answered" | "archived";
+  /** Setor encaminhado (ADR 013); ausente = caixa geral. */
+  unidade_id?: UUID;
   created_at: string;
 }
 
