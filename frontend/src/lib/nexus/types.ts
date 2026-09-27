@@ -215,6 +215,12 @@ export interface VerifyResult {
 
 // ------------------------------------------------------------------- blog
 
+/** Público-alvo (ADR 014): secretarias e/ou unidades; vazio = todos. */
+export interface Publico {
+  entidades: UUID[];
+  unidades: UUID[];
+}
+
 export interface Post {
   id: UUID;
   slug: string;
@@ -229,6 +235,7 @@ export interface Post {
   author_name?: string;
   /** Unidade dona (ADR 013); ausente = institucional. */
   unidade_id?: UUID;
+  publico?: Publico;
   published_at?: string;
   created_at: string;
   updated_at: string;

@@ -9,7 +9,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 var (
@@ -46,11 +48,13 @@ type Post struct {
 	Pinned         bool       `json:"pinned"`
 	AuthorID       *uuid.UUID `json:"author_id,omitempty"`
 	// UnidadeID é a unidade dona (ADR 013); nil = institucional.
-	UnidadeID   *uuid.UUID `json:"unidade_id,omitempty"`
-	AuthorName  string     `json:"author_name,omitempty"`
-	PublishedAt *time.Time `json:"published_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	UnidadeID *uuid.UUID `json:"unidade_id,omitempty"`
+	// Publico é o público-alvo (ADR 014); vazio = todos.
+	Publico     auth.Publico `json:"publico"`
+	AuthorName  string       `json:"author_name,omitempty"`
+	PublishedAt *time.Time   `json:"published_at,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
 // Filter restringe a listagem.
@@ -62,6 +66,8 @@ type Filter struct {
 	// com escopo); publicados aparecem sempre.
 	Restrito bool
 	Unidades []uuid.UUID
+	// Leitura: quem lê (público-alvo, autor, gestão — ADR 014).
+	Leitura publico.Leitura
 }
 
 // Repository é a porta de persistência.
@@ -72,7 +78,9 @@ type Repository interface {
 	Insert(ctx context.Context, db database.DBTX, p Post) (Post, error)
 	Update(ctx context.Context, db database.DBTX, p Post) (Post, error)
 	Delete(ctx context.Context, db database.DBTX, id uuid.UUID) error
-	Search(ctx context.Context, db database.DBTX, query string, limit int) ([]Post, []float64, error)
+	Search(ctx context.Context, db database.DBTX, query string, limit int, l publico.Leitura) ([]Post, []float64, error)
+	// SetPublico substitui o público-alvo do post.
+	SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error
 }
 
 // CanTransition valida o ciclo de vida draft -> published -> archived

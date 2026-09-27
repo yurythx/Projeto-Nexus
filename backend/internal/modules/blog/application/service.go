@@ -22,6 +22,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 	"github.com/yurythx/projeto-nexus/internal/platform/storage"
 )
 
@@ -58,6 +59,8 @@ func MapError(err error) error {
 		return apperrors.Conflict("já existe uma publicação com este endereço (slug)")
 	case errors.Is(err, domain.ErrInvalidState):
 		return apperrors.Conflict("transição de estado não permitida")
+	case errors.Is(err, publico.ErrInvalido):
+		return apperrors.Validation("público-alvo com secretaria ou unidade inexistente")
 	case errors.Is(err, domain.ErrEmptyBody):
 		return apperrors.Validation("escreva o texto antes de publicar")
 	case errors.Is(err, domain.ErrOutOfScope):
@@ -85,8 +88,21 @@ func gere(identity auth.Identity, unidade *uuid.UUID) bool {
 	return auth.Can(identity, auth.PermBlogManage, alvo)
 }
 
+// leitura é quem lê (ADR 014): vê o post quem está no público-alvo, o
+// autor e a gestão (global, ou com escopo na unidade dona).
+func leitura(identity auth.Identity) publico.Leitura {
+	gestao := auth.CoverageOf(identity, auth.PermBlogManage)
+	return publico.Leitura{Leitor: publico.LeitorDe(identity), Autor: identity.UserID, Tudo: gestao.All, Geridas: gestao.Unidades}
+}
+
+// podeLer aplica leitura a um post já carregado.
+func podeLer(identity auth.Identity, p domain.Post) bool {
+	return auth.NoPublico(identity, p.Publico) || gere(identity, p.UnidadeID) ||
+		(p.AuthorID != nil && *p.AuthorID == identity.UserID)
+}
+
 // List lista publicações. Rascunhos/arquivados só para a gestão que cobre
-// a unidade dona.
+// a unidade dona; com público-alvo, só para quem pode ler (ADR 014).
 func (s *Service) List(ctx context.Context, identity auth.Identity, f domain.Filter, p pagination.Params) ([]domain.Post, int64, error) {
 	if f.Status != "" && f.Status != domain.StatusPublished {
 		if !auth.HasPermission(identity, auth.PermBlogManage) {
@@ -95,6 +111,7 @@ func (s *Service) List(ctx context.Context, identity auth.Identity, f domain.Fil
 		gestao := auth.CoverageOf(identity, auth.PermBlogManage)
 		f.Restrito, f.Unidades = !gestao.All, gestao.Unidades
 	}
+	f.Leitura = leitura(identity)
 	posts, total, err := s.repo.List(ctx, s.pool, f, p)
 	if err != nil {
 		return nil, 0, err
@@ -119,7 +136,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, idOrSlug stri
 	if err != nil {
 		return domain.Post{}, MapError(err)
 	}
-	if p.Status != domain.StatusPublished && !gere(identity, p.UnidadeID) {
+	if (p.Status != domain.StatusPublished && !gere(identity, p.UnidadeID)) || !podeLer(identity, p) {
 		return domain.Post{}, MapError(domain.ErrNotFound)
 	}
 	return s.withCover(ctx, p), nil
@@ -136,6 +153,8 @@ type Input struct {
 	CoverObjectKey string
 	// UnidadeID é a unidade dona (nil = institucional).
 	UnidadeID *uuid.UUID
+	// Publico é o público-alvo (vazio = todos — ADR 014).
+	Publico auth.Publico
 }
 
 func (s *Service) prepare(ctx context.Context, in Input) (Input, error) {
@@ -179,6 +198,10 @@ func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) 
 		if err != nil {
 			return err
 		}
+		if err := s.repo.SetPublico(ctx, tx, out.ID, in.Publico); err != nil {
+			return err
+		}
+		out.Publico = in.Publico.Normalizado()
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "blog.post.created", "blog_post", out.ID.String(), nil, summary(out)))
 	})
 	return s.withCover(ctx, out), MapError(err)
@@ -215,6 +238,10 @@ func (s *Service) Update(ctx context.Context, identity auth.Identity, id uuid.UU
 		if out, err = s.repo.Update(ctx, tx, next); err != nil {
 			return err
 		}
+		if err := s.repo.SetPublico(ctx, tx, id, in.Publico); err != nil {
+			return err
+		}
+		out.Publico = in.Publico.Normalizado()
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "blog.post.updated", "blog_post", id.String(), summary(prev), summary(out)))
 	})
 	if err == nil && oldCover != "" {
@@ -253,6 +280,8 @@ func (s *Service) Transition(ctx context.Context, identity auth.Identity, id uui
 			if err := s.outbox.Write(ctx, tx, EventPostPublished, "blog_post", id.String(), uuid.Nil, map[string]any{
 				"id": id.String(), "slug": out.Slug, "title": out.Title, "kind": out.Kind, "summary": out.Summary,
 				"published_at": out.PublishedAt,
+				// Com público-alvo, a difusão geral (tempo real) descarta o aviso (ADR 014).
+				"restrito": !out.Publico.Vazio(),
 			}); err != nil {
 				return err
 			}
@@ -299,15 +328,15 @@ func (s *Service) CoverUpload(ctx context.Context, filename, contentType string)
 	return modkit.NewUpload(ctx, s.store, s.bucket, coverPrefix, filename, contentType, modkit.ImageTypes, s.expiry)
 }
 
-// Search alimenta a Busca Global.
-func (s *Service) Search(ctx context.Context, query string, limit int) ([]domain.Post, []float64, error) {
-	return s.repo.Search(ctx, s.pool, query, limit)
+// Search alimenta a Busca Global (respeita o público-alvo).
+func (s *Service) Search(ctx context.Context, identity auth.Identity, query string, limit int) ([]domain.Post, []float64, error) {
+	return s.repo.Search(ctx, s.pool, query, limit, leitura(identity))
 }
 
 // summary é a forma auditada de um post (sem o corpo inteiro).
 func summary(p domain.Post) map[string]any {
 	return map[string]any{
 		"slug": p.Slug, "title": p.Title, "kind": p.Kind, "status": p.Status, "pinned": p.Pinned,
-		"cover_object_key": p.CoverObjectKey, "body_len": len(p.Body),
+		"cover_object_key": p.CoverObjectKey, "body_len": len(p.Body), "publico": p.Publico,
 	}
 }

@@ -126,6 +126,7 @@ third.append('"github.com/jackc/pgx/v5"')
 own = []
 if 'pagination.' in code: own.append('"github.com/yurythx/projeto-nexus/internal/domain/pagination"')
 if 'auth.' in code: own.append('"github.com/yurythx/projeto-nexus/internal/platform/auth"')
+if 'publico.' in code: own.append('"github.com/yurythx/projeto-nexus/internal/platform/publico"')
 own.append('"' + dompath + '"')
 own.append('"github.com/yurythx/projeto-nexus/internal/platform/database"')
 imp = 'import (\n' + '\n'.join('\t'+x for x in std) + '\n\n' + '\n'.join('\t'+x for x in third) + '\n\n' + '\n'.join('\t'+x for x in sorted(own)) + '\n)\n\ntype innerRepo = ' + alias + '.Repository\n'

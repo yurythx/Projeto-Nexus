@@ -201,7 +201,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if total < 1 || len(list) < 1 {
 			t.Fatal("listagem de publicados vazia")
 		}
-		res, _, err := svc.Search(ctx, "manutenção", 10)
+		res, _, err := svc.Search(ctx, e.identity, "manutenção", 10)
 		must(t, err)
 		if len(res) == 0 {
 			t.Fatal("busca full-text (unaccent + português) deveria achar a publicação")

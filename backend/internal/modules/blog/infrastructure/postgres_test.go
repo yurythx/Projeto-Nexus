@@ -11,6 +11,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/database/dbtest"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
@@ -25,12 +26,16 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 		"Insert":    func(db database.DBTX) error { _, err := r.Insert(ctx, db, domain.Post{ID: id}); return err },
 		"Update":    func(db database.DBTX) error { _, err := r.Update(ctx, db, domain.Post{ID: id}); return err },
 		"Delete":    func(db database.DBTX) error { return r.Delete(ctx, db, id) },
-		"Search":    func(db database.DBTX) error { _, _, err := r.Search(ctx, db, "x", 5); return err },
+		"Search":    func(db database.DBTX) error { _, _, err := r.Search(ctx, db, "x", 5, publico.Leitura{}); return err },
 	}
 	for name, call := range calls {
 		if err := call(dbtest.Fail{}); !errors.Is(err, dbtest.ErrInjected) {
 			t.Errorf("%s com o banco fora: %v", name, err)
 		}
+	}
+	// O post foi lido, mas o público-alvo não (ADR 014).
+	if _, err := r.Get(ctx, &dbtest.Seq{Row: rowOK{}}, id); !errors.Is(err, dbtest.ErrInjected) {
+		t.Errorf("público-alvo com o banco fora: %v", err)
 	}
 	if err := calls["Search"](dbtest.ScanFail{}); err == nil {
 		t.Error("busca com linha ilegível deveria falhar")
@@ -65,3 +70,8 @@ func (countRow) Scan(dest ...any) error {
 	*(dest[0].(*int64)) = 0
 	return nil
 }
+
+// rowOK é uma linha que se lê sem erro (valores zerados).
+type rowOK struct{}
+
+func (rowOK) Scan(...any) error { return nil }

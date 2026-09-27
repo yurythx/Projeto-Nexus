@@ -10,6 +10,7 @@ import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
 import { Pagination } from "@/components/nexus/Pagination";
 import { fmtDate } from "@/components/nexus/useAction";
+import { PublicoBadge } from "@/components/iam/PublicoAlvo";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -110,6 +111,7 @@ export default function BlogPage() {
                       {p.pinned && <Pin size={12} aria-label="Fixado" />}
                       <Badge tone={p.kind === "comunicado" ? "info" : "neutral"}>{p.kind === "comunicado" ? "Comunicado" : "Notícia"}</Badge>
                       {p.status !== "published" && <Badge tone="warning">{STATUS_LABEL[p.status]}</Badge>}
+                      <PublicoBadge publico={p.publico} />
                       <span>{fmtDate(p.published_at ?? p.updated_at)}</span>
                     </div>
                     <h2 className="font-semibold leading-snug">{p.title}</h2>

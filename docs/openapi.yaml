@@ -199,6 +199,37 @@ components:
                 - verified_at
             type: object
             x-nexus-generated: true
+        AuthPublico:
+            properties:
+                entidades:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                unidades:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+            required:
+                - entidades
+                - unidades
+            type: object
+            x-nexus-generated: true
+        AuthPublicoInput:
+            properties:
+                entidades:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                unidades:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+            type: object
+            x-nexus-generated: true
         AuthScope:
             properties:
                 departamento_id:
@@ -247,6 +278,8 @@ components:
                     type: string
                 pinned:
                     type: boolean
+                publico:
+                    $ref: '#/components/schemas/AuthPublico'
                 published_at:
                     format: date-time
                     type: string
@@ -270,6 +303,7 @@ components:
                 - id
                 - kind
                 - pinned
+                - publico
                 - slug
                 - status
                 - summary
@@ -292,6 +326,8 @@ components:
                     type: string
                 pinned:
                     type: boolean
+                publico:
+                    $ref: '#/components/schemas/AuthPublicoInput'
                 slug:
                     maxLength: 100
                     type: string

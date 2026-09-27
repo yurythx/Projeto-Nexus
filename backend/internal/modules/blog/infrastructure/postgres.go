@@ -9,8 +9,33 @@ import (
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/domain"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
+
+// tabelaPublico é onde fica o público-alvo dos posts (ADR 014).
+var tabelaPublico = publico.Tabela{Nome: "blog_post_publico", Coluna: "post_id"}
+
+// comPublico carrega o público-alvo dos posts.
+func comPublico(ctx context.Context, db database.DBTX, posts []domain.Post) error {
+	ids := make([]uuid.UUID, 0, len(posts))
+	for _, p := range posts {
+		ids = append(ids, p.ID)
+	}
+	m, err := tabelaPublico.Carregar(ctx, db, ids)
+	if err != nil {
+		return err
+	}
+	for i := range posts {
+		posts[i].Publico = m[posts[i].ID]
+	}
+	return nil
+}
+
+func (r *Repository) SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error {
+	return tabelaPublico.Gravar(ctx, db, id, p)
+}
 
 // Repository implementa domain.Repository.
 type Repository struct{}
@@ -51,20 +76,23 @@ func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter
 	if status == "" {
 		status = domain.StatusPublished
 	}
-	const where = `WHERE ($1 = 'all' OR p.status = $1) AND ($2 = '' OR p.kind = $2)
-		AND ($3 = '' OR p.search @@ nexus_search_tsquery('portuguese', $3))
-		AND (p.status = 'published' OR NOT $4 OR p.unidade_id = ANY($5::uuid[]))`
 	unidades := make([]string, 0, len(f.Unidades))
 	for _, u := range f.Unidades {
 		unidades = append(unidades, u.String())
 	}
+	args := []any{status, f.Kind, f.Query, f.Restrito, unidades}
+	where := `WHERE ($1 = 'all' OR p.status = $1) AND ($2 = '' OR p.kind = $2)
+		AND ($3 = '' OR p.search @@ nexus_search_tsquery('portuguese', $3))
+		AND (p.status = 'published' OR NOT $4 OR p.unidade_id = ANY($5::uuid[]))
+		AND ` + tabelaPublico.Condicao("p.id", "p.author_id", "p.unidade_id", f.Leitura, &args)
 	var total int64
-	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, status, f.Kind, f.Query, f.Restrito, unidades).Scan(&total); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, args...).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
 	}
-	rows, err := db.Query(ctx, `SELECT `+cols+from+where+`
-		ORDER BY p.pinned DESC, COALESCE(p.published_at, p.updated_at) DESC LIMIT $6 OFFSET $7`,
-		status, f.Kind, f.Query, f.Restrito, unidades, p.Limit(), p.Offset())
+	n := len(args)
+	rows, err := db.Query(ctx, `SELECT `+cols+from+where+fmt.Sprintf(`
+		ORDER BY p.pinned DESC, COALESCE(p.published_at, p.updated_at) DESC LIMIT $%d OFFSET $%d`, n+1, n+2),
+		append(args, p.Limit(), p.Offset())...)
 	if err != nil {
 		return nil, 0, wrap(err)
 	}
@@ -78,17 +106,31 @@ func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter
 		post.Body = "" // listagem não carrega o corpo inteiro
 		out = append(out, post)
 	}
-	return out, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, wrap(err)
+	}
+	rows.Close()
+	return out, total, wrap(comPublico(ctx, db, out))
 }
 
 func (r *Repository) Get(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.Post, error) {
-	p, err := scan(db.QueryRow(ctx, `SELECT `+cols+from+`WHERE p.id = $1`, id))
-	return p, wrap(err)
+	return getOne(ctx, db, `WHERE p.id = $1`, id)
 }
 
 func (r *Repository) GetBySlug(ctx context.Context, db database.DBTX, slug string) (domain.Post, error) {
-	p, err := scan(db.QueryRow(ctx, `SELECT `+cols+from+`WHERE p.slug = $1`, slug))
-	return p, wrap(err)
+	return getOne(ctx, db, `WHERE p.slug = $1`, slug)
+}
+
+func getOne(ctx context.Context, db database.DBTX, where string, arg any) (domain.Post, error) {
+	p, err := scan(db.QueryRow(ctx, `SELECT `+cols+from+where, arg))
+	if err != nil {
+		return p, wrap(err)
+	}
+	one := []domain.Post{p}
+	if err := comPublico(ctx, db, one); err != nil {
+		return domain.Post{}, wrap(err)
+	}
+	return one[0], nil
 }
 
 func (r *Repository) Insert(ctx context.Context, db database.DBTX, p domain.Post) (domain.Post, error) {
@@ -125,12 +167,14 @@ func (r *Repository) Delete(ctx context.Context, db database.DBTX, id uuid.UUID)
 	return wrap(err)
 }
 
-func (r *Repository) Search(ctx context.Context, db database.DBTX, query string, limit int) ([]domain.Post, []float64, error) {
+func (r *Repository) Search(ctx context.Context, db database.DBTX, query string, limit int, l publico.Leitura) ([]domain.Post, []float64, error) {
+	args := []any{query, limit}
+	cond := tabelaPublico.Condicao("p.id", "p.author_id", "p.unidade_id", l, &args)
 	rows, err := db.Query(ctx, `
 		SELECT `+cols+`, ts_rank(p.search, q) AS rank`+from+`,
 		       nexus_search_tsquery('portuguese', $1) q
-		WHERE p.status = 'published' AND p.search @@ q
-		ORDER BY rank DESC LIMIT $2`, query, limit)
+		WHERE p.status = 'published' AND p.search @@ q AND `+cond+`
+		ORDER BY rank DESC LIMIT $2`, args...)
 	if err != nil {
 		return nil, nil, wrap(err)
 	}

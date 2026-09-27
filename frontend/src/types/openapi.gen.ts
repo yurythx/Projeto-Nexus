@@ -2539,6 +2539,14 @@ export interface components {
             valid: boolean;
             verified_at: string;
         };
+        AuthPublico: {
+            entidades: string[];
+            unidades: string[];
+        };
+        AuthPublicoInput: {
+            entidades?: string[];
+            unidades?: string[];
+        };
         AuthScope: {
             /** Format: uuid */
             departamento_id?: string;
@@ -2563,6 +2571,7 @@ export interface components {
             id: string;
             kind: string;
             pinned: boolean;
+            publico: components["schemas"]["AuthPublico"];
             /** Format: date-time */
             published_at?: string;
             slug: string;
@@ -2580,6 +2589,7 @@ export interface components {
             /** @enum {string} */
             kind?: "noticia" | "comunicado";
             pinned?: boolean;
+            publico?: components["schemas"]["AuthPublicoInput"];
             slug?: string;
             summary?: string;
             title: string;

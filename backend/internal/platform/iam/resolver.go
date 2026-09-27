@@ -211,13 +211,13 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 	}
 	const q = `
 		SELECT p.slug, p.permissoes, s.entidade_id, s.unidade_id, s.departamento_id, 'manual',
-		       nexus_unidades_cobertas(s.entidade_id, s.unidade_id, s.departamento_id)
+		       nexus_unidades_cobertas(s.entidade_id, s.unidade_id, s.departamento_id), nexus_unidades_acima(s.unidade_id)
 		  FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo
 		 WHERE s.user_id = $1
 		   AND nexus_scope_active(s.entidade_id, s.unidade_id, s.departamento_id)
 		UNION ALL
 		SELECT p.slug, p.permissoes, m.entidade_id, m.unidade_id, m.departamento_id, 'ad',
-		       nexus_unidades_cobertas(m.entidade_id, m.unidade_id, m.departamento_id)
+		       nexus_unidades_cobertas(m.entidade_id, m.unidade_id, m.departamento_id), nexus_unidades_acima(m.unidade_id)
 		  FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo
 		 WHERE lower(m.ad_group) = ANY($2)
 		   AND nexus_scope_active(m.entidade_id, m.unidade_id, m.departamento_id)`
@@ -234,7 +234,7 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 	scopes := []auth.Scope{}
 	for rows.Next() {
 		var s auth.Scope
-		if err := rows.Scan(&s.Perfil, &s.Permissions, &s.EntidadeID, &s.UnidadeID, &s.DepartamentoID, &s.Origem, &s.Unidades); err != nil {
+		if err := rows.Scan(&s.Perfil, &s.Permissions, &s.EntidadeID, &s.UnidadeID, &s.DepartamentoID, &s.Origem, &s.Unidades, &s.Acima); err != nil {
 			return nil, nil, fmt.Errorf("iam: scan grant: %w", err)
 		}
 		scopes = append(scopes, s)

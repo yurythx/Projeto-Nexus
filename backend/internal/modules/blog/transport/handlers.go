@@ -87,12 +87,15 @@ type postRequest struct {
 	CoverObjectKey string `json:"cover_object_key" validate:"max=300"`
 	// UnidadeID: unidade dona (ADR 013); vazio = institucional.
 	UnidadeID *uuid.UUID `json:"unidade_id"`
+	// Publico: público-alvo (ADR 014); vazio = todos.
+	Publico auth.Publico `json:"publico" validate:"-"`
 }
 
 func (req postRequest) input() application.Input {
 	return application.Input{
 		Title: req.Title, Slug: req.Slug, Summary: req.Summary, Body: req.Body,
 		Kind: req.Kind, Pinned: req.Pinned, CoverObjectKey: req.CoverObjectKey, UnidadeID: req.UnidadeID,
+		Publico: req.Publico,
 	}
 }
 

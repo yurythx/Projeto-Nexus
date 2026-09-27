@@ -10,6 +10,7 @@ import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { Markdown } from "@/components/nexus/Markdown";
 import { fmtDateTime, useAction } from "@/components/nexus/useAction";
+import { PublicoBadge } from "@/components/iam/PublicoAlvo";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -43,6 +44,7 @@ export default function PostPage() {
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <Badge tone={p.kind === "comunicado" ? "info" : "neutral"}>{p.kind === "comunicado" ? "Comunicado" : "Notícia"}</Badge>
                 {p.status !== "published" && <Badge tone="warning">{p.status === "draft" ? "Rascunho" : "Arquivado"}</Badge>}
+                <PublicoBadge publico={p.publico} />
                 <span>{fmtDateTime(p.published_at ?? p.updated_at)}</span>
                 {p.author_name && <span>· {p.author_name}</span>}
               </div>

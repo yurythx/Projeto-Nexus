@@ -12,7 +12,9 @@ import (
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/domain"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 type innerRepo = domain.Repository
@@ -104,12 +106,20 @@ func (fr *faultRepo) Delete(ctx context.Context, db database.DBTX, id uuid.UUID)
 	return fr.inner.Delete(ctx, db, id)
 }
 
-func (fr *faultRepo) Search(ctx context.Context, db database.DBTX, query string, limit int) ([]domain.Post, []float64, error) {
+func (fr *faultRepo) Search(ctx context.Context, db database.DBTX, query string, limit int, l publico.Leitura) ([]domain.Post, []float64, error) {
 	if err := fr.hook("Search"); err != nil {
 		var z0 []domain.Post
 		var z1 []float64
 		return z0, z1, err
 	}
 	defer fr.post(ctx, db)
-	return fr.inner.Search(ctx, db, query, limit)
+	return fr.inner.Search(ctx, db, query, limit, l)
+}
+
+func (fr *faultRepo) SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error {
+	if err := fr.hook("SetPublico"); err != nil {
+		return err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.SetPublico(ctx, db, id, p)
 }

@@ -39,6 +39,9 @@ type Scope struct {
 	// Unidades é a árvore coberta, expandida pelo resolvedor: a unidade e as
 	// subunidades dela ou, na entidade, todas as unidades da entidade.
 	Unidades []uuid.UUID `json:"-"`
+	// Acima é a unidade da concessão e as de cima (ADR 014: quem está numa
+	// unidade pertence ao público-alvo de qualquer unidade acima dela).
+	Acima []uuid.UUID `json:"-"`
 }
 
 // Identity é o chamador autenticado. Nunca carrega o token bruto — só o

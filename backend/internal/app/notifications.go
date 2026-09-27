@@ -42,17 +42,17 @@ func RunAPIBackground(ctx context.Context, d *Dependencies) {
 
 // NotificationHandler encaminha ao navegador os eventos de difusão geral
 // (fila nexus.notification.websocket só recebe eventos seguros — ver
-// messaging.QueueNotificationWebsocket). Eventos de agenda privados nunca
-// são difundidos.
+// messaging.QueueNotificationWebsocket). Nunca são difundidos: eventos de
+// agenda privados e conteúdo com público-alvo ("restrito", ADR 014) — a
+// difusão chega a todos, e o título não pode.
 func NotificationHandler(hub *ws.Hub, logger *slog.Logger) events.MessageHandler {
 	return func(ctx context.Context, event events.Event) error {
-		if event.Type == "calendar.event.created" {
-			var p struct {
-				Visibility string `json:"visibility"`
-			}
-			if err := json.Unmarshal(event.Payload, &p); err == nil && p.Visibility == "private" {
-				return nil
-			}
+		var p struct {
+			Visibility string `json:"visibility"`
+			Restrito   bool   `json:"restrito"`
+		}
+		if err := json.Unmarshal(event.Payload, &p); err == nil && (p.Visibility == "private" || p.Restrito) {
+			return nil
 		}
 		if err := hub.Publish(ctx, ws.TopicBroadcast, "event", event); err != nil {
 			logger.Error("notification: falha ao difundir evento", slog.Any("error", err))

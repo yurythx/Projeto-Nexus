@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
+import { PublicoAlvoPicker, TODOS } from "@/components/iam/PublicoAlvo";
 import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { Markdown } from "@/components/nexus/Markdown";
 import { useAction } from "@/components/nexus/useAction";
@@ -21,6 +22,7 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
   const [preview, setPreview] = useState(false);
   const [coverKey, setCoverKey] = useState(post?.cover_object_key ?? "");
   const [uploading, setUploading] = useState(false);
+  const [publico, setPublico] = useState(post?.publico ?? TODOS);
 
   async function uploadCover(file: File) {
     setUploading(true);
@@ -43,6 +45,7 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
       pinned: fd.get("pinned") === "on",
       cover_object_key: coverKey,
       unidade_id: String(fd.get("unidade_id") ?? "") || null,
+      publico,
       body,
     };
     const res = await run(
@@ -72,6 +75,7 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
         </label>
       </div>
       <UnidadeDonaSelect id="post-unidade" permission="blog:manage" defaultValue={post?.unidade_id} />
+      <PublicoAlvoPicker idPrefix="post-publico" value={publico} onChange={setPublico} />
       <Textarea id="post-summary" name="summary" label="Resumo" rows={2} maxLength={500} defaultValue={post?.summary} />
       <div className="flex flex-col gap-1">
         <label htmlFor="post-cover" className="text-sm font-medium">

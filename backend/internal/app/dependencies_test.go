@@ -343,9 +343,14 @@ func TestNotificationHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// agenda privada nunca é difundida
-	if err := h(ctx, events.Event{Type: "calendar.event.created", Payload: []byte(`{"visibility":"private"}`)}); err != nil {
-		t.Fatal(err)
+	// agenda privada e conteúdo com público-alvo (ADR 014) nunca são difundidos
+	for _, ev := range []events.Event{
+		{Type: "calendar.event.created", Payload: []byte(`{"visibility":"private"}`)},
+		{Type: "blog.post.published", Payload: []byte(`{"restrito":true}`)},
+	} {
+		if err := h(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, ev := range []events.Event{
 		{Type: "calendar.event.created", Payload: []byte(`{"visibility":"public"}`)},

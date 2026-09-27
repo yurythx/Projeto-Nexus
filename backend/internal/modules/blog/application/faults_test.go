@@ -123,7 +123,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 			return func(s *application.Service) error { return s.Delete(ctx, gestao, p.ID) }
 		},
 		"Search": func() func(*application.Service) error {
-			return func(s *application.Service) error { _, _, err := s.Search(ctx, "notícia", 5); return err }
+			return func(s *application.Service) error { _, _, err := s.Search(ctx, gestao, "notícia", 5); return err }
 		},
 	}
 	for name, o := range ops {

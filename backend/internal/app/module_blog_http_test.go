@@ -95,3 +95,52 @@ func TestBlogGestaoComEscopo(t *testing.T) {
 		t.Fatalf("rascunhos fora do escopo não aparecem para a gestão de A: %s", lista)
 	}
 }
+
+// Público-alvo (ADR 014): o post para a unidade A é lido por quem está em A
+// ou abaixo; para a secretaria, por quem está em qualquer unidade dela.
+// Fora do público: some da lista, do detalhe e da busca.
+func TestBlogPublicoAlvo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	naSub := h.gestorEm(t, o.sub, "contact:read")
+	emB := h.gestorEm(t, o.b, "contact:read")
+	_, semLotacao := h.user("nexus-user")
+	sfx := uuid.NewString()[:8]
+	publicar := func(titulo, publico string) string {
+		id := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin,
+			`{"title":"`+titulo+` `+sfx+`","summary":"s","body":"texto `+sfx+`","publico":`+publico+`}`)).ID
+		h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+id+"/publish", admin, "")
+		return id
+	}
+	deA := publicar("Para A", `{"unidades":["`+o.a+`"]}`)
+	daSecretaria := publicar("Para a secretaria", `{"entidades":["`+o.ent+`"]}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/blog/posts", admin,
+		`{"title":"Fantasma","summary":"s","body":"b","publico":{"unidades":["`+uuid.NewString()+`"]}}`)
+
+	lista := func(tok string) string {
+		return h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts?page_size=100&q="+sfx, tok, "").Body.String()
+	}
+	if l := lista(naSub); !strings.Contains(l, deA) || !strings.Contains(l, daSecretaria) {
+		t.Fatalf("lotado na subunidade de A lê o de A e o da secretaria: %s", l)
+	}
+	if l := lista(emB); strings.Contains(l, deA) || !strings.Contains(l, daSecretaria) {
+		t.Fatalf("lotado em B lê só o da secretaria: %s", l)
+	}
+	if l := lista(semLotacao); strings.Contains(l, deA) || strings.Contains(l, daSecretaria) {
+		t.Fatalf("sem lotação não lê conteúdo com público: %s", l)
+	}
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts/"+deA, naSub, "")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/blog/posts/"+deA, emB, "")
+	if busca := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx, emB, "").Body.String(); strings.Contains(busca, deA) || !strings.Contains(busca, daSecretaria) {
+		t.Fatalf("busca global respeita o público: %s", busca)
+	}
+	detalhe := data[struct {
+		Publico struct {
+			Unidades []string `json:"unidades"`
+		} `json:"publico"`
+	}](t, h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts/"+deA, admin, ""))
+	if len(detalhe.Publico.Unidades) != 1 || detalhe.Publico.Unidades[0] != o.a {
+		t.Fatalf("detalhe traz o público: %+v", detalhe)
+	}
+}
