@@ -55,7 +55,7 @@ function RecordDetail({ r }: { r: AuditRecord }) {
 }
 
 export default function AuditoriaPage() {
-  const { can } = useNexus();
+  const { can, canGlobal } = useNexus();
   const { run, pending } = useAction();
   const [filters, setFilters] = useState({ action: "", resource_type: "", from: "", to: "" });
   const [applied, setApplied] = useState(filters);
@@ -105,6 +105,12 @@ export default function AuditoriaPage() {
           </>
         }
       />
+      {can("audit:read") && !canGlobal("audit:read") && (
+        <p role="note" className="rounded-lg border border-surface-border bg-surface-hover/60 px-4 py-3 text-sm text-muted">
+          Sua consulta à auditoria vale na sua área: aparecem as ações de quem estava lotado nela quando agiu — inclusive na
+          exportação. Ações do sistema e de contas globais ficam com a auditoria global.
+        </p>
+      )}
 
       {verify && (
         <div role="status" className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${verify.valid ? "border-success/40 bg-success/5" : "border-danger/40 bg-danger/5"}`}>

@@ -52,6 +52,13 @@ make deploy        # git pull --ff-only + rebuild + restart
 `.env`, chaves e CA são reaproveitados; migrations novas rodam sozinhas
 (serviço `migrate`) antes da API e do worker.
 
+**Antes de atualizar uma implantação que já tem lotações com escopo**,
+rode `make iam-scope-report` e confira o resultado: ele lista cada lotação
+e mapeamento de grupo com escopo e, para cada permissão do perfil, se ela
+passa a **valer só no escopo** ou **deixa de valer** (permissões de
+plataforma só valem com concessão global — ADR 013). Ajuste as lotações de
+quem precisa continuar com acesso amplo (concessão global) antes do deploy.
+
 ## Cuidados
 
 - **Não apague nem regenere o `.env`** depois que houver dados: a senha do
@@ -241,4 +248,5 @@ primeiro login certo.
 | `make demo-generate` / `make demo-seed` | regera / reaplica os dados fictícios |
 | `make demo-popular` | povoa todos os apps (uma vez) |
 | `make demo-test` | roda os cenários ponta a ponta |
+| `make iam-scope-report` | impacto da permissão com escopo nas lotações atuais (ADR 013) |
 | `scripts/backup.sh` / `scripts/restore.sh` | backup e restauração |

@@ -17,6 +17,21 @@ const rec = (pos: number, extra: Record<string, unknown> = {}) => ({
 describe("Auditoria", () => {
   beforeEach(() => resetNavigation());
 
+  it("auditoria com escopo (ADR 013) avisa que a trilha vale na área; a global não", async () => {
+    mockBackend({
+      ...identityRoutes({ permissions: ["audit:read"], scopes: [{ perfil: "p", origem: "manual", entidade_id: "e1", unidade_id: "u1", permissions: ["audit:read"] }] }),
+      "GET v1/audit/logs": page([rec(1)]),
+    });
+    const { unmount } = renderApp(<AuditoriaPage />);
+    expect(await screen.findByRole("note")).toHaveTextContent("vale na sua área");
+    expect(screen.queryByRole("button", { name: /Verificar integridade/ })).not.toBeInTheDocument();
+    unmount();
+    mockBackend({ ...identityRoutes(), "GET v1/audit/logs": page([rec(1)]) });
+    renderApp(<AuditoriaPage />);
+    expect(await screen.findByRole("button", { name: /Verificar integridade/ })).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
   it("lista, filtra e monta a exportação LAI com os filtros aplicados", async () => {
     const api = mockBackend({
       ...identityRoutes(),
