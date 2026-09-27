@@ -41,7 +41,7 @@ func TestEvaluateInheritanceAndSubjects(t *testing.T) {
 			t.Errorf("%s: got %+v, want %+v", c.name, got, c.want)
 		}
 	}
-	if got := Evaluate(auth.Identity{Permissions: []string{"files:manage"}}, []ChainLink{{OwnerID: other}}); !got.Manage {
+	if got := Evaluate(auth.Identity{Scopes: []auth.Scope{{Permissions: []string{"files:manage"}}}}, []ChainLink{{OwnerID: other}}); !got.Manage {
 		t.Error("files:manage deveria ter acesso total")
 	}
 }

@@ -23,6 +23,29 @@ const ORG = [{ id: "e1", nome: "Órgão", unidades: [{ id: "u1", nome: "Unidade 
 describe("Arquivos — raiz", () => {
   beforeEach(() => resetNavigation({}, "/arquivos"));
 
+  it("pasta com unidade dona (ADR 013): oferece as unidades em que a pessoa está lotada", async () => {
+    const api = mockBackend({
+      ...identityRoutes({ permissions: [], scopes: [{ perfil: "p", origem: "manual", entidade_id: "e1", unidade_id: "u1", permissions: [] }] }),
+      "GET v1/iam/org-tree": { data: ORG },
+      "GET v1/files/browse": { data: { breadcrumbs: [], folders: [folder("f1", { unidade_id: "u1" })], files: [], access: access(false) } },
+      "POST v1/files/folders": { data: folder("nova") },
+      "PATCH v1/files/folders/f1": { data: folder("f1") },
+    });
+    renderApp(<ArquivosPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /Nova pasta/ }));
+    let dialog = await screen.findByRole("dialog", { name: "Nova pasta" });
+    await userEvent.type(within(dialog).getByLabelText("Nome"), "Da unidade");
+    const dona = within(dialog).getByLabelText("Unidade dona");
+    await waitFor(() => expect(within(dona).getByRole("option", { name: "Unidade A" })).toBeInTheDocument());
+    await userEvent.selectOptions(dona, "u1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.to("POST v1/files/folders")[0]?.body).toMatchObject({ unidade_id: "u1" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Renomear Pasta f1" }));
+    dialog = await screen.findByRole("dialog", { name: "Editar pasta" });
+    await waitFor(() => expect(within(dialog).getByLabelText("Unidade dona")).toHaveValue("u1"));
+  });
+
   it("lista as pastas; cria pasta e abre; renomeia e exclui", async () => {
     const api = mockBackend({
       ...identityRoutes(),
@@ -42,18 +65,18 @@ describe("Arquivos — raiz", () => {
     await userEvent.type(within(dialog).getByLabelText("Nome"), "  Contratos  ");
     await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/arquivos?pasta=novo"));
-    expect(api.to("POST v1/files/folders")[0]!.body).toEqual({ name: "Contratos", parent_id: null });
+    expect(api.to("POST v1/files/folders")[0]!.body).toEqual({ name: "Contratos", parent_id: null, unidade_id: null });
 
     await userEvent.click(screen.getByRole("button", { name: "Renomear Pasta f1" }));
-    dialog = await screen.findByRole("dialog", { name: "Renomear pasta" });
+    dialog = await screen.findByRole("dialog", { name: "Editar pasta" });
     const input = within(dialog).getByLabelText("Nome");
     expect(input).toHaveValue("Pasta f1");
     await userEvent.clear(input);
     await userEvent.type(input, "Renomeada");
     await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api.to("PATCH v1/files/folders/f1")).toHaveLength(1));
-    expect(api.to("PATCH v1/files/folders/f1")[0]!.body).toEqual({ name: "Renomeada", parent_id: "p0", move: false });
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Renomear pasta" })).not.toBeInTheDocument());
+    expect(api.to("PATCH v1/files/folders/f1")[0]!.body).toEqual({ name: "Renomeada", parent_id: "p0", move: false, unidade_id: null, set_unidade: true });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Editar pasta" })).not.toBeInTheDocument());
 
     await userEvent.click(screen.getByRole("button", { name: "Excluir Pasta f1" }));
     dialog = await screen.findByRole("dialog", { name: 'Excluir a pasta "Pasta f1"?' });
@@ -168,7 +191,7 @@ describe("Arquivos — dentro de uma pasta", () => {
     const nd = await screen.findByRole("dialog", { name: "Nova pasta" });
     await userEvent.type(within(nd).getByLabelText("Nome"), "Sub");
     await userEvent.click(within(nd).getByRole("button", { name: "Salvar" }));
-    await waitFor(() => expect(api.to("POST v1/files/folders")[0]?.body).toEqual({ name: "Sub", parent_id: "f1" }));
+    await waitFor(() => expect(api.to("POST v1/files/folders")[0]?.body).toEqual({ name: "Sub", parent_id: "f1", unidade_id: null }));
     expect(router.push).not.toHaveBeenCalled();
   });
 

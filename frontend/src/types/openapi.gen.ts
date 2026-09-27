@@ -3013,6 +3013,8 @@ export interface components {
             owner_name: string;
             /** Format: uuid */
             parent_id?: string;
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -3021,6 +3023,9 @@ export interface components {
             name: string;
             /** Format: uuid */
             parent_id?: string | null;
+            set_unidade?: boolean;
+            /** Format: uuid */
+            unidade_id?: string | null;
         };
         FilesListing: {
             access: components["schemas"]["FilesAccess"];

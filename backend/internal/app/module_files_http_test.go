@@ -254,3 +254,56 @@ func TestFilesUploadRules(t *testing.T) {
 	h.expect(http.StatusUnprocessableEntity, http.MethodPut, "/api/v1/files/folders/"+folder+"/acl", owner, `{"entries":[{"subject_type":"perfil","subject":"  "}]}`)
 	h.expect(http.StatusUnprocessableEntity, http.MethodPut, "/api/v1/files/folders/"+folder+"/acl", owner, `{"entries":[{"subject_type":"grupo","subject":"x"}]}`)
 }
+
+// Pasta da unidade (ADR 013, fase 3): a pasta pode ter unidade dona,
+// herdada pelas subpastas; files:manage com escopo tem acesso total às
+// pastas da área que cobre. Marca a dona quem é lotado nela ou a gerencia.
+func TestFilesPastaDaUnidade(t *testing.T) {
+	h := newHarness(t)
+	o := h.orgEscopo(t)
+	sfx := uuid.NewString()[:6]
+	gestorA := h.gestorEm(t, o.a, "files:manage")
+	lotadoSub := h.gestorEm(t, o.sub, "contact:read")
+	lotadoB := h.gestorEm(t, o.b, "contact:read")
+	_, estranho := h.user("nexus-user")
+	criar := func(want int, token, name, parent, unidade string) string {
+		body := `{"name":"` + name + `"`
+		if parent != "" {
+			body += `,"parent_id":"` + parent + `"`
+		}
+		if unidade != "" {
+			body += `,"unidade_id":"` + unidade + `"`
+		}
+		rec := h.expect(want, http.MethodPost, "/api/v1/files/folders", token, body+`}`)
+		if want != http.StatusCreated {
+			return ""
+		}
+		return data[folderResp](t, rec).ID
+	}
+	patch := func(want int, token, id, body string) {
+		h.expect(want, http.MethodPatch, "/api/v1/files/folders/"+id, token, body)
+	}
+
+	criar(http.StatusForbidden, estranho, "Alheia "+sfx, "", o.b)
+	deB := criar(http.StatusCreated, lotadoB, "Pasta B "+sfx, "", o.b)
+	daSub := criar(http.StatusCreated, lotadoSub, "Pasta Sub "+sfx, "", o.sub)
+	interna := criar(http.StatusCreated, lotadoSub, "Interna", daSub, "")
+
+	// Herança: a gestão de A (cobre a subunidade) gerencia a subpasta.
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/files/browse?folder_id="+interna, gestorA, "")
+	patch(http.StatusOK, gestorA, interna, `{"name":"Interna (revisada)"}`)
+	patch(http.StatusForbidden, gestorA, deB, `{"name":"Pasta B tomada"}`)
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/files/browse?folder_id="+deB, gestorA, "")
+	patch(http.StatusForbidden, gestorA, interna, `{"name":"Interna","set_unidade":true,"unidade_id":"`+o.b+`"}`)
+
+	// Na raiz a subpasta perderia a dona herdada; marcada, a gestão a leva.
+	patch(http.StatusForbidden, gestorA, interna, `{"name":"Interna","move":true}`)
+	patch(http.StatusOK, gestorA, interna, `{"name":"Interna","set_unidade":true,"unidade_id":"`+o.sub+`"}`)
+	patch(http.StatusOK, gestorA, interna, `{"name":"Interna","set_unidade":true,"unidade_id":"`+o.a+`"}`) // troca de dona dentro da área
+	patch(http.StatusOK, gestorA, interna, `{"name":"Interna na raiz `+sfx+`","move":true}`)
+
+	// Tirar a dona: quem é lotado nela pode; a gestão perde o acesso.
+	patch(http.StatusForbidden, estranho, daSub, `{"name":"Pasta Sub","set_unidade":true}`)
+	patch(http.StatusOK, lotadoSub, daSub, `{"name":"Pasta Sub `+sfx+`","set_unidade":true}`)
+	patch(http.StatusForbidden, gestorA, daSub, `{"name":"Pasta Sub tomada"}`)
+}

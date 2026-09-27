@@ -100,7 +100,7 @@ func (s *Service) Browse(ctx context.Context, identity auth.Identity, parent *uu
 		}
 		visible := []domain.Folder{}
 		for _, f := range roots {
-			if domain.Evaluate(identity, []domain.ChainLink{{FolderID: f.ID, OwnerID: f.OwnerID, ACL: acls[f.ID]}}).Read {
+			if domain.Evaluate(identity, []domain.ChainLink{{FolderID: f.ID, OwnerID: f.OwnerID, UnidadeID: f.UnidadeID, ACL: acls[f.ID]}}).Read {
 				visible = append(visible, f)
 			}
 		}
@@ -134,11 +134,16 @@ func (s *Service) Browse(ctx context.Context, identity auth.Identity, parent *uu
 	return Listing{Folder: &folder, Breadcrumbs: crumbs, Folders: sub, Files: files, Access: acc}, nil
 }
 
-// CreateFolder cria uma pasta (raiz: qualquer autenticado; subpasta: escrita).
-func (s *Service) CreateFolder(ctx context.Context, identity auth.Identity, parent *uuid.UUID, name string) (domain.Folder, error) {
+// CreateFolder cria uma pasta (raiz: qualquer autenticado; subpasta:
+// escrita). A unidade dona é opcional (ADR 013): marca quem está lotado
+// nela ou tem files:manage cobrindo-a; sem ela, a pasta herda a de cima.
+func (s *Service) CreateFolder(ctx context.Context, identity auth.Identity, parent *uuid.UUID, name string, unidade *uuid.UUID) (domain.Folder, error) {
 	name, err := cleanName(name)
 	if err != nil {
 		return domain.Folder{}, err
+	}
+	if !domain.PodeMarcar(identity, unidade) {
+		return domain.Folder{}, MapError(domain.ErrForbidden)
 	}
 	var out domain.Folder
 	err = database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
@@ -152,7 +157,7 @@ func (s *Service) CreateFolder(ctx context.Context, identity auth.Identity, pare
 			}
 		}
 		var err error
-		out, err = s.repo.SaveFolder(ctx, tx, domain.Folder{ID: uuid.New(), ParentID: parent, Name: name, OwnerID: identity.UserID})
+		out, err = s.repo.SaveFolder(ctx, tx, domain.Folder{ID: uuid.New(), ParentID: parent, Name: name, OwnerID: identity.UserID, UnidadeID: unidade})
 		if err != nil {
 			return err
 		}
@@ -161,8 +166,20 @@ func (s *Service) CreateFolder(ctx context.Context, identity auth.Identity, pare
 	return out, MapError(err)
 }
 
-// UpdateFolder renomeia e/ou move uma pasta (manage na pasta; escrita no destino).
-func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id uuid.UUID, name string, newParent *uuid.UUID, move bool) (domain.Folder, error) {
+// FolderChange é o que se altera numa pasta: o nome sempre; a mãe com
+// Move; a unidade dona com SetUnidade.
+type FolderChange struct {
+	Name       string
+	Parent     *uuid.UUID
+	Move       bool
+	Unidade    *uuid.UUID
+	SetUnidade bool
+}
+
+// UpdateFolder renomeia, move e/ou troca a unidade dona de uma pasta
+// (manage na pasta; escrita no destino; poder marcar a dona antiga e a nova).
+func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id uuid.UUID, c FolderChange) (domain.Folder, error) {
+	name, newParent := c.Name, c.Parent
 	name, err := cleanName(name)
 	if err != nil {
 		return domain.Folder{}, err
@@ -182,7 +199,13 @@ func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id u
 		}
 		next := prev
 		next.Name = name
-		if move {
+		if c.SetUnidade && !sameUnidade(prev.UnidadeID, c.Unidade) {
+			if !domain.PodeMarcar(identity, prev.UnidadeID) || !domain.PodeMarcar(identity, c.Unidade) {
+				return domain.ErrForbidden
+			}
+			next.UnidadeID = c.Unidade
+		}
+		if c.Move {
 			if newParent != nil {
 				if *newParent == id {
 					return domain.ErrCycle
@@ -201,9 +224,9 @@ func (s *Service) UpdateFolder(ctx context.Context, identity auth.Identity, id u
 				if !dst.Write {
 					return domain.ErrForbidden
 				}
-			} else if prev.OwnerID != identity.UserID && !auth.HasPermission(identity, auth.PermFilesManage) {
-				// Na raiz a pasta perde a ACL herdada: quem a gerencia só por
-				// ser dono de uma pasta acima perderia o controle dela.
+			} else if prev.OwnerID != identity.UserID && !auth.CanGlobal(identity, auth.PermFilesManage) && !domain.Gere(identity, next.UnidadeID) {
+				// Na raiz a pasta perde a ACL e a dona herdadas: quem a
+				// gerencia só por algo de uma pasta acima perderia o controle.
 				return domain.ErrForbidden
 			}
 			next.ParentID = newParent
@@ -252,6 +275,13 @@ func (s *Service) DeleteFolder(ctx context.Context, identity auth.Identity, id u
 		s.removeObjects(ctx, keys)
 	}
 	return MapError(err)
+}
+
+func sameUnidade(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func (s *Service) removeObjects(ctx context.Context, keys []string) {

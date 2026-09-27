@@ -370,6 +370,8 @@ export interface Folder {
   name: string;
   owner_id: UUID;
   owner_name: string;
+  /** Unidade dona (ADR 013); ausente = sem dona (vale a da pasta acima). */
+  unidade_id?: UUID;
   created_at: string;
   updated_at: string;
 }

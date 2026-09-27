@@ -125,7 +125,7 @@ func TestEffectivePermissions(t *testing.T) {
 	if !slices.IsSorted(got) {
 		t.Errorf("ordenado: %v", got)
 	}
-	if !IsScoped(PermWikiManage) || IsScoped(PermFilesManage) {
+	if !IsScoped(PermWikiManage) || !IsScoped(PermFilesManage) || IsScoped(PermModulesManage) {
 		t.Error("classificação das permissões")
 	}
 }

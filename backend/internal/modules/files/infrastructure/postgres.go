@@ -32,24 +32,24 @@ func wrap(err error) error {
 	return fmt.Errorf("files: %w", err)
 }
 
-const folderCols = `f.id, f.parent_id, f.name, f.owner_id, COALESCE(NULLIF(u.display_name,''), u.username, ''), f.created_at, f.updated_at`
+const folderCols = `f.id, f.parent_id, f.name, f.owner_id, COALESCE(NULLIF(u.display_name,''), u.username, ''), f.created_at, f.updated_at, f.unidade_id`
 const folderFrom = ` FROM files_folders f LEFT JOIN users u ON u.id = f.owner_id `
 
 func scanFolder(row interface{ Scan(...any) error }) (domain.Folder, error) {
 	var f domain.Folder
-	err := row.Scan(&f.ID, &f.ParentID, &f.Name, &f.OwnerID, &f.OwnerName, &f.CreatedAt, &f.UpdatedAt)
+	err := row.Scan(&f.ID, &f.ParentID, &f.Name, &f.OwnerID, &f.OwnerName, &f.CreatedAt, &f.UpdatedAt, &f.UnidadeID)
 	return f, err
 }
 
 func (r *Repository) Chain(ctx context.Context, db database.DBTX, folderID uuid.UUID) ([]domain.ChainLink, error) {
 	rows, err := db.Query(ctx, `
 		WITH RECURSIVE chain AS (
-			SELECT id, parent_id, owner_id, 0 AS depth FROM files_folders WHERE id = $1
+			SELECT id, parent_id, owner_id, unidade_id, 0 AS depth FROM files_folders WHERE id = $1
 			UNION ALL
-			SELECT f.id, f.parent_id, f.owner_id, c.depth + 1 FROM files_folders f JOIN chain c ON f.id = c.parent_id
+			SELECT f.id, f.parent_id, f.owner_id, f.unidade_id, c.depth + 1 FROM files_folders f JOIN chain c ON f.id = c.parent_id
 			WHERE c.depth < 64
 		)
-		SELECT c.id, c.depth, c.owner_id, a.subject_type, a.subject, a.can_write
+		SELECT c.id, c.depth, c.owner_id, c.unidade_id, a.subject_type, a.subject, a.can_write
 		FROM chain c LEFT JOIN files_folder_acl a ON a.folder_id = c.id
 		ORDER BY c.depth`, folderID)
 	if err != nil {
@@ -63,15 +63,16 @@ func (r *Repository) Chain(ctx context.Context, db database.DBTX, folderID uuid.
 			id             uuid.UUID
 			depth          int
 			owner          uuid.UUID
+			unidade        *uuid.UUID
 			sType, subject *string
 			canWrite       *bool
 		)
-		if err := rows.Scan(&id, &depth, &owner, &sType, &subject, &canWrite); err != nil {
+		if err := rows.Scan(&id, &depth, &owner, &unidade, &sType, &subject, &canWrite); err != nil {
 			return nil, wrap(err)
 		}
 		i, ok := index[id]
 		if !ok {
-			out = append(out, domain.ChainLink{FolderID: id, Depth: depth, OwnerID: owner})
+			out = append(out, domain.ChainLink{FolderID: id, Depth: depth, OwnerID: owner, UnidadeID: unidade})
 			i = len(out) - 1
 			index[id] = i
 		}
@@ -168,9 +169,9 @@ func (r *Repository) GetFolder(ctx context.Context, db database.DBTX, id uuid.UU
 
 func (r *Repository) SaveFolder(ctx context.Context, db database.DBTX, f domain.Folder) (domain.Folder, error) {
 	_, err := db.Exec(ctx, `
-		INSERT INTO files_folders (id, parent_id, name, owner_id) VALUES ($1,$2,$3,$4)
-		ON CONFLICT (id) DO UPDATE SET parent_id = EXCLUDED.parent_id, name = EXCLUDED.name`,
-		f.ID, f.ParentID, f.Name, f.OwnerID)
+		INSERT INTO files_folders (id, parent_id, name, owner_id, unidade_id) VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (id) DO UPDATE SET parent_id = EXCLUDED.parent_id, name = EXCLUDED.name, unidade_id = EXCLUDED.unidade_id`,
+		f.ID, f.ParentID, f.Name, f.OwnerID, f.UnidadeID)
 	if err != nil {
 		return domain.Folder{}, wrap(err)
 	}

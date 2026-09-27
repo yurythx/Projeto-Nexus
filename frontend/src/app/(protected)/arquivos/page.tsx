@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Download, File as FileIcon, Folder as FolderIcon, FolderPlus, Pencil, Plus, Shield, Trash2, Upload } from "lucide-react";
 import { Suspense, useRef, useState, type FormEvent } from "react";
 
+import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
@@ -113,15 +114,30 @@ function ACLEditor({ folder, onDone }: { folder: Folder; onDone: () => void }) {
   );
 }
 
-function NameDialog({ title, initial, onSubmit, onClose }: { title: string; initial?: string; onSubmit: (name: string) => Promise<unknown>; onClose: () => void }) {
+/** Com `unidade`, também escolhe a unidade dona da pasta (ADR 013): as
+ * unidades em que a pessoa está lotada ou que gerencia, e a atual. */
+function NameDialog({
+  title,
+  initial,
+  unidade,
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  initial?: string;
+  unidade?: { initial?: string | null };
+  onSubmit: (name: string, unidadeId: string | null) => Promise<unknown>;
+  onClose: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const name = String(new FormData(e.currentTarget).get("name") ?? "").trim();
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") ?? "").trim();
     if (!name) return;
     setBusy(true);
     try {
-      await onSubmit(name);
+      await onSubmit(name, String(fd.get("unidade_id") ?? "") || null);
     } finally {
       setBusy(false);
     }
@@ -130,6 +146,9 @@ function NameDialog({ title, initial, onSubmit, onClose }: { title: string; init
     <Dialog open onClose={onClose} title={title}>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <Input id="name-dialog" name="name" label="Nome" required maxLength={255} defaultValue={initial} autoFocus />
+        {unidade && (
+          <UnidadeDonaSelect id="folder-unidade" permission="files:manage" lotacao defaultValue={unidade.initial} placeholder="Sem unidade (vale a da pasta acima)" />
+        )}
         <div className="flex justify-end">
           <Button type="submit" loading={busy}>
             Salvar
@@ -313,9 +332,10 @@ function Arquivos() {
       {dialog?.kind === "new-folder" && (
         <NameDialog
           title="Nova pasta"
+          unidade={{}}
           onClose={() => setDialog(null)}
-          onSubmit={(name) =>
-            run(() => apiClient.post<Folder>("v1/files/folders", { name, parent_id: folderId ?? null }), "Pasta criada").then((res) => {
+          onSubmit={(name, unidadeId) =>
+            run(() => apiClient.post<Folder>("v1/files/folders", { name, parent_id: folderId ?? null, unidade_id: unidadeId }), "Pasta criada").then((res) => {
               if (!res) return;
               setDialog(null);
               if (!folderId) router.push(`/arquivos?pasta=${res.data.id}`);
@@ -326,11 +346,16 @@ function Arquivos() {
       )}
       {dialog?.kind === "rename-folder" && (
         <NameDialog
-          title="Renomear pasta"
+          title="Editar pasta"
           initial={dialog.folder.name}
+          unidade={{ initial: dialog.folder.unidade_id }}
           onClose={() => setDialog(null)}
-          onSubmit={(name) =>
-            run(() => apiClient.patch(`v1/files/folders/${dialog.folder.id}`, { name, parent_id: dialog.folder.parent_id ?? null, move: false }), "Pasta renomeada").then((ok) => {
+          onSubmit={(name, unidadeId) =>
+            run(
+              () =>
+                apiClient.patch(`v1/files/folders/${dialog.folder.id}`, { name, parent_id: dialog.folder.parent_id ?? null, move: false, unidade_id: unidadeId, set_unidade: true }),
+              "Pasta salva",
+            ).then((ok) => {
               if (ok === undefined) return;
               setDialog(null);
               refresh();

@@ -313,9 +313,9 @@ func TestPluginsEndToEnd(t *testing.T) {
 
 	t.Run("files", func(t *testing.T) {
 		svc := filesApp.NewService(e.pool, filesInfra.NewRepository(), e.ob, e.store, bucket, 10<<20, time.Minute, e.logger)
-		root, err := svc.CreateFolder(ctx, e.identity, nil, "Raiz "+uuid.NewString()[:6])
+		root, err := svc.CreateFolder(ctx, e.identity, nil, "Raiz "+uuid.NewString()[:6], nil)
 		must(t, err)
-		sub, err := svc.CreateFolder(ctx, e.identity, &root.ID, "Contratos")
+		sub, err := svc.CreateFolder(ctx, e.identity, &root.ID, "Contratos", nil)
 		must(t, err)
 		_, err = svc.SetACL(ctx, e.identity, root.ID, []filesDomain.ACLEntry{{SubjectType: "departamento", Subject: e.depto.String()}})
 		must(t, err)

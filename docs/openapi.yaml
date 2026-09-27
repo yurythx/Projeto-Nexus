@@ -1414,6 +1414,9 @@ components:
                 parent_id:
                     format: uuid
                     type: string
+                unidade_id:
+                    format: uuid
+                    type: string
                 updated_at:
                     format: date-time
                     type: string
@@ -1434,6 +1437,12 @@ components:
                     maxLength: 200
                     type: string
                 parent_id:
+                    format: uuid
+                    nullable: true
+                    type: string
+                set_unidade:
+                    type: boolean
+                unidade_id:
                     format: uuid
                     nullable: true
                     type: string

@@ -67,6 +67,9 @@ type folderRequest struct {
 	Name     string     `json:"name" validate:"required,max=200"`
 	ParentID *uuid.UUID `json:"parent_id"`
 	Move     bool       `json:"move"`
+	// UnidadeID é a unidade dona (ADR 013); na edição vale com SetUnidade.
+	UnidadeID  *uuid.UUID `json:"unidade_id"`
+	SetUnidade bool       `json:"set_unidade"`
 }
 
 func (h *Handlers) CreateFolder(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +78,7 @@ func (h *Handlers) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	f, err := h.svc.CreateFolder(r.Context(), identity(r), req.ParentID, req.Name)
+	f, err := h.svc.CreateFolder(r.Context(), identity(r), req.ParentID, req.Name, req.UnidadeID)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -94,7 +97,9 @@ func (h *Handlers) UpdateFolder(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	f, err := h.svc.UpdateFolder(r.Context(), identity(r), id, req.Name, req.ParentID, req.Move)
+	f, err := h.svc.UpdateFolder(r.Context(), identity(r), id, application.FolderChange{
+		Name: req.Name, Parent: req.ParentID, Move: req.Move, Unidade: req.UnidadeID, SetUnidade: req.SetUnidade,
+	})
 	if err != nil {
 		h.fail(w, r, err)
 		return

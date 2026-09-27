@@ -29,6 +29,7 @@ type Folder struct {
 	Name      string     `json:"name"`
 	OwnerID   uuid.UUID  `json:"owner_id"`
 	OwnerName string     `json:"owner_name"`
+	UnidadeID *uuid.UUID `json:"unidade_id,omitempty"` // dona (ADR 013); herdada pelas subpastas
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 }
@@ -60,7 +61,10 @@ type ChainLink struct {
 	FolderID uuid.UUID
 	Depth    int
 	OwnerID  uuid.UUID
-	ACL      []ACLEntry
+	// UnidadeID é a unidade dona desta pasta (nil = não marcada; a dona
+	// efetiva pode vir de uma pasta acima).
+	UnidadeID *uuid.UUID
+	ACL       []ACLEntry
 }
 
 // Access é o resultado da avaliação de permissão.
@@ -72,18 +76,21 @@ type Access struct {
 
 // Evaluate calcula o acesso de identity a uma pasta dada a cadeia de
 // pastas até a raiz (depth 0 = a própria pasta). Regras:
-//   - files:manage: acesso total;
+//   - files:manage global: acesso total;
+//   - files:manage cobrindo a unidade dona da pasta ou de qualquer
+//     ancestral (ADR 013): acesso total;
 //   - dono da pasta ou de qualquer ancestral: acesso total;
 //   - ACL de qualquer nível da cadeia (herança): leitura, e escrita se
 //     can_write.
 func Evaluate(identity auth.Identity, chain []ChainLink) Access {
-	if auth.HasPermission(identity, auth.PermFilesManage) {
-		return Access{Read: true, Write: true, Manage: true}
+	total := Access{Read: true, Write: true, Manage: true}
+	if auth.CanGlobal(identity, auth.PermFilesManage) {
+		return total
 	}
 	var a Access
 	for _, link := range chain {
-		if link.OwnerID == identity.UserID {
-			return Access{Read: true, Write: true, Manage: true}
+		if link.OwnerID == identity.UserID || Gere(identity, link.UnidadeID) {
+			return total
 		}
 		for _, e := range link.ACL {
 			if Matches(identity, e) {
@@ -95,6 +102,17 @@ func Evaluate(identity auth.Identity, chain []ChainLink) Access {
 		}
 	}
 	return a
+}
+
+// Gere reporta se identity tem files:manage cobrindo a unidade (nil: não).
+func Gere(identity auth.Identity, unidade *uuid.UUID) bool {
+	return unidade != nil && auth.Can(identity, auth.PermFilesManage, auth.InUnidade(*unidade))
+}
+
+// PodeMarcar: só marca uma unidade como dona de pasta quem está lotado nela
+// ou tem files:manage cobrindo-a (nil: sempre).
+func PodeMarcar(identity auth.Identity, unidade *uuid.UUID) bool {
+	return unidade == nil || auth.LotadoEm(identity, *unidade) || Gere(identity, unidade)
 }
 
 // Matches reporta se a entrada de ACL se aplica a identity.

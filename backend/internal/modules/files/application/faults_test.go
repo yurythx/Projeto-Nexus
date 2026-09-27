@@ -51,7 +51,7 @@ func (e *env) real() *application.Service { return e.svc(infrastructure.NewRepos
 
 func (e *env) folder(parent *uuid.UUID) domain.Folder {
 	e.t.Helper()
-	f, err := e.real().CreateFolder(context.Background(), e.owner, parent, "Pasta "+uuid.NewString()[:8])
+	f, err := e.real().CreateFolder(context.Background(), e.owner, parent, "Pasta "+uuid.NewString()[:8], nil)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -99,14 +99,14 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		"CreateFolder": func() func(*application.Service) error {
 			f := e.folder(nil)
 			return func(s *application.Service) error {
-				_, err := s.CreateFolder(ctx, id, &f.ID, "Sub "+uuid.NewString()[:6])
+				_, err := s.CreateFolder(ctx, id, &f.ID, "Sub "+uuid.NewString()[:6], nil)
 				return err
 			}
 		},
 		"UpdateFolder": func() func(*application.Service) error {
 			a, b := e.folder(nil), e.folder(nil)
 			return func(s *application.Service) error {
-				_, err := s.UpdateFolder(ctx, id, a.ID, "Movida", &b.ID, true)
+				_, err := s.UpdateFolder(ctx, id, a.ID, application.FolderChange{Name: "Movida", Parent: &b.ID, Move: true})
 				return err
 			}
 		},
