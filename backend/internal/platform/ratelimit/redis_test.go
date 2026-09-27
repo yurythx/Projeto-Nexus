@@ -138,6 +138,15 @@ func TestLockoutPolicyPerSubjectKind(t *testing.T) {
 	if ttl := mr.TTL(redisx.Key("lockout", "fails", "user:ana")); ttl != 24*time.Hour {
 		t.Fatalf("contador da conta segue com a janela de 24h, TTL=%v", ttl)
 	}
+
+	// Política sem janela herda a janela padrão (24h).
+	lo.WithPolicy("svc:", LockoutPolicy{Threshold: 1, Base: time.Minute, Max: time.Minute})
+	if d, _ := lo.RegisterFailure(ctx, "svc:x"); d != time.Minute {
+		t.Fatalf("limite próprio do prefixo svc: (1), veio %v", d)
+	}
+	if ttl := mr.TTL(redisx.Key("lockout", "fails", "svc:x")); ttl != 24*time.Hour {
+		t.Fatalf("sem Window, herda 24h: TTL=%v", ttl)
+	}
 }
 
 // failOn faz o comando de nome cmd falhar (os demais seguem para o Redis).
