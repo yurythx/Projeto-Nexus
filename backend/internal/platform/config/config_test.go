@@ -136,7 +136,12 @@ func TestLoadDatabase_Success(t *testing.T) {
 }
 
 func TestLoadDatabase_MissingRequired(t *testing.T) {
-	// Nenhuma variável DB_* definida de propósito.
+	// As obrigatórias vazias (e sem _FILE): o teste não depende do ambiente
+	// em que roda — num container com DB_* definidas ele passaria a falhar.
+	for _, key := range []string{"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"} {
+		t.Setenv(key, "")
+		t.Setenv(key+"_FILE", "")
+	}
 	_, err := LoadDatabase()
 	if err == nil {
 		t.Fatal("expected error for missing required DB_* env vars, got nil")

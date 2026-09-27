@@ -190,7 +190,7 @@ function UserDetail({ userId, onChanged }: { userId: string; onChanged: () => vo
               onChange={(e) => setPerfilId(e.target.value)}
               options={(perfis.data ?? []).filter((p) => p.ativo).map((p) => ({ value: p.id, label: p.nome }))}
             />
-            <ScopePicker idPrefix="ud-scope" value={scope} onChange={setScope} />
+            <ScopePicker idPrefix="ud-scope" value={scope} onChange={setScope} permission="iam:manage" />
             <div className="flex justify-end">
               <Button type="submit" size="sm" loading={pending}>
                 <Plus size={14} aria-hidden="true" className="mr-1" /> Adicionar lotação
