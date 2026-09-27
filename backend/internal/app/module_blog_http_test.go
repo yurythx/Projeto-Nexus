@@ -115,6 +115,10 @@ func TestBlogPublicoAlvo(t *testing.T) {
 	}
 	deA := publicar("Para A", `{"unidades":["`+o.a+`"]}`)
 	daSecretaria := publicar("Para a secretaria", `{"entidades":["`+o.ent+`"]}`)
+	// Unidade que é público de algum conteúdo não é excluída (ADR 014).
+	avulsa := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin, `{"entidade_id":"`+o.ent+`","nome":"Avulsa `+sfx+`"}`)).ID
+	publicar("Para a avulsa", `{"unidades":["`+avulsa+`"]}`)
+	h.expect(http.StatusConflict, http.MethodDelete, "/api/v1/iam/unidades/"+avulsa, admin, "")
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/blog/posts", admin,
 		`{"title":"Fantasma","summary":"s","body":"b","publico":{"unidades":["`+uuid.NewString()+`"]}}`)
 

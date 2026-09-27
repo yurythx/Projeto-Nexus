@@ -222,7 +222,7 @@ func MapError(err error) error {
 	case errors.Is(err, domain.ErrConflict):
 		return apperrors.Conflict("já existe um registro com esses dados (slug, grupo ou vínculo duplicado)")
 	case errors.Is(err, domain.ErrInUse):
-		return apperrors.Conflict("registro em uso: remova antes a estrutura abaixo, as lotações e os mapeamentos do AD que o referenciam")
+		return apperrors.Conflict("registro em uso: remova antes a estrutura abaixo, as lotações, os mapeamentos do AD e o público-alvo de conteúdos que o referenciam")
 	case errors.Is(err, domain.ErrSystemProfile):
 		return apperrors.Conflict("perfis de sistema não podem ser removidos")
 	case errors.Is(err, domain.ErrInvalidPermision):
