@@ -130,8 +130,23 @@ conjunto que bloqueia o CI.
 
 ### Parâmetros de hardening
 `API_RATE_LIMIT_WINDOW_SECONDS`, `API_RATE_LIMIT_MAX`,
-`METRICS_SCRAPE_TOKEN`, `TRUSTED_PROXIES` — ver `.env.example` e a tabela
-em `docs/ROADMAP_CONFORMIDADE.md`.
+`METRICS_SCRAPE_TOKEN`, `TRUSTED_PROXIES`, `LOGIN_LOCKOUT_IP_THRESHOLD`
+(backend), `TRUST_PROXY_HEADERS` (frontend) e `HOST_BIND` (compose) — ver
+`.env.example`, a tabela em `docs/ROADMAP_CONFORMIDADE.md` e o
+[ADR 011](adr/011-borda-unica-ip-confiavel-e-busca-por-prefixo.md).
+
+### IP do visitante
+A API só confia no `X-Forwarded-For` vindo de `TRUSTED_PROXIES`. Código do
+frontend que chama a API **do lado do servidor** em nome do visitante (BFF,
+login local, proxy público) repassa o IP com `forwardedFor()` de
+`lib/api/clientIp.ts` — nunca copie o cabeçalho do cliente direto: sem
+proxy de borda confiável ele é forjável.
+
+### Busca full-text
+Filtros de texto nos repositórios usam
+`search @@ nexus_search_tsquery('<config>', $n)` (migration 000125), nunca
+`websearch_to_tsquery` direto: a função soma a busca por prefixo ("vacina"
+acha "vacinação") e mantém a sintaxe de operadores (aspas, `-termo`, `or`).
 
 ---
 

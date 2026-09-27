@@ -126,7 +126,7 @@ make seed-admin
 - **API Healthcheck:** [http://localhost:8002/health](http://localhost:8002/health)
 
 ### Deploy em servidor
-`./scripts/deploy.sh <ip-ou-dns>` gera `.env` com segredos fortes, a chave RSA e sobe a stack em produção; depois `make prod-seed-admin`. Detalhes em [`docs/DEPLOY.md`](docs/DEPLOY.md).
+`./scripts/deploy.sh <ip-ou-dns>` gera `.env` com segredos fortes, a chave RSA e sobe a stack em produção; depois `make prod-seed-admin`. HTTPS com o Caddy como única entrada (`scripts/enable-https.sh`), Keycloak de teste com uma prefeitura fictícia (`make demo-keycloak`, `make demo-popular`), cenários ponta a ponta (`make demo-test`) e backup diário (`scripts/backup.sh`): ordem completa em [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ---
 

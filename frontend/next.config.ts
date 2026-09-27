@@ -41,9 +41,9 @@ const nextConfig: NextConfig = {
   //   (não só condicionado a produção) porque o navegador IGNORA este
   //   cabeçalho quando a resposta chega por uma conexão HTTP simples
   //   (dev local) — mandar sempre é inofensivo e evita esquecer de
-  //   ligar em produção, mesmo raciocínio de upgrade-insecure-requests
-  //   já estar sempre presente na CSP (proxy.ts), independente de
-  //   isDev.
+  //   ligar em produção. (A CSP do proxy.ts NÃO usa
+  //   upgrade-insecure-requests: servida por HTTP num IP da rede, ela
+  //   forçaria https nos assets e quebraria a página.)
   //
   // frame-ancestors 'none' na CSP já cobre clickjacking (substitui
   // X-Frame-Options, obsoleto pra esse fim) — não repetido aqui.

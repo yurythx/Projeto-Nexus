@@ -1,37 +1,45 @@
 # Deploy em servidor (Docker Compose)
 
-Sobe a stack completa em modo produção (`APP_ENV=production`) usando só o
-`docker-compose.yml`: PostgreSQL, RabbitMQ, Redis, MinIO, migrations, API,
-worker e frontend.
+Sobe a stack completa em modo produção (`APP_ENV=production`): PostgreSQL,
+RabbitMQ, Redis, MinIO, migrations, API, worker e frontend. Camadas
+opcionais, ligadas pelo `COMPOSE_FILE` do `.env`:
+
+| Arquivo | O que acrescenta | Ligado por |
+|---|---|---|
+| `docker-compose.yml` | a stack | sempre |
+| `docker-compose.keycloak.yml` | Keycloak **de teste** com usuários fictícios | `make demo-keycloak` |
+| `docker-compose.https.yml` | Caddy com HTTPS (CA interna) como única entrada | `scripts/enable-https.sh` |
 
 ## Pré-requisitos
 
-- Docker Engine + Docker Compose v2, `git`, `openssl` e `make`.
-- ~4 GB de RAM (o build do frontend é a etapa mais pesada).
-- Portas livres no host (padrão do script): **3010** frontend, **8010** API
-  e WebSocket, **9010** MinIO (URLs pré-assinadas), **9011** console MinIO.
-  Elas diferem das portas de dev (3002/8002/9002/9003) para não colidir com
-  outras stacks na mesma máquina.
+- Docker Engine + Docker Compose v2, `git`, `openssl`, `make`, `python3`
+  (cenários de teste) e `jq`.
+- ~4 GB de RAM (o build do frontend é a etapa mais pesada; o Keycloak de
+  teste usa até 768 MB).
+- Portas livres no host:
+  - sem HTTPS: **3010** frontend, **8010** API/WebSocket, **9010** MinIO,
+    **9011** console MinIO (e **8180** com o Keycloak de teste) — diferentes
+    das de dev (3002/8002/9002/9003) para não colidir com outras stacks;
+  - com HTTPS: **80**, **443**, **8443**, **9443** e **8543** (Caddy); as
+    portas acima passam a escutar só no próprio servidor.
 
-## Primeira vez
+## Ordem recomendada (servidor novo)
 
 ```bash
-git clone https://github.com/yurythx/Projeto-Nexus.git
-cd Projeto-Nexus
-./scripts/deploy.sh 192.168.1.42    # IP/DNS que o navegador usa
-make prod-seed-admin                 # imprime a senha do admin UMA vez
+git clone https://github.com/yurythx/Projeto-Nexus.git && cd Projeto-Nexus
+./scripts/deploy.sh 192.168.1.42        # 1. stack em produção (gera .env e chave)
+make prod-seed-admin                     # 2. admin local (senha impressa UMA vez)
+make demo-keycloak                       # 3. (teste) Keycloak + estrutura e usuários fictícios
+./scripts/enable-https.sh 192.168.1.42   # 4. HTTPS com o Caddy como única entrada
+make demo-popular                        # 5. (teste) dados realistas em todos os apps
+make demo-test                           # 6. (teste) cenários ponta a ponta
+./scripts/backup.sh --install-cron       # 7. backup diário
 ```
 
-O script:
-
-1. gera `.env` a partir do `.env.example` com segredos aleatórios
-   (`openssl rand`), `APP_ENV=production` e as URLs públicas apontando para
-   o host informado;
-2. gera `secrets/local_auth_private_key.pem` (login local RS256);
-3. faz `docker compose up -d --build` e espera todos os serviços ficarem
-   `healthy`.
-
-Acesse `http://<host>:3010` e entre com `admin` e a senha impressa.
+`deploy.sh` gera o `.env` a partir do `.env.example` com segredos aleatórios
+(`openssl rand`), `APP_ENV=production` e as URLs públicas do host; gera
+`secrets/local_auth_private_key.pem` (login local RS256); faz
+`docker compose up -d --build` e espera todos os serviços ficarem `healthy`.
 
 ## Atualizar
 
@@ -41,8 +49,8 @@ Envie as mudanças por git e, no servidor:
 make deploy        # git pull --ff-only + rebuild + restart
 ```
 
-O `.env` e a chave existentes são reaproveitados; migrations novas rodam
-sozinhas (serviço `migrate`) antes da API e do worker.
+`.env`, chaves e CA são reaproveitados; migrations novas rodam sozinhas
+(serviço `migrate`) antes da API e do worker.
 
 ## Cuidados
 
@@ -52,10 +60,13 @@ sozinhas (serviço `migrate`) antes da API e do worker.
 - Mudou host ou porta pública? Ajuste `FRONTEND_URL`, `API_PUBLIC_URL`,
   `WEBSOCKET_PUBLIC_URL` e `MINIO_PUBLIC_URL` no `.env` e rode `make deploy`
   — as `NEXT_PUBLIC_*` são embutidas no build do frontend.
-- Sem Keycloak configurado (`KEYCLOAK_ISSUER_URL` vazio) só o login local
-  fica disponível — esperado num ambiente de teste.
-- A stack é servida em HTTP puro; para expor fora da rede interna, coloque
-  um proxy reverso com TLS na frente e ajuste as URLs e `TRUSTED_PROXIES`.
+- Sem Keycloak (`KEYCLOAK_ISSUER_URL` vazio) só o login local funciona.
+- **Não exponha a stack sem o proxy HTTPS.** Sem um proxy de borda que
+  sobrescreva o `X-Forwarded-For`, o frontend não repassa o IP do visitante
+  (seria forjável) e a API enxerga todo mundo com o IP do frontend: os
+  limites por IP (login, contato) e a prova de consentimento LGPD perdem o
+  sentido. Servido por HTTP num IP da rede, o navegador também desliga
+  recursos de "contexto seguro".
 
 ## HTTPS (Caddy com CA interna)
 
@@ -63,58 +74,67 @@ sozinhas (serviço `migrate`) antes da API e do worker.
 scripts/enable-https.sh 192.168.1.42
 ```
 
-Coloca o Caddy (`docker-compose.https.yml`) na frente da stack e troca as
-URLs do `.env` (cópia em `.env.bak-*`):
+Idempotente. Coloca o Caddy (`docker-compose.https.yml`,
+`deploy/caddy/Caddyfile`) na frente e troca as URLs do `.env` (cópia em
+`.env.bak-*`):
 
 | Serviço | Endereço |
 |---|---|
 | Nexus | `https://<host>` |
-| API / WebSocket | `https://<host>:8443` |
+| API / WebSocket | `https://<host>:8443` (`wss://…/ws`) |
 | MinIO (URLs pré-assinadas) | `https://<host>:9443` |
 | Keycloak de teste | `https://<host>:8543` |
+| Raiz da CA (para instalar) | `http://<host>/nexus-ca.crt` |
 
-Sem domínio público, os certificados vêm de uma **CA interna** do Caddy.
-**Cada máquina de teste instala a raiz uma vez**, baixando
-`http://<host>/nexus-ca.crt`:
+A porta 80 só serve a CA e redireciona o resto para https.
 
-- Windows: duplo clique → Instalar certificado → Máquina local →
-  "Autoridades de Certificação Raiz Confiáveis" (ou `certutil -addstore -f
-  Root nexus-ca.crt` como administrador); reabra o navegador.
+**O Caddy é a única entrada.** O script define `HOST_BIND=127.0.0.1`: as
+portas diretas (3010/8010/9010/9011/8180) só escutam no próprio servidor —
+abertas na rede, deixavam o cliente forjar o `X-Forwarded-For` e escapar dos
+limites por IP. O Caddy sobrescreve o cabeçalho com o IP real, o frontend o
+repassa à API (`TRUST_PROXY_HEADERS=true`, ligado pelo overlay) e a API
+confia nele vindo da rede docker (`TRUSTED_PROXIES`, definido pelo script).
+
+**CA interna.** Sem domínio público, os certificados vêm de uma CA do Caddy
+(volume `caddy_data`, incluído no backup). A API e o frontend confiam nela
+sozinhos (`secrets/ca/`). **Cada máquina de teste instala a raiz uma vez**:
+
+- Windows: baixe `http://<host>/nexus-ca.crt` → duplo clique → Instalar
+  certificado → Máquina local → "Autoridades de Certificação Raiz
+  Confiáveis" (ou `certutil -addstore -f Root nexus-ca.crt` como
+  administrador); reabra o navegador.
 - Firefox usa repositório próprio: Configurações → Certificados → Importar.
 - Linux: copie para `/usr/local/share/ca-certificates/` e rode
   `update-ca-certificates`.
 
-Sem instalar a CA, o navegador bloqueia (e, em portas diferentes, clicar
-em "continuar" numa não libera as outras). A API e o frontend confiam na
-CA sozinhos (`secrets/ca/`). A CA fica no volume `caddy_data`, incluído no
-backup. O Caddy passa a ser a **única entrada**: as portas diretas
-(3010/8010/9010/8180) só escutam no próprio servidor (`HOST_BIND=127.0.0.1`)
-— abertas na rede, deixavam o cliente forjar o `X-Forwarded-For` e escapar
-dos limites por IP. O frontend repassa o IP real à API
-(`TRUST_PROXY_HEADERS`). Com domínio e certificado oficiais,
-troque `tls internal` no `deploy/caddy/Caddyfile`.
+Sem a CA o navegador bloqueia (e "continuar" numa porta não libera as
+outras). **Confira o relógio da máquina**: os certificados valem a partir da
+emissão e um relógio atrasado os vê como "ainda não válidos".
+
+Com domínio e certificado oficiais, troque `tls internal` no Caddyfile.
 
 ## Backup e restauração
 
 ```bash
 scripts/backup.sh                    # agora, em /root/backups/nexus/<data-hora>
 scripts/backup.sh --install-cron     # todo dia às 02:30 (log: /var/log/nexus-backup.log)
-scripts/restore.sh --verify <dir>    # testa o backup sem alterar nada
+scripts/restore.sh --verify <dir>    # restaura num banco temporário e compara — não altera nada
 scripts/restore.sh --yes <dir> --minio   # SUBSTITUI banco (e objetos) pelo backup
 ```
 
-Cada backup tem o dump do Postgres, o espelho dos buckets do MinIO, o
-volume do Keycloak de teste, `.env` + `secrets/` e `SHA256SUMS`. Retenção de
-`BACKUP_KEEP_DAYS` (7) dias. **O `.env` do backup é indispensável** (senha do
-banco e `CONFIG_ENCRYPTION_KEY`): numa máquina nova, copie
-`<dir>/config/.env` e `<dir>/config/secrets` antes de restaurar. Os backups
-ficam no mesmo disco — copie-os para fora do servidor.
+Cada backup tem o dump do Postgres, o espelho dos buckets do MinIO, os
+volumes do Keycloak de teste e da CA do Caddy (se existirem), `.env` +
+`secrets/` e `SHA256SUMS`. Retenção de `BACKUP_KEEP_DAYS` (7) dias.
+**O `.env` do backup é indispensável** (senha do banco e
+`CONFIG_ENCRYPTION_KEY`): numa máquina nova, copie `<dir>/config/.env` e
+`<dir>/config/secrets` antes de restaurar. Os backups ficam no mesmo disco —
+copie-os para fora do servidor.
 
 ## Ambiente de teste: Keycloak + dados fictícios
 
-Enquanto não há um Keycloak oficial, `make demo-keycloak` (depois do
-primeiro deploy) sobe um **Keycloak de teste** (`docker-compose.keycloak.yml`,
-porta **8180**) já com o realm `nexus` e carrega no Postgres uma estrutura
+Enquanto não há um Keycloak oficial, `make demo-keycloak` sobe um
+**Keycloak de teste** (`docker-compose.keycloak.yml`, Keycloak 26 em
+`start-dev`) com o realm `nexus` e carrega no Postgres uma estrutura
 organizacional fictícia:
 
 | Entidade | Unidades | Departamentos |
@@ -135,36 +155,85 @@ organizacional fictícia:
   de cada unidade também recebe **Protocolo** na unidade.
 - Os usuários já existem no Nexus antes do 1º login (Diretório com cargo e
   ramal); o login pelo Keycloak só os atualiza.
-- Console do Keycloak: `http://<host>:8180/admin` (`admin` /
-  `KEYCLOAK_ADMIN_PASSWORD` do `.env`).
+- Console: `https://<host>:8543/admin` (sem HTTPS: `http://<host>:8180/admin`),
+  usuário `admin` e `KEYCLOAK_ADMIN_PASSWORD` do `.env`. Os usuários do
+  Nexus ficam no realm **nexus**.
+- `make demo-popular` (uma vez; marca em `.demo-popular`) povoa todos os
+  apps com dados criados pelos próprios usuários fictícios: serviços do
+  catálogo, notícias, manuais na Wiki, salas e eventos, salas de equipe e
+  conversas, processos entre unidades em vários estados, documentos
+  assinados, pasta por unidade e mensagens de cidadãos.
 
 Mudar a estrutura: edite `scripts/demo-data/generate.mjs`, rode
 `make demo-generate` e faça commit dos arquivos gerados. O SQL é reaplicável
 (`make demo-seed`), mas o realm só é importado quando ainda não existe —
 para reimportar, `docker compose rm -sf keycloak && docker volume rm
-projeto-nexus_keycloak_data` e `make deploy`.
+projeto-nexus_keycloak_data` e `make deploy` (os usuários voltam com os
+mesmos ids; quem estava logado entra de novo).
 
-### Cenários ponta a ponta
+### Cenários ponta a ponta (`make demo-test`)
 
-`make demo-test` (no servidor, com o Keycloak de teste no ar) faz login
-**de verdade** pelo Keycloak com usuários fictícios de lotações diferentes
-e exercita, pelo mesmo BFF do navegador: Trâmite entre unidades (perfil,
-escopo, sigilo, tramitação, conclusão), Signum (reautenticação no
-Keycloak), Mercúrio, Agenda, Arquivos (upload/download real no MinIO),
-Diretório, IAM, Busca, Auditoria, LGPD, Blog, Wiki (revisões e conflito
-de edição), Catálogo (publicação no site público), Contato (formulário
-anônimo) e Egress (anti-SSRF) — casos permitidos e negados.
-Para chamadas avulsas: `scripts/demo-data/cenarios/nx <usuario> GET me`.
+Com o Keycloak de teste no ar, as suítes de `scripts/demo-data/cenarios/`
+fazem login **de verdade** pelo Keycloak (mesmo fluxo do navegador) com
+usuários de lotações diferentes e exercitam casos permitidos e negados:
 
-Trocar pelo Keycloak oficial: aponte `KEYCLOAK_ISSUER_URL` (e o client
-secret) para ele, tire `docker-compose.keycloak.yml` do `COMPOSE_FILE` no
-`.env` e rode `make deploy`.
+| Suíte | Cobre |
+|---|---|
+| `tramite.py` | abertura por perfil/unidade, sigilo, tramitação de ida e volta, conclusão |
+| `tramite_documentos.py` | anexo no MinIO, edição, assinatura via Signum, acesso a restrito, caixa da unidade, concluir → arquivar → reabrir |
+| `modulos.py` | Signum, Mercúrio, Agenda, Arquivos, Diretório, IAM, Busca, Auditoria, LGPD |
+| `conteudo.py` | Blog, Wiki (revisões e conflito de edição), Catálogo (Lei 13.460), Contato anônimo, Egress (anti-SSRF) |
+| `colaboracao.py` | tempo real por WebSocket (mensagem, edição, exclusão, difusão via outbox → RabbitMQ), salas de departamento, reserva de sala com conflito, ACL de pastas, Signum sequencial/recusa/cancelamento |
+| `integracoes.py` | webhooks entregues e com retentativa, busca global (inclusive por prefixo), auditoria por tipo de ação |
+| `plataforma.py` | CRUD do IAM, anti-escalada de privilégio, lotação com efeito imediato, usuários locais e bloqueio, módulos e dependências, branding, transparência, monitoramento, LGPD |
+
+Chamadas avulsas como qualquer usuário:
+`scripts/demo-data/cenarios/nx <usuario> GET me`.
+
+### Trocar pelo Keycloak oficial
+
+No realm oficial, dois clients (o realm de teste em
+`deploy/keycloak/realm-nexus.json` serve de modelo):
+
+- **`nexus-frontend`** — confidencial, Standard Flow com PKCE S256,
+  redirect `https://<host>/*`, *audience mapper* incluindo `nexus-backend`
+  no access token e *group membership mapper* `groups` com
+  `full.path=false` (é o nome do grupo que o IAM cruza com os mapeamentos).
+- **`nexus-backend`** — confidencial, **só Direct Access Grants**: é a
+  audience dos tokens e o client da reautenticação do Signum (senha na hora
+  de assinar). Sem ele, ninguém assina com conta do Keycloak.
+
+Depois, no `.env`: `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_CLIENT_SECRET`,
+`KEYCLOAK_FRONTEND_CLIENT_SECRET`; tire `docker-compose.keycloak.yml` do
+`COMPOSE_FILE` e rode `make deploy`. Se o Keycloak usar certificado da CA
+interna, ele já é confiável; se usar outra CA privada, coloque a raiz em
+`secrets/ca/`.
+
+## Segurança do login local
+
+O login local (contingência) tem dois bloqueios progressivos (Redis):
+
+| Sujeito | Libera | Depois | Contador |
+|---|---|---|---|
+| Conta | 5 falhas | 1 min, dobrando até 24 h | 24 h (zera no login certo ou no desbloqueio pelo gestor) |
+| IP | `LOGIN_LOCKOUT_IP_THRESHOLD` (30) falhas | 1 min, dobrando até 1 h | 1 h |
+
+O limite do IP é alto de propósito: atrás de NAT, um IP é um prédio
+inteiro. O contador do IP não zera com login bem-sucedido (senão uma conta
+válida "limparia" o IP durante password spraying). Há ainda o limitador de
+login por IP (10/min), que cai à metade a cada 3 falhas e volta ao normal no
+primeiro login certo.
 
 ## Comandos úteis
 
 | Comando | O que faz |
 |---|---|
-| `make prod-ps` | estado dos containers |
-| `make prod-logs` | logs de todos os serviços |
+| `make deploy` | git pull + rebuild + restart, esperando `healthy` |
+| `make prod-ps` / `make prod-logs` | estado e logs dos serviços |
 | `make prod-seed-admin` | cria/reseta o admin local |
 | `make prod-down` | para a stack (mantém os volumes) |
+| `make demo-keycloak` | liga o Keycloak de teste e carrega a estrutura fictícia |
+| `make demo-generate` / `make demo-seed` | regera / reaplica os dados fictícios |
+| `make demo-popular` | povoa todos os apps (uma vez) |
+| `make demo-test` | roda os cenários ponta a ponta |
+| `scripts/backup.sh` / `scripts/restore.sh` | backup e restauração |
