@@ -105,7 +105,7 @@ if code == 200:
     check("em tramitação após reabrir", p.get("status") == "em_tramitacao", p.get("status"))
     movs = [m.get("acao") for m in (p.get("movimentos") or [])]
     check("histórico: abertura, tramitação, conclusão, arquivamento, reabertura", len(movs) >= 5, movs)
-    check("4 documentos no processo", len(p.get("documentos") or []) == 4, len(p.get("documentos") or []))
+    check("3 documentos (anexo, despacho, parecer); o recusado após arquivar não entrou", len(p.get("documentos") or []) == 3, len(p.get("documentos") or []))
 code, d = call(P2, "GET", f"search?q={numero.split('/')[0]}")
 check("processo encontrado pelo número na busca global", code == 200 and any(pid in json.dumps(h) for h in d["data"]["results"]), d)
 done()

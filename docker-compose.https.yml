@@ -51,6 +51,11 @@ services:
   frontend:
     environment:
       NODE_EXTRA_CA_CERTS: /run/secrets/ca/nexus-ca.crt
+      # O Caddy sobrescreve o X-Forwarded-For com o IP real: o frontend
+      # pode repassá-lo à API (rate limit, lockout, prova LGPD). Só é
+      # seguro porque, com HTTPS, as portas diretas ficam em 127.0.0.1
+      # (HOST_BIND) e o Caddy é a única entrada — ver lib/api/clientIp.ts.
+      TRUST_PROXY_HEADERS: "true"
     volumes:
       - ./secrets/ca:/run/secrets/ca:ro
     depends_on:

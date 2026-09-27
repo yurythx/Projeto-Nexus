@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
 const { getToken } = vi.hoisted(() => ({ getToken: vi.fn() }));
 vi.mock("next-auth/jwt", () => ({ getToken }));
 vi.mock("@/lib/api/backendUrl", () => ({ BACKEND_INTERNAL_URL: "http://api:8080" }));
@@ -18,7 +19,10 @@ describe("proxy BFF autenticado", () => {
     upstream = vi.fn(async () => new Response(JSON.stringify({ data: { ok: true }, error: null }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", upstream);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
 
   it("sem sessão usável responde 401 sem chamar a API", async () => {
     getToken.mockResolvedValue({ accessToken: "x", accessTokenExpires: Date.now() - 1000 });
@@ -48,6 +52,15 @@ describe("proxy BFF autenticado", () => {
     const init = upstream.mock.calls[0]![1];
     expect(init.headers["X-Idempotency-Key"]).toBeUndefined();
     expect(init.headers["X-Request-ID"]).toMatch(/[0-9a-f-]{36}/);
+  });
+
+  it("IP do visitante segue para a API só atrás de proxy confiável", async () => {
+    const req = () => new NextRequest("http://app/x", { headers: { "x-forwarded-for": "203.0.113.8" } });
+    await GET(req(), params("v1", "me"));
+    expect(upstream.mock.calls[0]![1].headers["X-Forwarded-For"]).toBeUndefined();
+    vi.stubEnv("TRUST_PROXY_HEADERS", "true");
+    await GET(req(), params("v1", "me"));
+    expect(upstream.mock.calls[1]![1].headers["X-Forwarded-For"]).toBe("203.0.113.8");
   });
 
   it("recusa '..' e outros segmentos que sairiam de /api", async () => {

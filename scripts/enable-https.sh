@@ -5,7 +5,8 @@
 #
 #   1. copia o .env para .env.bak-<data> e troca as URLs públicas para
 #      https (443 frontend, 8443 API, 9443 MinIO, 8543 Keycloak);
-#   2. TRUSTED_PROXIES = sub-rede da rede docker (o IP real do cliente
+#   2. TRUSTED_PROXIES = sub-rede da rede docker e HOST_BIND=127.0.0.1
+#      (portas diretas fora da rede; o IP real do cliente
 #      chega no X-Forwarded-For do Caddy);
 #   3. sobe o Caddy, extrai a raiz da CA para secrets/ca/nexus-ca.crt;
 #   4. scripts/deploy.sh (rebuild: o frontend embute as URLs no build);
@@ -42,6 +43,10 @@ fi
 project="$(docker compose config 2>/dev/null | sed -n 's/^name: //p' | head -1)"
 subnet="$(docker network inspect "${project}_nexus_internal" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || true)"
 [ -n "$subnet" ] && set_kv TRUSTED_PROXIES "$subnet"
+# Caddy vira a ÚNICA entrada: as portas diretas (frontend, API, MinIO,
+# Keycloak) só escutam no próprio servidor. Abertas na rede, elas deixavam
+# o cliente forjar o X-Forwarded-For e escapar dos limites por IP.
+set_kv HOST_BIND 127.0.0.1
 files="$(env_val COMPOSE_FILE)"
 files="${files:-docker-compose.yml}"
 case ":$files:" in *":docker-compose.https.yml:"*) ;; *) set_kv COMPOSE_FILE "$files:docker-compose.https.yml" ;; esac

@@ -3,6 +3,8 @@ import type { Account, User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 type Options = typeof import("./options");
 
 async function load(env: Record<string, string | undefined> = {}): Promise<Options> {
@@ -25,9 +27,9 @@ const idOf = (p: unknown) => (p as { options?: { id?: string }; id: string }).op
 
 function authorize(o: Options) {
   const local = o.authOptions.providers.find((p) => idOf(p) === "local") as unknown as {
-    options: { authorize: (c: Record<string, string> | undefined) => Promise<unknown> };
+    options: { authorize: (c: Record<string, string> | undefined, req?: { headers: Record<string, string> }) => Promise<unknown> };
   };
-  return (c?: Record<string, string>) => local.options.authorize(c);
+  return (c?: Record<string, string>, req?: { headers: Record<string, string> }) => local.options.authorize(c, req);
 }
 
 type JwtParams = { token: JWT; account?: Partial<Account> | null; user?: Partial<User> };
@@ -74,6 +76,18 @@ describe("login local (authorize)", () => {
     const [url, init] = f.mock.calls[0]! as unknown as [string, RequestInit];
     expect(url).toBe("http://api:8080/api/v1/auth/login");
     expect(JSON.parse(String(init.body))).toEqual({ username: "ana", password: "Senha-123" });
+  });
+
+  it("repassa o IP do visitante à API só atrás de proxy confiável", async () => {
+    const o = await load();
+    const f = vi.fn(async () => Response.json({ data: null, error: {} }, { status: 401 }));
+    vi.stubGlobal("fetch", f);
+    const req = { headers: { "x-forwarded-for": "203.0.113.7" } };
+    await authorize(o)({ username: "ana", password: "x" }, req);
+    expect((f.mock.calls[0]! as unknown as [string, RequestInit])[1].headers).not.toHaveProperty("X-Forwarded-For");
+    vi.stubEnv("TRUST_PROXY_HEADERS", "true");
+    await authorize(o)({ username: "ana", password: "x" }, req);
+    expect((f.mock.calls[1]! as unknown as [string, RequestInit])[1].headers).toMatchObject({ "X-Forwarded-For": "203.0.113.7" });
   });
 
   it("nome de exibição, senha errada, corpo ilegível, backend fora e excesso de tentativas", async () => {

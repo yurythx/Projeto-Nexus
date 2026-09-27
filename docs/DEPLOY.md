@@ -87,8 +87,11 @@ Sem domínio público, os certificados vêm de uma **CA interna** do Caddy.
 Sem instalar a CA, o navegador bloqueia (e, em portas diferentes, clicar
 em "continuar" numa não libera as outras). A API e o frontend confiam na
 CA sozinhos (`secrets/ca/`). A CA fica no volume `caddy_data`, incluído no
-backup. As portas HTTP antigas (3010/8010/…) continuam publicadas, mas o
-login só funciona pelo endereço https. Com domínio e certificado oficiais,
+backup. O Caddy passa a ser a **única entrada**: as portas diretas
+(3010/8010/9010/8180) só escutam no próprio servidor (`HOST_BIND=127.0.0.1`)
+— abertas na rede, deixavam o cliente forjar o `X-Forwarded-For` e escapar
+dos limites por IP. O frontend repassa o IP real à API
+(`TRUST_PROXY_HEADERS`). Com domínio e certificado oficiais,
 troque `tls internal` no `deploy/caddy/Caddyfile`.
 
 ## Backup e restauração

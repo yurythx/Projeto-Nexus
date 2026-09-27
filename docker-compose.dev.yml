@@ -6,10 +6,8 @@ services:
     ports:
     - ${HOST_RABBITMQ_PORT:-5673}:5672
     - ${HOST_RABBITMQ_MGMT_PORT:-15673}:15672
-  minio:
-    ports:
-    - ${HOST_MINIO_PORT:-9002}:9000
-    - ${HOST_MINIO_CONSOLE_PORT:-9003}:9001
+  # minio: as portas já vêm do docker-compose.yml (com HOST_BIND) — repetir
+  # aqui publicaria a mesma porta duas vezes.
   backend-api:
     environment:
       APP_ENV: development

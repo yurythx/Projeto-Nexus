@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import { BACKEND_INTERNAL_URL as BACKEND_URL } from "@/lib/api/backendUrl";
+import { forwardedFor } from "@/lib/api/clientIp";
 import { accessTokenUsable } from "@/lib/auth/tokenState";
 
 // Proxy BFF (Backend For Frontend): toda chamada de Client Component à
@@ -56,6 +57,9 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     Authorization: `Bearer ${token.accessToken}`,
     "Content-Type": req.headers.get("content-type") ?? "application/json",
     "X-Request-ID": requestId,
+    // IP real (prova de consentimento LGPD, auditoria, rate limit) — só
+    // atrás de proxy de borda confiável; ver lib/api/clientIp.
+    ...forwardedFor(req.headers),
   };
   // Chave de idempotência das mutações (skill §1 / OWASP A08): gerada no
   // navegador por apiClient e repassada intacta — o backend deduplica

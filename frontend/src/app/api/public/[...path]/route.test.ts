@@ -2,6 +2,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/api/backendUrl", () => ({ BACKEND_INTERNAL_URL: "http://api:8080" }));
 
 import { GET, POST } from "./route";
@@ -14,9 +15,18 @@ describe("proxy BFF público (allowlist)", () => {
     upstream = vi.fn(async () => new Response('{"data":1,"error":null}', { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", upstream);
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
 
-  it("encaminha rotas da allowlist, sem token, com o IP do visitante", async () => {
+  it("sem proxy confiável, X-Forwarded-For do cliente NÃO é repassado (IP forjado burlava o limite)", async () => {
+    await POST(new NextRequest("http://app/x", { method: "POST", body: "{}", headers: { "x-forwarded-for": "203.0.113.66" } }), params("v1", "contact", "messages"));
+    expect(upstream.mock.calls[0]![1].headers["X-Forwarded-For"]).toBeUndefined();
+  });
+
+  it("encaminha rotas da allowlist, sem token, com o IP do visitante (atrás de proxy confiável)", async () => {
+    vi.stubEnv("TRUST_PROXY_HEADERS", "true");
     const res = await GET(new NextRequest("http://app/api/public/v1/catalog/services?q=x", { headers: { "x-forwarded-for": "203.0.113.9" } }), params("v1", "catalog", "services"));
     expect(res.status).toBe(200);
     const [url, init] = upstream.mock.calls[0]!;
@@ -30,6 +40,11 @@ describe("proxy BFF público (allowlist)", () => {
     expect(new TextDecoder().decode(post.body)).toBe('{"a":1}');
     expect(post.headers["X-Request-ID"]).toBe("r1");
     expect(post.headers["X-Forwarded-For"]).toBeUndefined();
+  });
+
+  it("sem proxy confiável, X-Forwarded-For do cliente NÃO é repassado (IP forjado burlava o limite)", async () => {
+    await POST(new NextRequest("http://app/x", { method: "POST", body: "{}", headers: { "x-forwarded-for": "203.0.113.66" } }), params("v1", "contact", "messages"));
+    expect(upstream.mock.calls[0]![1].headers["X-Forwarded-For"]).toBeUndefined();
   });
 
   it("fora da allowlist (rota, método ou '..') responde 404", async () => {

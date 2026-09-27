@@ -3,6 +3,7 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import KeycloakProvider from "next-auth/providers/keycloak";
 
+import { forwardedFor } from "@/lib/api/clientIp";
 import { BACKEND_INTERNAL_URL } from "@/lib/env";
 
 // Autenticação do Projeto Nexus (skill §2):
@@ -118,13 +119,16 @@ export const authOptions: NextAuthOptions = {
         username: { label: "Usuário", type: "text" },
         password: { label: "Senha", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) return null;
         let res: Response;
         try {
           res = await fetch(`${BACKEND_INTERNAL_URL}/api/v1/auth/login`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            // Sem o IP do visitante, a API via este servidor como a origem de
+            // TODOS os logins: o limite (10/min) e o bloqueio por IP viravam
+            // um balde só para a organização inteira.
+            headers: { "Content-Type": "application/json", ...forwardedFor(req?.headers) },
             body: JSON.stringify({ username: credentials.username, password: credentials.password }),
             signal: AbortSignal.timeout(8000),
           });

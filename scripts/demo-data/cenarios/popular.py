@@ -187,12 +187,15 @@ for g_origem, assunto, tipo, sigilo, destinos, fim in FLUXOS:
         dest = first(g)
         if not any(s["perfil"] == "protocolo" for s in me(dest)["scopes"]):
             dest = first(g.rsplit("-", 1)[0] + "-ADM")
+        if unit_of(dest) == unit_of(atual):  # departamentos da mesma unidade (ex.: sede da Prefeitura)
+            continue
         ok("tramita", *call(atual, "POST", f"tramite/processos/{p['id']}/tramitar", {"para_unidade_id": unit_of(dest), "despacho": "Encaminho para análise e providências."}))
         ok("parecer", *call(dest, "POST", f"tramite/processos/{p['id']}/documentos", {"tipo": "parecer", "titulo": "Parecer", "conteudo": "Analisado. Segue para os próximos passos."}))
         atual = dest
     if fim == "concluir":
         ok("conclui", *call(atual, "POST", f"tramite/processos/{p['id']}/concluir", {"despacho": "Demanda atendida."}))
-    elif fim == "arquivar":
+    elif fim == "arquivar":  # só se arquiva o que foi concluído
+        ok("conclui", *call(atual, "POST", f"tramite/processos/{p['id']}/concluir", {"despacho": "Compra consolidada em outro processo."}))
         ok("arquiva", *call(atual, "POST", f"tramite/processos/{p['id']}/arquivar", {"despacho": "Arquivado: compra consolidada em outro processo."}))
 print(f"   {nproc} processos")
 
@@ -245,6 +248,9 @@ for i, (nome, cat, assunto, msg) in enumerate(MSGS):
     try:
         urllib.request.urlopen(req, timeout=15, context=SSL_CTX)
     except urllib.error.HTTPError as e:
+        if e.code == 429:  # limite do formulário por IP (5/h): proteção, não erro
+            print("   formulário de contato no limite por IP — o restante fica para depois")
+            break
         print("  ! contato:", e.code, e.read()[:200])
         FAILS.append("contato")
 caixa = call(EDITOR, "GET", "contact/messages")[1]["data"]

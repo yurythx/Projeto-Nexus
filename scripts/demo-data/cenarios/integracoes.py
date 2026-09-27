@@ -64,8 +64,10 @@ for t in (ok_t, bad_t):
 
 print("\n== Busca global sobre vários módulos")
 code, d = call(EDITOR, "POST", "blog/posts", {"title": f"Notícia pesquisável {RUN}", "summary": "s", "body": f"conteúdo {RUN}", "kind": "noticia"})
-call(EDITOR, "POST", f"blog/posts/{d['data']['id']}/publish")
+post_id = d["data"]["id"]
+call(EDITOR, "POST", f"blog/posts/{post_id}/publish")
 code, d = call(S, "POST", "wiki/pages", {"title": f"Procedimento pesquisável {RUN}", "body": f"passo a passo {RUN}", "summary": "criação"})
+wiki_id = d["data"]["id"]
 mods = lambda q: (lambda r: sorted({h["module"] for h in r[1]["data"]["results"]}) if r[0] == 200 else r)(call(S, "GET", f"search?q={q}"))  # noqa: E731
 kinds = wait(lambda: (lambda k: k if isinstance(k, list) and len(k) >= 3 else None)(mods(RUN)), 30) or mods(RUN)
 print("   resultados por módulo:", kinds)
@@ -76,9 +78,10 @@ code, d = call(S, "GET", "search?q=a")
 expect("termo curto recusado", code, 422)
 
 print("\n== Trilha de auditoria por tipo de ação")
-for action in ("catalog.service.published", "blog.post.published", "wiki.page.created", "egress.target.saved"):
+# A trilha guarda o id do recurso (e, nas criações, o conteúdo): procura por ele.
+for action, rid in (("catalog.service.published", sid), ("blog.post.published", post_id), ("wiki.page.created", wiki_id), ("egress.target.saved", ok_t)):
     code, d = call(AUD, "GET", f"audit/logs?action={action}")
-    check(f"auditado: {action}", code == 200 and any(str(RUN) in json.dumps(x, ensure_ascii=False) for x in d["data"]), code)
+    check(f"auditado: {action}", code == 200 and any(rid in json.dumps(x) for x in d["data"]), code)
 code, d = call(AUD, "GET", "audit/verify")
 check("cadeia íntegra depois de tudo", code == 200 and d["data"]["valid"] is True, d)
 done()

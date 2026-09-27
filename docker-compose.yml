@@ -63,8 +63,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "${HOST_MINIO_PORT:-9002}:9000"
-      - "${HOST_MINIO_CONSOLE_PORT:-9003}:9001"
+      - "${HOST_BIND:-0.0.0.0}:${HOST_MINIO_PORT:-9002}:9000"
+      - "${HOST_BIND:-0.0.0.0}:${HOST_MINIO_CONSOLE_PORT:-9003}:9001"
     networks:
       - nexus_internal
     healthcheck:
@@ -148,7 +148,7 @@ services:
     networks:
     - nexus_internal
     ports:
-    - ${HTTP_PORT:-8002}:${HTTP_PORT:-8002}
+    - ${HOST_BIND:-0.0.0.0}:${HTTP_PORT:-8002}:${HTTP_PORT:-8002}
     depends_on:
       postgres:
         condition: service_healthy
@@ -247,7 +247,7 @@ services:
     networks:
     - nexus_internal
     ports:
-    - ${FRONTEND_PORT:-3002}:3000
+    - ${HOST_BIND:-0.0.0.0}:${FRONTEND_PORT:-3002}:3000
     depends_on:
       backend-api:
         condition: service_healthy

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { BACKEND_INTERNAL_URL } from "@/lib/api/backendUrl";
+import { forwardedFor } from "@/lib/api/clientIp";
 
 // Proxy BFF ANÔNIMO — só para as rotas públicas do backend, numa
 // allowlist explícita (método + prefixo). Qualquer outra rota responde
 // 404 aqui: este proxy nunca vira um atalho para a API autenticada.
 // O IP real do visitante segue no X-Forwarded-For para o rate limit por
-// IP do backend (que só confia nele vindo de TRUSTED_PROXIES).
+// IP do backend — só atrás de proxy de borda confiável (lib/api/clientIp).
 const ALLOW: { method: string; prefix: string }[] = [
   { method: "GET", prefix: "v1/branding" },
   { method: "GET", prefix: "v1/system/public-modules" },
@@ -29,9 +30,8 @@ async function forward(req: NextRequest, path: string[]): Promise<NextResponse> 
   const headers: Record<string, string> = {
     "Content-Type": req.headers.get("content-type") ?? "application/json",
     "X-Request-ID": req.headers.get("x-request-id") ?? crypto.randomUUID(),
+    ...forwardedFor(req.headers),
   };
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) headers["X-Forwarded-For"] = xff;
   try {
     const res = await fetch(target, {
       method: req.method,

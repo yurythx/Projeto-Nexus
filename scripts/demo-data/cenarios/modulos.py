@@ -93,7 +93,7 @@ code, d = call("teste.iam", "GET", "users?q=martins")
 expect("gestor IAM lista usuários", code, 200, d)
 code, d = call("teste.iam", "GET", "iam/org-tree")
 expect("árvore organizacional", code, 200)
-if code == 200: check("4 entidades na árvore", len(d["data"]) == 4, len(d["data"]))
+if code == 200: check("as 4 entidades da prefeitura na árvore", {"PREF", "SEMSA", "SEMED", "SEMPRAS"} <= {e.get("sigla") for e in d["data"]}, [e.get("sigla") for e in d["data"]])
 code, d = call(a, "GET", "search?q=teste")
 expect("busca global", code, 200, d)
 

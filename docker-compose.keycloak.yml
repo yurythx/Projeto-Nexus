@@ -37,7 +37,7 @@ services:
       - keycloak_data:/opt/keycloak/data
       - ./deploy/keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "${HOST_KEYCLOAK_PORT:-8180}:8080"
+      - "${HOST_BIND:-0.0.0.0}:${HOST_KEYCLOAK_PORT:-8180}:8080"
     networks:
       - nexus_internal
     healthcheck:
