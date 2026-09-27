@@ -48,7 +48,7 @@ func identity(r *http.Request) auth.Identity {
 }
 
 func (h *Handlers) Tree(w http.ResponseWriter, r *http.Request) {
-	pages, err := h.svc.Tree(r.Context())
+	pages, err := h.svc.Tree(r.Context(), identity(r))
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -57,7 +57,7 @@ func (h *Handlers) Tree(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
-	page, err := h.svc.Get(r.Context(), chi.URLParam(r, "ref"))
+	page, err := h.svc.Get(r.Context(), identity(r), chi.URLParam(r, "ref"))
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -74,12 +74,14 @@ type pageRequest struct {
 	Summary  string     `json:"summary" validate:"max=300"`
 	// UnidadeID é a unidade dona (ADR 013); vazio na criação herda a da mãe.
 	UnidadeID *uuid.UUID `json:"unidade_id"`
+	// Publico: público-alvo próprio (ADR 014); ausente na edição = mantém.
+	Publico *auth.Publico `json:"publico" validate:"-"`
 	// Version é a versão que o editor abriu (concorrência otimista).
 	Version int `json:"version"`
 }
 
 func (req pageRequest) input() application.Input {
-	return application.Input{ParentID: req.ParentID, Title: req.Title, Slug: req.Slug, Body: req.Body, Position: req.Position, Summary: req.Summary, UnidadeID: req.UnidadeID}
+	return application.Input{ParentID: req.ParentID, Title: req.Title, Slug: req.Slug, Body: req.Body, Position: req.Position, Summary: req.Summary, UnidadeID: req.UnidadeID, Publico: req.Publico}
 }
 
 func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +127,7 @@ func (h *Handlers) Revisions(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	revs, err := h.svc.Revisions(r.Context(), id)
+	revs, err := h.svc.Revisions(r.Context(), identity(r), id)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -152,7 +154,7 @@ func (h *Handlers) Revision(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	rev, err := h.svc.Revision(r.Context(), id, v)
+	rev, err := h.svc.Revision(r.Context(), identity(r), id, v)
 	if err != nil {
 		h.fail(w, r, err)
 		return

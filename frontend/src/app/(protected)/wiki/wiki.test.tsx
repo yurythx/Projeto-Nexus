@@ -43,7 +43,7 @@ describe("Wiki — layout e árvore", () => {
     await userEvent.click(within(d).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/wiki/nova"));
     expect(api.to("POST v1/wiki/pages")[0]!.body).toEqual({
-      title: "Procedimentos", slug: "", parent_id: "filha", unidade_id: null, position: 0, summary: "primeira versão", body: "# Passo 1",
+      title: "Procedimentos", slug: "", parent_id: "filha", unidade_id: null, publico: { entidades: [], unidades: [] }, position: 0, summary: "primeira versão", body: "# Passo 1",
     });
   });
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
@@ -102,6 +103,22 @@ func (t Tabela) Carregar(ctx context.Context, db database.DBTX, ids []uuid.UUID)
 	if err != nil {
 		return nil, fmt.Errorf("publico: carregar: %w", err)
 	}
+	return out, acumular(rows, out)
+}
+
+// Todos devolve o público de todo recurso que tem um (os demais ficam de
+// fora do mapa: vazio = todos).
+func (t Tabela) Todos(ctx context.Context, db database.DBTX) (map[uuid.UUID]auth.Publico, error) {
+	rows, err := db.Query(ctx, fmt.Sprintf(`SELECT %s, entidade_id, unidade_id FROM %s`, t.Coluna, t.Nome))
+	if err != nil {
+		return nil, fmt.Errorf("publico: carregar: %w", err)
+	}
+	out := map[uuid.UUID]auth.Publico{}
+	return out, acumular(rows, out)
+}
+
+// acumular lê as linhas (recurso, entidade, unidade) para out.
+func acumular(rows pgx.Rows, out map[uuid.UUID]auth.Publico) error {
 	defer rows.Close()
 	for rows.Next() {
 		var (
@@ -109,7 +126,7 @@ func (t Tabela) Carregar(ctx context.Context, db database.DBTX, ids []uuid.UUID)
 			entidade, unidade *uuid.UUID
 		)
 		if err := rows.Scan(&id, &entidade, &unidade); err != nil {
-			return nil, fmt.Errorf("publico: ler: %w", err)
+			return fmt.Errorf("publico: ler: %w", err)
 		}
 		p := out[id]
 		if entidade != nil {
@@ -121,12 +138,12 @@ func (t Tabela) Carregar(ctx context.Context, db database.DBTX, ids []uuid.UUID)
 		out[id] = p
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("publico: ler: %w", err)
+		return fmt.Errorf("publico: ler: %w", err)
 	}
 	for id, p := range out {
 		out[id] = p.Normalizado()
 	}
-	return out, nil
+	return nil
 }
 
 // Um devolve o público de um recurso.

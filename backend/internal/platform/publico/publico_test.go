@@ -53,6 +53,9 @@ func TestTabelaGravaCarregaEFiltra(t *testing.T) {
 	if err != nil || !m[paraTodos].Vazio() || !slices.Equal(m[daMae].Unidades, []uuid.UUID{mae}) || !slices.Equal(m[daEntidade].Entidades, []uuid.UUID{ent}) {
 		t.Fatalf("carregar: %+v %v", m, err)
 	}
+	if todos, err := blog.Todos(ctx, pool); err != nil || todos[daMae].Vazio() || !todos[paraTodos].Vazio() {
+		t.Fatalf("todos: %v", err)
+	}
 	if p, err := blog.Um(ctx, pool, daMae); err != nil || len(p.Unidades) != 1 {
 		t.Fatalf("um: %+v %v", p, err)
 	}
@@ -131,6 +134,9 @@ func TestTabelaPropagaFalhas(t *testing.T) {
 	}
 	if _, err := blog.Carregar(ctx, dbtest.RowsErr{}, []uuid.UUID{id}); err == nil {
 		t.Error("erro na leitura")
+	}
+	if _, err := blog.Todos(ctx, dbtest.Fail{}); !errors.Is(err, dbtest.ErrInjected) {
+		t.Errorf("todos: %v", err)
 	}
 	if _, err := blog.Um(ctx, dbtest.Fail{}, id); err == nil {
 		t.Error("um")

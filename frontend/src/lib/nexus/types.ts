@@ -422,6 +422,8 @@ export interface ACLEntry {
 export interface WikiPage {
   id: UUID;
   parent_id?: UUID;
+  /** Público-alvo próprio (ADR 014); vale com o das páginas acima. */
+  publico?: Publico;
   /** Unidade dona (ADR 013); ausente = institucional. */
   unidade_id?: UUID;
   slug: string;

@@ -30,6 +30,10 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 		"Revision":        func(db database.DBTX) error { _, err := r.Revision(ctx, db, id, 1); return err },
 		"Search":          func(db database.DBTX) error { _, _, err := r.Search(ctx, db, "x", 5); return err },
 	}
+	// A página foi lida, mas o público-alvo não (ADR 014).
+	if _, err := r.Get(ctx, &dbtest.Seq{Row: rowOK{}}, id); !errors.Is(err, dbtest.ErrInjected) {
+		t.Errorf("público-alvo com o banco fora: %v", err)
+	}
 	for name, call := range calls {
 		if err := call(dbtest.Fail{}); !errors.Is(err, dbtest.ErrInjected) {
 			t.Errorf("%s com o banco fora: %v", name, err)
@@ -51,3 +55,8 @@ func TestRepositoryPropagatesDatabaseErrors(t *testing.T) {
 		t.Errorf("edição concorrente: %v", err)
 	}
 }
+
+// rowOK é uma linha que se lê sem erro (valores zerados).
+type rowOK struct{}
+
+func (rowOK) Scan(...any) error { return nil }

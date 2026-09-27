@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { History, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
+import { PublicoBadge } from "@/components/iam/PublicoAlvo";
 import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { Markdown } from "@/components/nexus/Markdown";
@@ -99,6 +100,7 @@ export default function WikiPageView() {
           <header className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-border pb-4">
             <div>
               <h1 className="text-3xl font-bold">{p.title}</h1>
+              <PublicoBadge publico={p.publico} />
               <p className="mt-1 text-xs text-muted">
                 Versão {p.version} · atualizada por {p.updated_by_name} em {fmtDateTime(p.updated_at)}
               </p>

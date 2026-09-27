@@ -52,8 +52,8 @@ type provider struct{ svc *application.Service }
 
 func (provider) Module() string { return Key }
 
-func (p provider) Search(ctx context.Context, _ auth.Identity, q string, limit int) ([]search.Result, error) {
-	pages, ranks, err := p.svc.Search(ctx, q, limit)
+func (p provider) Search(ctx context.Context, identity auth.Identity, q string, limit int) ([]search.Result, error) {
+	pages, ranks, err := p.svc.Search(ctx, identity, q, limit)
 	if err != nil {
 		return nil, err
 	}

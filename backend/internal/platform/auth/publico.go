@@ -32,6 +32,12 @@ func (p Publico) Normalizado() Publico {
 	return Publico{Entidades: limpa(p.Entidades), Unidades: limpa(p.Unidades)}
 }
 
+// Igual reporta se os dois públicos são o mesmo (ordem e repetições não contam).
+func (p Publico) Igual(o Publico) bool {
+	a, b := p.Normalizado(), o.Normalizado()
+	return slices.Equal(a.Entidades, b.Entidades) && slices.Equal(a.Unidades, b.Unidades)
+}
+
 // Pertencimento é onde a pessoa pertence para o público-alvo: as entidades
 // das lotações e as unidades delas com as de cima (Scope.Acima, calculado
 // pelo resolvedor). Concessão só global não é pertencimento.

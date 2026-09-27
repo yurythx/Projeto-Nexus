@@ -370,17 +370,17 @@ func TestPluginsEndToEnd(t *testing.T) {
 		if restored.Body != "Solicitar com 30 dias" || restored.Version != 3 {
 			t.Fatalf("restauração inesperada: v%d %q", restored.Version, restored.Body)
 		}
-		revs, err := svc.Revisions(ctx, child.ID)
+		revs, err := svc.Revisions(ctx, e.identity, child.ID)
 		must(t, err)
 		if len(revs) != 3 {
 			t.Fatalf("3 revisões esperadas, veio %d", len(revs))
 		}
-		view, err := svc.Get(ctx, child.Slug)
+		view, err := svc.Get(ctx, e.identity, child.Slug)
 		must(t, err)
 		if len(view.Breadcrumbs) != 1 {
 			t.Fatal("trilha até a raiz esperada")
 		}
-		res, _, err := svc.Search(ctx, "ferias", 5)
+		res, _, err := svc.Search(ctx, e.identity, "ferias", 5)
 		must(t, err)
 		if len(res) == 0 {
 			t.Fatal("busca deveria achar a página")

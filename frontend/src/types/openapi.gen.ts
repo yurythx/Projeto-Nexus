@@ -3799,6 +3799,7 @@ export interface components {
             /** Format: uuid */
             parent_id?: string;
             position: number;
+            publico: components["schemas"]["AuthPublico"];
             slug: string;
             title: string;
             /** Format: uuid */
@@ -3815,6 +3816,7 @@ export interface components {
             /** Format: uuid */
             parent_id?: string | null;
             position?: number;
+            publico?: components["schemas"]["AuthPublicoInput"] | null;
             slug?: string;
             summary?: string;
             title: string;
@@ -3834,6 +3836,7 @@ export interface components {
             /** Format: uuid */
             parent_id?: string;
             position: number;
+            publico: components["schemas"]["AuthPublico"];
             slug: string;
             title: string;
             /** Format: uuid */

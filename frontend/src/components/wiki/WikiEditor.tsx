@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
+import { PublicoAlvoPicker, TODOS } from "@/components/iam/PublicoAlvo";
 import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { Markdown } from "@/components/nexus/Markdown";
 import { useAction } from "@/components/nexus/useAction";
@@ -28,6 +29,7 @@ export function WikiEditor({
   const { run, pending } = useAction();
   const [body, setBody] = useState(page?.body ?? "");
   const [preview, setPreview] = useState(false);
+  const [publico, setPublico] = useState(page?.publico ?? TODOS);
 
   // Uma página não pode ser filha de si mesma nem de descendentes.
   const descendants = new Set<string>();
@@ -45,6 +47,7 @@ export function WikiEditor({
       slug: String(fd.get("slug") ?? "").trim(),
       parent_id: String(fd.get("parent_id") ?? "") || null,
       unidade_id: String(fd.get("unidade_id") ?? "") || null,
+      publico,
       position: Number(fd.get("position") ?? 0) || 0,
       summary: String(fd.get("summary") ?? "").trim(),
       body,
@@ -85,6 +88,8 @@ export function WikiEditor({
         defaultValue={page?.unidade_id}
         placeholder={page ? "Institucional (sem unidade)" : "Herdar da página-mãe (na raiz: institucional)"}
       />
+      {/* Vale com o das páginas acima: a subpágina restringe mais, não abre. */}
+      <PublicoAlvoPicker idPrefix="wiki-publico" value={publico} onChange={setPublico} />
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Conteúdo (Markdown)</span>
         <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((v) => !v)} aria-pressed={preview}>

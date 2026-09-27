@@ -17,6 +17,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
 
 // Service implementa os casos de uso.
@@ -45,12 +46,86 @@ func MapError(err error) error {
 		return apperrors.Conflict(err.Error())
 	case errors.Is(err, domain.ErrOutOfScope):
 		return apperrors.Forbidden(err.Error())
+	case errors.Is(err, publico.ErrInvalido):
+		return apperrors.Validation("público-alvo com secretaria ou unidade inexistente")
 	}
 	return err
 }
 
-// Tree lista todas as páginas (sem corpo).
-func (s *Service) Tree(ctx context.Context) ([]domain.Page, error) { return s.repo.Tree(ctx, s.pool) }
+// arvore é o que decide a leitura (ADR 014): as páginas (sem corpo) e o
+// público-alvo próprio de cada uma. A Wiki é pequena — carrega-se inteira.
+type arvore struct {
+	ordem    []domain.Page
+	paginas  map[uuid.UUID]domain.Page
+	publicos map[uuid.UUID]auth.Publico
+}
+
+func (s *Service) arvore(ctx context.Context, db database.DBTX) (arvore, error) {
+	pages, err := s.repo.Tree(ctx, db)
+	if err != nil {
+		return arvore{}, err
+	}
+	pubs, err := s.repo.Publicos(ctx, db)
+	if err != nil {
+		return arvore{}, err
+	}
+	a := arvore{ordem: pages, paginas: map[uuid.UUID]domain.Page{}, publicos: pubs}
+	for i := range pages {
+		pages[i].Publico = pubs[pages[i].ID].Normalizado()
+		a.paginas[pages[i].ID] = pages[i]
+	}
+	return a, nil
+}
+
+// le: a página é lida se, em cada página da cadeia até a raiz que tem
+// público próprio, quem lê pertence ao público — ou criou aquela página,
+// ou a gestão (wiki:manage) cobre a dona dela. Subpágina restringe mais,
+// nunca abre o que a mãe fechou.
+func (a arvore) le(identity auth.Identity, id uuid.UUID) bool {
+	p, ok := a.paginas[id]
+	for nivel := 0; ok && nivel < 64; nivel++ {
+		if pub := a.publicos[p.ID]; !pub.Vazio() && !auth.NoPublico(identity, pub) && !gereOuCriou(identity, p) {
+			return false
+		}
+		if p.ParentID == nil {
+			break
+		}
+		p, ok = a.paginas[*p.ParentID]
+	}
+	return true
+}
+
+// gereOuCriou: quem criou a página ou a gestão que cobre a dona.
+func gereOuCriou(identity auth.Identity, p domain.Page) bool {
+	return p.CreatedBy == identity.UserID || auth.Can(identity, auth.PermWikiManage, dona(p.UnidadeID))
+}
+
+// visivel responde "não encontrada" para quem não pode ler a página.
+func (s *Service) visivel(ctx context.Context, db database.DBTX, identity auth.Identity, id uuid.UUID) error {
+	a, err := s.arvore(ctx, db)
+	if err != nil {
+		return err
+	}
+	if !a.le(identity, id) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// Tree lista as páginas que identity pode ler (sem corpo).
+func (s *Service) Tree(ctx context.Context, identity auth.Identity) ([]domain.Page, error) {
+	a, err := s.arvore(ctx, s.pool)
+	if err != nil {
+		return nil, err
+	}
+	out := []domain.Page{}
+	for _, p := range a.ordem {
+		if a.le(identity, p.ID) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
 
 // PageView é uma página com a trilha até a raiz.
 type PageView struct {
@@ -59,7 +134,7 @@ type PageView struct {
 }
 
 // Get devolve uma página por id ou slug.
-func (s *Service) Get(ctx context.Context, ref string) (PageView, error) {
+func (s *Service) Get(ctx context.Context, identity auth.Identity, ref string) (PageView, error) {
 	var (
 		p   domain.Page
 		err error
@@ -70,6 +145,9 @@ func (s *Service) Get(ctx context.Context, ref string) (PageView, error) {
 		p, err = s.repo.GetBySlug(ctx, s.pool, ref)
 	}
 	if err != nil {
+		return PageView{}, MapError(err)
+	}
+	if err := s.visivel(ctx, s.pool, identity, p.ID); err != nil {
 		return PageView{}, MapError(err)
 	}
 	crumbs, err := s.repo.Breadcrumbs(ctx, s.pool, p.ID)
@@ -89,6 +167,8 @@ type Input struct {
 	Summary  string
 	// UnidadeID é a unidade dona; na criação, vazio herda a da página-mãe.
 	UnidadeID *uuid.UUID
+	// Publico é o público-alvo próprio (ADR 014); nil na edição = mantém.
+	Publico *auth.Publico
 }
 
 // podeMarcar: só marca uma unidade como dona quem está lotado nela ou tem
@@ -122,6 +202,9 @@ func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) 
 			if err != nil {
 				return err
 			}
+			if err := s.visivel(ctx, tx, identity, parent.ID); err != nil {
+				return err
+			}
 			if in.UnidadeID == nil {
 				in.UnidadeID = parent.UnidadeID // herda a dona da página-mãe
 			} else if !podeMarcar(identity, in.UnidadeID) {
@@ -134,6 +217,11 @@ func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) 
 			Position: in.Position, CreatedBy: identity.UserID, UpdatedBy: identity.UserID, UnidadeID: in.UnidadeID}
 		if err := s.repo.Insert(ctx, tx, p); err != nil {
 			return err
+		}
+		if in.Publico != nil {
+			if err := s.repo.SetPublico(ctx, tx, p.ID, *in.Publico); err != nil {
+				return err
+			}
 		}
 		if err := s.repo.AddRevision(ctx, tx, domain.Revision{PageID: p.ID, Version: 1, Title: p.Title, Body: p.Body,
 			Summary: firstNonEmpty(in.Summary, "Criação da página"), EditedBy: identity.UserID}); err != nil {
@@ -157,6 +245,24 @@ func (s *Service) Update(ctx context.Context, identity auth.Identity, id uuid.UU
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if err := s.visivel(ctx, tx, identity, id); err != nil {
+			return err
+		}
+		if in.ParentID != nil && !sameUnidade(prev.ParentID, in.ParentID) {
+			if err := s.visivel(ctx, tx, identity, *in.ParentID); err != nil {
+				return err
+			}
+		}
+		// Trocar o público (ADR 014): quem criou a página ou a gestão da dona
+		// — qualquer um edita, mas não esconde dos colegas o que é de todos.
+		if in.Publico != nil && !in.Publico.Igual(prev.Publico) {
+			if !gereOuCriou(identity, prev) {
+				return domain.ErrOutOfScope
+			}
+			if err := s.repo.SetPublico(ctx, tx, id, *in.Publico); err != nil {
+				return err
+			}
 		}
 		if in.ParentID != nil {
 			if *in.ParentID == id {
@@ -242,23 +348,44 @@ func sameUnidade(a, b *uuid.UUID) bool {
 	return *a == *b
 }
 
-// Revisions lista o histórico (página inexistente: 404).
-func (s *Service) Revisions(ctx context.Context, id uuid.UUID) ([]domain.Revision, error) {
+// Revisions lista o histórico (página inexistente ou fora do público: 404).
+func (s *Service) Revisions(ctx context.Context, identity auth.Identity, id uuid.UUID) ([]domain.Revision, error) {
 	if _, err := s.repo.Get(ctx, s.pool, id); err != nil {
+		return nil, MapError(err)
+	}
+	if err := s.visivel(ctx, s.pool, identity, id); err != nil {
 		return nil, MapError(err)
 	}
 	return s.repo.Revisions(ctx, s.pool, id)
 }
 
 // Revision devolve uma revisão.
-func (s *Service) Revision(ctx context.Context, id uuid.UUID, version int) (domain.Revision, error) {
+func (s *Service) Revision(ctx context.Context, identity auth.Identity, id uuid.UUID, version int) (domain.Revision, error) {
+	if err := s.visivel(ctx, s.pool, identity, id); err != nil {
+		return domain.Revision{}, MapError(err)
+	}
 	rev, err := s.repo.Revision(ctx, s.pool, id, version)
 	return rev, MapError(err)
 }
 
-// Search alimenta a Busca Global.
-func (s *Service) Search(ctx context.Context, q string, limit int) ([]domain.Page, []float64, error) {
-	return s.repo.Search(ctx, s.pool, q, limit)
+// Search alimenta a Busca Global (só páginas que identity pode ler).
+func (s *Service) Search(ctx context.Context, identity auth.Identity, q string, limit int) ([]domain.Page, []float64, error) {
+	pages, ranks, err := s.repo.Search(ctx, s.pool, q, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	a, err := s.arvore(ctx, s.pool)
+	if err != nil {
+		return nil, nil, err
+	}
+	var outP []domain.Page
+	var outR []float64
+	for i, p := range pages {
+		if a.le(identity, p.ID) {
+			outP, outR = append(outP, p), append(outR, ranks[i])
+		}
+	}
+	return outP, outR, nil
 }
 
 func firstNonEmpty(a, b string) string {

@@ -4646,6 +4646,9 @@
           "position": {
             "type": "integer"
           },
+          "publico": {
+            "$ref": "#/components/schemas/AuthPublico"
+          },
           "slug": {
             "type": "string"
           },
@@ -4676,6 +4679,7 @@
           "created_by",
           "id",
           "position",
+          "publico",
           "slug",
           "title",
           "updated_at",
@@ -4701,6 +4705,14 @@
             "maximum": 100000,
             "minimum": 0,
             "type": "integer"
+          },
+          "publico": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AuthPublicoInput"
+              }
+            ],
+            "nullable": true
           },
           "slug": {
             "maxLength": 100,
@@ -4759,6 +4771,9 @@
           "position": {
             "type": "integer"
           },
+          "publico": {
+            "$ref": "#/components/schemas/AuthPublico"
+          },
           "slug": {
             "type": "string"
           },
@@ -4790,6 +4805,7 @@
           "created_by",
           "id",
           "position",
+          "publico",
           "slug",
           "title",
           "updated_at",

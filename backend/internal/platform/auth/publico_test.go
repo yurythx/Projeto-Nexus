@@ -49,6 +49,9 @@ func TestPublicoNormalizado(t *testing.T) {
 	if len(p.Unidades) != 2 || p.Entidades == nil || p.Vazio() {
 		t.Errorf("sem nulos nem repetidos, listas não nulas: %+v", p)
 	}
+	if !(Publico{Unidades: []uuid.UUID{idU, idF}}).Igual(Publico{Unidades: []uuid.UUID{idF, idU, idF}}) || (Publico{}).Igual(Publico{Entidades: []uuid.UUID{idE}}) {
+		t.Error("igualdade ignora ordem e repetição")
+	}
 	if !(Publico{}).Normalizado().Vazio() {
 		t.Error("vazio continua vazio")
 	}

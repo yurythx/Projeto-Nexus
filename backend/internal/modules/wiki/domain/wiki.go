@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
@@ -24,19 +25,20 @@ var (
 
 // Page é uma página da Wiki.
 type Page struct {
-	ID            uuid.UUID  `json:"id"`
-	ParentID      *uuid.UUID `json:"parent_id,omitempty"`
-	UnidadeID     *uuid.UUID `json:"unidade_id,omitempty"` // dona (ADR 013); nil = institucional
-	Slug          string     `json:"slug"`
-	Title         string     `json:"title"`
-	Body          string     `json:"body,omitempty"`
-	Position      int        `json:"position"`
-	Version       int        `json:"version"`
-	CreatedBy     uuid.UUID  `json:"created_by"`
-	UpdatedBy     uuid.UUID  `json:"updated_by"`
-	UpdatedByName string     `json:"updated_by_name"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID            uuid.UUID    `json:"id"`
+	ParentID      *uuid.UUID   `json:"parent_id,omitempty"`
+	UnidadeID     *uuid.UUID   `json:"unidade_id,omitempty"` // dona (ADR 013); nil = institucional
+	Publico       auth.Publico `json:"publico"`              // público-alvo próprio (ADR 014); vale com o das páginas acima
+	Slug          string       `json:"slug"`
+	Title         string       `json:"title"`
+	Body          string       `json:"body,omitempty"`
+	Position      int          `json:"position"`
+	Version       int          `json:"version"`
+	CreatedBy     uuid.UUID    `json:"created_by"`
+	UpdatedBy     uuid.UUID    `json:"updated_by"`
+	UpdatedByName string       `json:"updated_by_name"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
 }
 
 // Revision é uma versão histórica.
@@ -67,4 +69,8 @@ type Repository interface {
 	Revisions(ctx context.Context, db database.DBTX, pageID uuid.UUID) ([]Revision, error)
 	Revision(ctx context.Context, db database.DBTX, pageID uuid.UUID, version int) (Revision, error)
 	Search(ctx context.Context, db database.DBTX, q string, limit int) ([]Page, []float64, error)
+	// Publicos devolve o público-alvo próprio de cada página que tem um.
+	Publicos(ctx context.Context, db database.DBTX) (map[uuid.UUID]auth.Publico, error)
+	// SetPublico substitui o público-alvo próprio da página.
+	SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error
 }

@@ -51,15 +51,15 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 	type op = func() func(s *application.Service) error
 	ops := map[string]op{
 		"Tree": func() func(*application.Service) error {
-			return func(s *application.Service) error { _, err := s.Tree(ctx); return err }
+			return func(s *application.Service) error { _, err := s.Tree(ctx, e.ana); return err }
 		},
 		"GetByID": func() func(*application.Service) error {
 			p := e.page(nil)
-			return func(s *application.Service) error { _, err := s.Get(ctx, p.ID.String()); return err }
+			return func(s *application.Service) error { _, err := s.Get(ctx, e.ana, p.ID.String()); return err }
 		},
 		"GetBySlug": func() func(*application.Service) error {
 			p := e.page(nil)
-			return func(s *application.Service) error { _, err := s.Get(ctx, p.Slug); return err }
+			return func(s *application.Service) error { _, err := s.Get(ctx, e.ana, p.Slug); return err }
 		},
 		"Create": func() func(*application.Service) error {
 			parent := e.page(nil)
@@ -85,14 +85,14 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"Revisions": func() func(*application.Service) error {
 			p := e.page(nil)
-			return func(s *application.Service) error { _, err := s.Revisions(ctx, p.ID); return err }
+			return func(s *application.Service) error { _, err := s.Revisions(ctx, e.ana, p.ID); return err }
 		},
 		"Revision": func() func(*application.Service) error {
 			p := e.page(nil)
-			return func(s *application.Service) error { _, err := s.Revision(ctx, p.ID, 1); return err }
+			return func(s *application.Service) error { _, err := s.Revision(ctx, e.ana, p.ID, 1); return err }
 		},
 		"Search": func() func(*application.Service) error {
-			return func(s *application.Service) error { _, _, err := s.Search(ctx, "página", 5); return err }
+			return func(s *application.Service) error { _, _, err := s.Search(ctx, e.ana, "página", 5); return err }
 		},
 	}
 	for name, o := range ops {

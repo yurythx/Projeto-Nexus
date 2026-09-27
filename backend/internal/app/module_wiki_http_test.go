@@ -98,3 +98,56 @@ func TestWikiGestaoComEscopo(t *testing.T) {
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+institucional.ID, admin, "")
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/wiki/pages/"+deB.ID, admin, "")
 }
+
+// Público-alvo na Wiki (ADR 014): a página para a unidade A e as
+// subpáginas dela só são lidas por quem está em A ou abaixo (a subpágina
+// restringe mais, nunca abre); fora do público somem da árvore, do
+// detalhe, do histórico e da busca. Trocar o público: quem criou ou a
+// gestão da dona — qualquer outro que edite não esconde a página.
+func TestWikiPublicoAlvo(t *testing.T) {
+	h := newHarness(t)
+	o := h.orgEscopo(t)
+	autorID, autor := h.user("nexus-user")
+	_ = autorID
+	naSub := h.gestorEm(t, o.sub, "contact:read")
+	emB := h.gestorEm(t, o.b, "contact:read")
+	sfx := uuid.NewString()[:8]
+	manual := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", autor,
+		`{"title":"Manual de A `+sfx+`","body":"procedimento `+sfx+`","publico":{"unidades":["`+o.a+`"]}}`))
+	anexo := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", autor,
+		`{"title":"Anexo `+sfx+`","parent_id":"`+manual.ID+`","body":"anexo `+sfx+`"}`))
+	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/wiki/pages", autor,
+		`{"title":"Fantasma `+sfx+`","publico":{"entidades":["`+uuid.NewString()+`"]}}`)
+
+	arvore := func(tok string) string {
+		return h.expect(http.StatusOK, http.MethodGet, "/api/v1/wiki/tree", tok, "").Body.String()
+	}
+	if a := arvore(naSub); !strings.Contains(a, manual.ID) || !strings.Contains(a, anexo.ID) {
+		t.Fatalf("lotado na subunidade de A lê o manual e o anexo: %s", a)
+	}
+	if a := arvore(emB); strings.Contains(a, manual.ID) || strings.Contains(a, anexo.ID) {
+		t.Fatalf("lotado em B não vê o manual nem o anexo herdado: %s", a)
+	}
+	for _, path := range []string{"/api/v1/wiki/pages/" + anexo.Slug, "/api/v1/wiki/pages/" + manual.ID + "/revisions", "/api/v1/wiki/pages/" + manual.ID + "/revisions/1"} {
+		h.expect(http.StatusNotFound, http.MethodGet, path, emB, "")
+		h.expect(http.StatusOK, http.MethodGet, path, naSub, "")
+	}
+	h.expect(http.StatusNotFound, http.MethodPost, "/api/v1/wiki/pages", emB, `{"title":"Filha intrusa","parent_id":"`+manual.ID+`"}`)
+	h.expect(http.StatusNotFound, http.MethodPut, "/api/v1/wiki/pages/"+anexo.ID, emB, `{"title":"x","parent_id":"`+manual.ID+`","version":1}`)
+	if b := h.expect(http.StatusOK, http.MethodGet, "/api/v1/search?q="+sfx, emB, "").Body.String(); strings.Contains(b, manual.ID) || strings.Contains(b, anexo.ID) {
+		t.Fatalf("busca global respeita o público: %s", b)
+	}
+
+	// Editar mantendo o público: qualquer leitor. Trocar: só quem criou.
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/wiki/pages/"+manual.ID, naSub, `{"title":"Manual de A `+sfx+`","body":"revisto","version":1}`)
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/wiki/pages/"+manual.ID, naSub, `{"title":"Manual de A `+sfx+`","version":2,"publico":{"entidades":[],"unidades":[]}}`)
+	h.expect(http.StatusUnprocessableEntity, http.MethodPut, "/api/v1/wiki/pages/"+manual.ID, autor, `{"title":"Manual de A `+sfx+`","version":2,"publico":{"unidades":["`+uuid.NewString()+`"]}}`)
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/wiki/pages/"+manual.ID, autor, `{"title":"Manual de A `+sfx+`","version":2,"publico":{"entidades":[],"unidades":[]}}`)
+	if a := arvore(emB); !strings.Contains(a, manual.ID) {
+		t.Fatalf("sem público, todos leem: %s", a)
+	}
+	// Mover para baixo de uma página que não vê: não encontrada.
+	fechada := data[wikiResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/wiki/pages", autor,
+		`{"title":"Fechada `+sfx+`","publico":{"unidades":["`+o.a+`"]}}`))
+	h.expect(http.StatusNotFound, http.MethodPut, "/api/v1/wiki/pages/"+manual.ID, emB, `{"title":"Manual de A `+sfx+`","version":3,"parent_id":"`+fechada.ID+`"}`)
+}

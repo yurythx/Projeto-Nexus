@@ -8,8 +8,32 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/modules/wiki/domain"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
+	"github.com/yurythx/projeto-nexus/internal/platform/publico"
 )
+
+// tabelaPublico é onde fica o público-alvo próprio das páginas (ADR 014).
+var tabelaPublico = publico.Tabela{Nome: "wiki_page_publico", Coluna: "page_id"}
+
+func (r *Repository) Publicos(ctx context.Context, db database.DBTX) (map[uuid.UUID]auth.Publico, error) {
+	return tabelaPublico.Todos(ctx, db)
+}
+
+func (r *Repository) SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error {
+	return tabelaPublico.Gravar(ctx, db, id, p)
+}
+
+// comPublico preenche o público-alvo próprio da página lida.
+func comPublico(ctx context.Context, db database.DBTX, p domain.Page, err error) (domain.Page, error) {
+	if err != nil {
+		return p, wrap(err)
+	}
+	if p.Publico, err = tabelaPublico.Um(ctx, db, p.ID); err != nil {
+		return domain.Page{}, err
+	}
+	return p, nil
+}
 
 // Repository implementa domain.Repository.
 type Repository struct{}
@@ -64,12 +88,12 @@ func (r *Repository) Tree(ctx context.Context, db database.DBTX) ([]domain.Page,
 
 func (r *Repository) Get(ctx context.Context, db database.DBTX, id uuid.UUID) (domain.Page, error) {
 	p, err := scan(db.QueryRow(ctx, `SELECT `+cols+from+` WHERE p.id = $1`, id))
-	return p, wrap(err)
+	return comPublico(ctx, db, p, err)
 }
 
 func (r *Repository) GetBySlug(ctx context.Context, db database.DBTX, slug string) (domain.Page, error) {
 	p, err := scan(db.QueryRow(ctx, `SELECT `+cols+from+` WHERE p.slug = $1`, slug))
-	return p, wrap(err)
+	return comPublico(ctx, db, p, err)
 }
 
 func (r *Repository) Breadcrumbs(ctx context.Context, db database.DBTX, id uuid.UUID) ([]domain.Page, error) {

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/yurythx/projeto-nexus/internal/modules/wiki/domain"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
@@ -152,4 +153,21 @@ func (fr *faultRepo) Search(ctx context.Context, db database.DBTX, q string, lim
 	}
 	defer fr.post(ctx, db)
 	return fr.inner.Search(ctx, db, q, limit)
+}
+
+func (fr *faultRepo) Publicos(ctx context.Context, db database.DBTX) (map[uuid.UUID]auth.Publico, error) {
+	if err := fr.hook("Publicos"); err != nil {
+		var z0 map[uuid.UUID]auth.Publico
+		return z0, err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.Publicos(ctx, db)
+}
+
+func (fr *faultRepo) SetPublico(ctx context.Context, db database.DBTX, id uuid.UUID, p auth.Publico) error {
+	if err := fr.hook("SetPublico"); err != nil {
+		return err
+	}
+	defer fr.post(ctx, db)
+	return fr.inner.SetPublico(ctx, db, id, p)
 }
