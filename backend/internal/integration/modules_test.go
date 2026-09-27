@@ -82,6 +82,9 @@ type env struct {
 	depto    uuid.UUID
 }
 
+// gestaoGlobal: quem gerencia sem escopo (ADR 013) — nexus-admin.
+var gestaoGlobal = auth.Identity{Roles: []string{auth.RoleAdmin}}
+
 func setup(t *testing.T) *env {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -156,7 +159,10 @@ func setup(t *testing.T) *env {
 	if !tramiteDomain.InUnidade(identity, un.ID) || !tramiteDomain.InUnidade(identity, un2.ID) {
 		t.Fatalf("escopos deveriam cobrir as duas unidades (lotação + AD): %+v", identity.Scopes)
 	}
-	// Para os demais fluxos, o testador também é administrador.
+	// Para os demais fluxos, o testador também é administrador (papel
+	// nexus-admin = "*" global; "*" só na lista achatada não concede nada
+	// no modelo de concessões — ADR 013).
+	identity.Roles = append(identity.Roles, auth.RoleAdmin)
 	identity.Permissions = append(identity.Permissions, "*")
 	e.identity = identity
 	e.ctx = auth.WithIdentity(e.ctx, identity)
@@ -205,14 +211,14 @@ func TestPluginsEndToEnd(t *testing.T) {
 
 	t.Run("catalog", func(t *testing.T) {
 		svc := catApp.NewService(e.pool, catInfra.NewRepository(), e.ob)
-		s, err := svc.Save(ctx, uuid.Nil, catDomain.Service{Title: "Emissão de Certidão " + uuid.NewString()[:6], Category: "Documentos",
+		s, err := svc.Save(ctx, gestaoGlobal, uuid.Nil, catDomain.Service{Title: "Emissão de Certidão " + uuid.NewString()[:6], Category: "Documentos",
 			Summary: "Solicite certidões", Requirements: []string{"Documento de identidade"},
 			Channels: []catDomain.Channel{{Type: "online", Label: "Portal", Value: "https://portal.test"}}, ResponsibleUnidadeID: &e.unidade})
 		must(t, err)
 		if _, err := svc.GetPublic(ctx, s.Slug); err == nil {
 			t.Fatal("rascunho não é público")
 		}
-		_, err = svc.SetStatus(ctx, s.ID, "published")
+		_, err = svc.SetStatus(ctx, gestaoGlobal, s.ID, "published")
 		must(t, err)
 		got, err := svc.GetPublic(ctx, s.Slug)
 		must(t, err)

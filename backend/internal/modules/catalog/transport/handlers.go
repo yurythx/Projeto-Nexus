@@ -22,6 +22,12 @@ type Handlers struct {
 }
 
 // NewHandlers cria os handlers.
+// identity devolve o chamador autenticado (RequireAuth garante que existe).
+func identity(r *http.Request) auth.Identity {
+	id, _ := auth.IdentityFromContext(r.Context())
+	return id
+}
+
 func NewHandlers(svc *application.Service, logger *slog.Logger, maxPageSize int) *Handlers {
 	return &Handlers{svc: svc, logger: logger, maxPageSize: maxPageSize}
 }
@@ -84,7 +90,7 @@ func (h *Handlers) Categories(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) ListAll(w http.ResponseWriter, r *http.Request) {
 	p := httputil.Page(r, h.maxPageSize)
-	items, total, err := h.svc.ListAll(r.Context(), httputil.Query(r, "status", 20), httputil.Query(r, "category", 80), httputil.Query(r, "q", 200), p)
+	items, total, err := h.svc.ListAll(r.Context(), identity(r), httputil.Query(r, "status", 20), httputil.Query(r, "category", 80), httputil.Query(r, "q", 200), p)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -98,7 +104,7 @@ func (h *Handlers) Get(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	svc, err := h.svc.Get(r.Context(), id)
+	svc, err := h.svc.Get(r.Context(), identity(r), id)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -137,7 +143,7 @@ func (h *Handlers) Save(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	out, err := h.svc.Save(r.Context(), id, domain.Service{
+	out, err := h.svc.Save(r.Context(), identity(r), id, domain.Service{
 		Title: req.Title, Slug: req.Slug, Summary: req.Summary, Description: req.Description, Category: req.Category,
 		Audience: req.Audience, Requirements: req.Requirements, Steps: req.Steps, Channels: req.Channels, SLA: req.SLA,
 		Cost: req.Cost, Icon: req.Icon, ResponsibleUnidadeID: req.ResponsibleUnidadeID, Position: req.Position,
@@ -160,7 +166,7 @@ func (h *Handlers) status(to string) http.HandlerFunc {
 			h.fail(w, r, err)
 			return
 		}
-		out, err := h.svc.SetStatus(r.Context(), id, to)
+		out, err := h.svc.SetStatus(r.Context(), identity(r), id, to)
 		if err != nil {
 			h.fail(w, r, err)
 			return
@@ -172,7 +178,7 @@ func (h *Handlers) status(to string) http.HandlerFunc {
 func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := httputil.UUIDParam(r, "id")
 	if err == nil {
-		err = h.svc.Delete(r.Context(), id)
+		err = h.svc.Delete(r.Context(), identity(r), id)
 	}
 	if err != nil {
 		h.fail(w, r, err)

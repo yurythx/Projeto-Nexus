@@ -136,3 +136,40 @@ func TestIAMUnidadeMaeComSubunidadesNaoEExcluida(t *testing.T) {
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/iam/unidades/"+filha.ID, admin, "")
 	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/iam/unidades/"+mae.ID, admin, "")
 }
+
+// orgEscopo monta, para os testes de permissão com escopo (ADR 013), uma
+// entidade com as unidades A, B e uma subunidade de A.
+type orgEscopo struct{ ent, a, sub, b string }
+
+func (h *apiHarness) orgEscopo(t *testing.T) orgEscopo {
+	t.Helper()
+	admin := h.admin()
+	sfx := uuid.NewString()[:6]
+	var o orgEscopo
+	o.ent = data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", admin, `{"nome":"Órgão `+sfx+`"}`)).ID
+	unidade := func(nome, parent string) string {
+		body := `{"entidade_id":"` + o.ent + `","nome":"` + nome + ` ` + sfx + `"`
+		if parent != "" {
+			body += `,"parent_id":"` + parent + `"`
+		}
+		return data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin, body+`}`)).ID
+	}
+	o.a = unidade("Unidade A", "")
+	o.b = unidade("Unidade B", "")
+	o.sub = unidade("Subunidade de A", o.a)
+	return o
+}
+
+// gestorEm cria um usuário lotado, na unidade dada, com um perfil que tem
+// as permissões dadas; devolve o token.
+func (h *apiHarness) gestorEm(t *testing.T, unidade string, permissoes ...string) string {
+	t.Helper()
+	admin := h.admin()
+	perms, _ := json.Marshal(permissoes)
+	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
+		`{"nome":"Gestor `+uuid.NewString()[:8]+`","permissoes":`+string(perms)+`}`)).ID
+	id, tok := h.user("nexus-user")
+	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+id.String()+"/lotacoes", admin,
+		`{"perfil_id":"`+perfil+`","unidade_id":"`+unidade+`"}`)
+	return tok
+}

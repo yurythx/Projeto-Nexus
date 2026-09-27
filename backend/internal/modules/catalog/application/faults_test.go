@@ -27,6 +27,9 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
 
+// gestor: gestão global do catálogo (ADR 013 — concessão sem escopo).
+var gestor = auth.Identity{Permissions: []string{"*"}, Scopes: []auth.Scope{{Perfil: "administrador", Permissions: []string{"*"}}}}
+
 type env struct {
 	t    *testing.T
 	pool *pgxpool.Pool
@@ -40,13 +43,13 @@ func (e *env) real() *application.Service { return e.svc(infrastructure.NewRepos
 
 func (e *env) service(published bool) domain.Service {
 	e.t.Helper()
-	s, err := e.real().Save(context.Background(), uuid.Nil, domain.Service{Title: "Serviço " + uuid.NewString()[:8], Summary: "Resumo",
+	s, err := e.real().Save(context.Background(), gestor, uuid.Nil, domain.Service{Title: "Serviço " + uuid.NewString()[:8], Summary: "Resumo",
 		Channels: []domain.Channel{{Type: "online", Label: "Portal", Value: "https://x"}}})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	if published {
-		if s, err = e.real().SetStatus(context.Background(), s.ID, domain.StatusPublished); err != nil {
+		if s, err = e.real().SetStatus(context.Background(), gestor, s.ID, domain.StatusPublished); err != nil {
 			e.t.Fatal(err)
 		}
 	}
@@ -63,7 +66,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 			return func(s *application.Service) error { _, _, err := s.ListPublic(ctx, "", "", p); return err }
 		},
 		"ListAll": func() func(*application.Service) error {
-			return func(s *application.Service) error { _, _, err := s.ListAll(ctx, "", "", "", p); return err }
+			return func(s *application.Service) error { _, _, err := s.ListAll(ctx, gestor, "", "", "", p); return err }
 		},
 		"GetPublic": func() func(*application.Service) error {
 			svc := e.service(true)
@@ -71,25 +74,25 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"Get": func() func(*application.Service) error {
 			svc := e.service(false)
-			return func(s *application.Service) error { _, err := s.Get(ctx, svc.ID); return err }
+			return func(s *application.Service) error { _, err := s.Get(ctx, gestor, svc.ID); return err }
 		},
 		"Categories": func() func(*application.Service) error {
 			return func(s *application.Service) error { _, err := s.Categories(ctx); return err }
 		},
 		"Save": func() func(*application.Service) error {
 			svc := e.service(true)
-			return func(s *application.Service) error { _, err := s.Save(ctx, svc.ID, svc); return err }
+			return func(s *application.Service) error { _, err := s.Save(ctx, gestor, svc.ID, svc); return err }
 		},
 		"SetStatus": func() func(*application.Service) error {
 			svc := e.service(false)
 			return func(s *application.Service) error {
-				_, err := s.SetStatus(ctx, svc.ID, domain.StatusPublished)
+				_, err := s.SetStatus(ctx, gestor, svc.ID, domain.StatusPublished)
 				return err
 			}
 		},
 		"Delete": func() func(*application.Service) error {
 			svc := e.service(false)
-			return func(s *application.Service) error { return s.Delete(ctx, svc.ID) }
+			return func(s *application.Service) error { return s.Delete(ctx, gestor, svc.ID) }
 		},
 		"Search": func() func(*application.Service) error {
 			return func(s *application.Service) error { _, _, err := s.Search(ctx, "serviço", 5); return err }
@@ -153,7 +156,7 @@ func TestHandlersReportServiceFailures(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			next.ServeHTTP(w, req.WithContext(auth.WithIdentity(req.Context(), auth.Identity{Permissions: []string{"*"}})))
+			next.ServeHTTP(w, req.WithContext(auth.WithIdentity(req.Context(), gestor)))
 		})
 	})
 	h.RegisterPublicRoutes(r)

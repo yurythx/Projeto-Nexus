@@ -68,3 +68,45 @@ func TestCatalogPublicationRules(t *testing.T) {
 		h.expect(http.StatusNotFound, c.method, c.path, admin, c.body)
 	}
 }
+
+// catalog:manage com escopo (ADR 013): o gestor da unidade A gerencia os
+// serviços de A e das subunidades; não os de B nem os institucionais.
+func TestCatalogGestaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	gestorA := h.gestorEm(t, o.a, "catalog:manage")
+	svc := func(nome, unidade string) string {
+		body := `{"title":"` + nome + ` ` + uuid.NewString()[:6] + `"`
+		if unidade != "" {
+			body += `,"responsible_unidade_id":"` + unidade + `"`
+		}
+		return body + `}`
+	}
+	deA := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/catalog/admin/services", gestorA, svc("Serviço de A", o.a)))
+	deSub := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/catalog/admin/services", gestorA, svc("Serviço da subunidade", o.sub)))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/catalog/admin/services", gestorA, svc("Serviço de B", o.b))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/catalog/admin/services", gestorA, svc("Institucional", ""))
+
+	institucional := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/catalog/admin/services", admin, svc("Institucional", "")))
+	deB := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/catalog/admin/services", admin, svc("Serviço de B", o.b)))
+	for _, id := range []string{institucional.ID, deB.ID} {
+		h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/catalog/admin/services/"+id, gestorA, "")
+		h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/catalog/admin/services/"+id+"/archive", gestorA, "")
+		h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/catalog/admin/services/"+id, gestorA, "")
+		h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/catalog/admin/services/"+id, gestorA, svc("Tomado", o.a))
+	}
+	// Não "puxa" um serviço próprio para fora do escopo.
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/catalog/admin/services/"+deA.ID, gestorA, svc("Para B", o.b))
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/catalog/admin/services/"+deA.ID, gestorA, svc("Serviço de A editado", o.a))
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/catalog/admin/services/"+deSub.ID, gestorA, "")
+
+	lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/catalog/admin/services", gestorA, "").Body.String()
+	if !strings.Contains(lista, deA.ID) || strings.Contains(lista, deB.ID) || strings.Contains(lista, institucional.ID) {
+		t.Fatalf("lista de gestão do gestor de A: só o que ele gerencia: %s", lista)
+	}
+	// A gestão global alcança tudo (a lista é paginada: confere direto).
+	for _, id := range []string{deA.ID, deB.ID, institucional.ID} {
+		h.expect(http.StatusOK, http.MethodGet, "/api/v1/catalog/admin/services/"+id, admin, "")
+	}
+}

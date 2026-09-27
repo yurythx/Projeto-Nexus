@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { apiClient } from "@/lib/api/client";
 import { useApiPage, useApiQuery, withQuery } from "@/lib/api/swr";
 import { SERVICE_ICON_NAMES } from "@/lib/catalog/icons";
+import { useNexus } from "@/lib/nexus/NexusProvider";
+import { unidadesGeridas } from "@/lib/nexus/permissions";
 import type { CatalogService, OrgTree, ServiceChannel } from "@/lib/nexus/types";
 
 const STATUS: Record<CatalogService["status"], { label: string; tone: "neutral" | "success" | "warning" }> = {
@@ -33,7 +35,11 @@ function ServiceForm({ service, onDone }: { service?: CatalogService; onDone: ()
   const { run, pending } = useAction();
   const tree = useApiQuery<OrgTree[]>("v1/iam/org-tree");
   const [channels, setChannels] = useState<ServiceChannel[]>(service?.channels ?? []);
-  const unidades = (tree.data ?? []).flatMap((e) => e.unidades);
+  const { me } = useNexus();
+  // Só as unidades que a pessoa gerencia; sem unidade (institucional) só
+  // para a gestão global (ADR 013 — a API confere de novo).
+  const geridas = unidadesGeridas(me, tree.data, "catalog:manage");
+  const unidades = (tree.data ?? []).flatMap((e) => e.unidades).filter((u) => geridas.unidades.has(u.id));
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -81,7 +87,8 @@ function ServiceForm({ service, onDone }: { service?: CatalogService; onDone: ()
           id="svc-unidade"
           name="responsible_unidade_id"
           label="Unidade responsável"
-          placeholder="—"
+          placeholder={geridas.global ? "Institucional (sem unidade)" : "Selecione…"}
+          required={!geridas.global}
           defaultValue={service?.responsible_unidade_id ?? ""}
           options={unidades.map((u) => ({ value: u.id, label: u.nome }))}
         />

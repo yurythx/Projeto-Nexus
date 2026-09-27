@@ -24,6 +24,10 @@ var (
 	// ErrPublished: serviço publicado não é excluído — arquive antes (os
 	// links públicos deixam de funcionar de forma controlada).
 	ErrPublished = errors.New("catalog: serviço publicado não pode ser excluído; arquive-o antes")
+	// ErrOutOfScope: catalog:manage vale só nos serviços cuja unidade
+	// responsável a concessão cobre; sem unidade = institucional, só a
+	// gestão global (ADR 013).
+	ErrOutOfScope = errors.New("catalog: serviço fora do seu escopo de gestão")
 )
 
 // ReadyToPublish confere o conteúdo mínimo exigido para a publicação.
@@ -82,6 +86,10 @@ type Filter struct {
 	Status   string // "published" (público) ou "all" (gestão)
 	Category string
 	Query    string
+	// Restrito: só serviços cuja unidade responsável está em Unidades
+	// (gestão com escopo — ADR 013).
+	Restrito bool
+	Unidades []uuid.UUID
 }
 
 // Repository é a porta de persistência.

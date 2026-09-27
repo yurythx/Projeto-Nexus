@@ -15,6 +15,7 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
 	"github.com/yurythx/projeto-nexus/internal/modules/catalog/domain"
 	"github.com/yurythx/projeto-nexus/internal/platform/audit"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
@@ -46,6 +47,8 @@ func MapError(err error) error {
 		return apperrors.Validation(err.Error())
 	case errors.Is(err, domain.ErrPublished):
 		return apperrors.Conflict(err.Error())
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
@@ -55,12 +58,24 @@ func (s *Service) ListPublic(ctx context.Context, category, query string, p pagi
 	return s.repo.List(ctx, s.pool, domain.Filter{Status: domain.StatusPublished, Category: category, Query: query}, p)
 }
 
-// ListAll lista para gestão (qualquer estado).
-func (s *Service) ListAll(ctx context.Context, status, category, query string, p pagination.Params) ([]domain.Service, int64, error) {
+// gere reporta se identity tem catalog:manage sobre um serviço com essa
+// unidade responsável (nil = institucional: só a gestão global — ADR 013).
+func gere(identity auth.Identity, unidade *uuid.UUID) bool {
+	alvo := auth.Target{}
+	if unidade != nil {
+		alvo = auth.InUnidade(*unidade)
+	}
+	return auth.Can(identity, auth.PermCatalogManage, alvo)
+}
+
+// ListAll lista para gestão (qualquer estado) o que identity gerencia.
+func (s *Service) ListAll(ctx context.Context, identity auth.Identity, status, category, query string, p pagination.Params) ([]domain.Service, int64, error) {
 	if status == "" {
 		status = "all"
 	}
-	return s.repo.List(ctx, s.pool, domain.Filter{Status: status, Category: category, Query: query}, p)
+	gestao := auth.CoverageOf(identity, auth.PermCatalogManage)
+	return s.repo.List(ctx, s.pool, domain.Filter{Status: status, Category: category, Query: query,
+		Restrito: !gestao.All, Unidades: gestao.Unidades}, p)
 }
 
 // GetPublic devolve um serviço publicado pelo slug.
@@ -75,9 +90,12 @@ func (s *Service) GetPublic(ctx context.Context, slug string) (domain.Service, e
 	return svc, nil
 }
 
-// Get devolve qualquer serviço por id (gestão).
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (domain.Service, error) {
+// Get devolve um serviço por id para quem o gerencia.
+func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID) (domain.Service, error) {
 	svc, err := s.repo.Get(ctx, s.pool, id)
+	if err == nil && !gere(identity, svc.ResponsibleUnidadeID) {
+		err = domain.ErrOutOfScope
+	}
 	return svc, MapError(err)
 }
 
@@ -87,7 +105,11 @@ func (s *Service) Categories(ctx context.Context) ([]domain.Category, error) {
 }
 
 // Save cria (id nil) ou atualiza um serviço, preservando status/publicação.
-func (s *Service) Save(ctx context.Context, id uuid.UUID, in domain.Service) (domain.Service, error) {
+func (s *Service) Save(ctx context.Context, identity auth.Identity, id uuid.UUID, in domain.Service) (domain.Service, error) {
+	// A unidade responsável (nova) precisa estar no escopo de quem grava.
+	if !gere(identity, in.ResponsibleUnidadeID) {
+		return domain.Service{}, MapError(domain.ErrOutOfScope)
+	}
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Slug == "" {
 		in.Slug = modkit.Slugify(in.Title)
@@ -120,6 +142,9 @@ func (s *Service) Save(ctx context.Context, id uuid.UUID, in domain.Service) (do
 			if err != nil {
 				return err
 			}
+			if !gere(identity, prev.ResponsibleUnidadeID) {
+				return domain.ErrOutOfScope
+			}
 			in.ID, in.Status, in.PublishedAt = id, prev.Status, prev.PublishedAt
 			before = prev
 			// Publicado continua precisando do conteúdo mínimo.
@@ -139,12 +164,15 @@ func (s *Service) Save(ctx context.Context, id uuid.UUID, in domain.Service) (do
 }
 
 // SetStatus publica/arquiva/volta a rascunho; publicar emite o evento.
-func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, status string) (domain.Service, error) {
+func (s *Service) SetStatus(ctx context.Context, identity auth.Identity, id uuid.UUID, status string) (domain.Service, error) {
 	var out domain.Service
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !gere(identity, prev.ResponsibleUnidadeID) {
+			return domain.ErrOutOfScope
 		}
 		out = prev
 		if prev.Status == status {
@@ -178,11 +206,14 @@ func (s *Service) SetStatus(ctx context.Context, id uuid.UUID, status string) (d
 }
 
 // Delete remove um serviço que não esteja publicado.
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UUID) error {
 	return MapError(database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !gere(identity, prev.ResponsibleUnidadeID) {
+			return domain.ErrOutOfScope
 		}
 		if prev.Status == domain.StatusPublished {
 			return domain.ErrPublished

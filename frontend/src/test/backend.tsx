@@ -96,7 +96,8 @@ export const ME: Me = {
   roles: [],
   groups: [],
   permissions: ["*"],
-  scopes: [],
+  // Como a API entrega um administrador: concessão global com "*" (ADR 013).
+  scopes: [{ perfil: "administrador", origem: "manual", permissions: ["*"] }],
 };
 
 export function moduleStatus(key: string, extra: Partial<ModuleStatus> = {}): ModuleStatus {

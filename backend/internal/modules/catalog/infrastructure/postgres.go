@@ -57,13 +57,18 @@ func wrap(err error) error {
 
 func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter, p pagination.Params) ([]domain.Service, int64, error) {
 	const where = `WHERE ($1 = 'all' OR s.status = $1) AND ($2 = '' OR s.category = $2)
-		AND ($3 = '' OR s.search @@ nexus_search_tsquery('portuguese', $3))`
+		AND ($3 = '' OR s.search @@ nexus_search_tsquery('portuguese', $3))
+		AND (NOT $4 OR s.responsible_unidade_id = ANY($5::uuid[]))`
+	unidades := make([]string, 0, len(f.Unidades))
+	for _, u := range f.Unidades {
+		unidades = append(unidades, u.String())
+	}
 	var total int64
-	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, f.Status, f.Category, f.Query).Scan(&total); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, f.Status, f.Category, f.Query, f.Restrito, unidades).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
 	}
-	rows, err := db.Query(ctx, `SELECT `+cols+from+where+` ORDER BY s.category, s.position, s.title LIMIT $4 OFFSET $5`,
-		f.Status, f.Category, f.Query, p.Limit(), p.Offset())
+	rows, err := db.Query(ctx, `SELECT `+cols+from+where+` ORDER BY s.category, s.position, s.title LIMIT $6 OFFSET $7`,
+		f.Status, f.Category, f.Query, f.Restrito, unidades, p.Limit(), p.Offset())
 	if err != nil {
 		return nil, 0, wrap(err)
 	}
