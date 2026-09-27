@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -36,6 +37,20 @@ func (h *apiHarness) relogin(id uuid.UUID) string {
 // mudança é imediata (salvar a estrutura invalida o cache do IAM).
 func TestIAMEscopoDesativadoNaoConcede(t *testing.T) {
 	h := newHarness(t)
+	// blog:manage vale com escopo (ADR 013): aparece em /me enquanto o
+	// escopo da concessão estiver ativo.
+	quer := func(tok string, want bool) {
+		t.Helper()
+		var me struct {
+			Data struct {
+				Permissions []string `json:"permissions"`
+			} `json:"data"`
+		}
+		_ = json.Unmarshal(h.expect(http.StatusOK, http.MethodGet, "/api/v1/me", tok, "").Body.Bytes(), &me)
+		if got := slices.Contains(me.Data.Permissions, "blog:manage"); got != want {
+			t.Fatalf("blog:manage em /me = %v, esperado %v (%v)", got, want, me.Data.Permissions)
+		}
+	}
 	admin := h.admin()
 	sfx := uuid.NewString()[:6]
 	ent := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", admin, `{"nome":"Órgão `+sfx+`"}`))
@@ -44,7 +59,7 @@ func TestIAMEscopoDesativadoNaoConcede(t *testing.T) {
 	dep := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/departamentos", admin,
 		`{"unidade_id":"`+un.ID+`","nome":"Depto `+sfx+`"}`))
 	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
-		`{"nome":"Leitor de auditoria `+sfx+`","permissoes":["audit:read"]}`))
+		`{"nome":"Editor `+sfx+`","permissoes":["blog:manage"]}`))
 	setAtivo := func(kind, id, body string) {
 		t.Helper()
 		h.expect(http.StatusOK, http.MethodPut, "/api/v1/iam/"+kind+"/"+id, admin, body)
@@ -54,18 +69,18 @@ func TestIAMEscopoDesativadoNaoConcede(t *testing.T) {
 	userID, tok := h.user("nexus-user")
 	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+userID.String()+"/lotacoes", admin,
 		`{"perfil_id":"`+perfil.ID+`","departamento_id":"`+dep.ID+`"}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(tok, true)
 
 	setAtivo("departamentos", dep.ID, `{"unidade_id":"`+un.ID+`","nome":"Depto `+sfx+`","ativo":false}`)
-	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(tok, false)
 	setAtivo("departamentos", dep.ID, `{"unidade_id":"`+un.ID+`","nome":"Depto `+sfx+`","ativo":true}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(tok, true)
 
 	// Entidade desativada derruba tudo o que está abaixo dela.
 	setAtivo("entidades", ent.ID, `{"nome":"Órgão `+sfx+`","ativo":false}`)
-	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(tok, false)
 	setAtivo("entidades", ent.ID, `{"nome":"Órgão `+sfx+`","ativo":true}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(tok, true)
 
 	// Mapeamento de grupo com escopo na unidade: mesma regra.
 	grupo := "GRP_ESCOPO_" + sfx
@@ -76,12 +91,33 @@ func TestIAMEscopoDesativadoNaoConcede(t *testing.T) {
 		t.Fatal(err)
 	}
 	membro := h.relogin(membroID)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", membro, "")
+	quer(membro, true)
 	setAtivo("unidades", un.ID, `{"entidade_id":"`+ent.ID+`","nome":"Unidade `+sfx+`","ativo":false}`)
-	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", membro, "")
-	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	quer(membro, false)
+	quer(tok, false)
 	setAtivo("unidades", un.ID, `{"entidade_id":"`+ent.ID+`","nome":"Unidade `+sfx+`","ativo":true}`)
-	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", membro, "")
+	quer(membro, true)
+}
+
+// Permissão de plataforma só vale com concessão global (ADR 013): lotar
+// alguém como auditor NUMA unidade não abre a auditoria da plataforma.
+func TestIAMPermissaoDePlataformaSoGlobal(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	sfx := uuid.NewString()[:6]
+	ent := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/entidades", admin, `{"nome":"Órgão `+sfx+`"}`))
+	un := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/unidades", admin,
+		`{"entidade_id":"`+ent.ID+`","nome":"Unidade `+sfx+`"}`))
+	perfil := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/iam/perfis", admin,
+		`{"nome":"Auditor `+sfx+`","permissoes":["audit:read"]}`))
+
+	userID, tok := h.user("nexus-user")
+	lot := data[idResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+userID.String()+"/lotacoes", admin,
+		`{"perfil_id":"`+perfil.ID+`","unidade_id":"`+un.ID+`"}`))
+	h.expect(http.StatusForbidden, http.MethodGet, "/api/v1/audit/logs", tok, "")
+	h.expect(http.StatusNoContent, http.MethodDelete, "/api/v1/users/"+userID.String()+"/lotacoes/"+lot.ID, admin, "")
+	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/users/"+userID.String()+"/lotacoes", admin, `{"perfil_id":"`+perfil.ID+`"}`)
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/audit/logs", tok, "")
 }
 
 // Excluir a unidade-mãe com subunidades é recusado (antes as subunidades

@@ -211,12 +211,17 @@ components:
                     type: string
                 perfil:
                     type: string
+                permissions:
+                    items:
+                        type: string
+                    type: array
                 unidade_id:
                     format: uuid
                     type: string
             required:
                 - origem
                 - perfil
+                - permissions
             type: object
             x-nexus-generated: true
         BlogPost:

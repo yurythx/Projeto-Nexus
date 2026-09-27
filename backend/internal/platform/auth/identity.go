@@ -33,6 +33,12 @@ type Scope struct {
 	DepartamentoID *uuid.UUID `json:"departamento_id,omitempty"`
 	// Origem: "manual" (lotação cadastrada) ou "ad" (mapeamento de grupo).
 	Origem string `json:"origem"`
+	// Permissions são as permissões do perfil desta concessão (ADR 013:
+	// valem no escopo dela — ver Can).
+	Permissions []string `json:"permissions"`
+	// Unidades é a árvore coberta, expandida pelo resolvedor: a unidade e as
+	// subunidades dela ou, na entidade, todas as unidades da entidade.
+	Unidades []uuid.UUID `json:"-"`
 }
 
 // Identity é o chamador autenticado. Nunca carrega o token bruto — só o

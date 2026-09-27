@@ -2546,6 +2546,7 @@ export interface components {
             entidade_id?: string;
             origem: string;
             perfil: string;
+            permissions: string[];
             /** Format: uuid */
             unidade_id?: string;
         };

@@ -210,12 +210,14 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 		groups = append(groups, strings.ToLower(strings.TrimSpace(g)), auth.NormalizeGroup(g))
 	}
 	const q = `
-		SELECT p.slug, p.permissoes, s.entidade_id, s.unidade_id, s.departamento_id, 'manual'
+		SELECT p.slug, p.permissoes, s.entidade_id, s.unidade_id, s.departamento_id, 'manual',
+		       nexus_unidades_cobertas(s.entidade_id, s.unidade_id, s.departamento_id)
 		  FROM user_scopes s JOIN perfis p ON p.id = s.perfil_id AND p.ativo
 		 WHERE s.user_id = $1
 		   AND nexus_scope_active(s.entidade_id, s.unidade_id, s.departamento_id)
 		UNION ALL
-		SELECT p.slug, p.permissoes, m.entidade_id, m.unidade_id, m.departamento_id, 'ad'
+		SELECT p.slug, p.permissoes, m.entidade_id, m.unidade_id, m.departamento_id, 'ad',
+		       nexus_unidades_cobertas(m.entidade_id, m.unidade_id, m.departamento_id)
 		  FROM ad_group_mappings m JOIN perfis p ON p.id = m.perfil_id AND p.ativo
 		 WHERE lower(m.ad_group) = ANY($2)
 		   AND nexus_scope_active(m.entidade_id, m.unidade_id, m.departamento_id)`
@@ -225,32 +227,27 @@ func (r *Resolver) loadGrants(ctx context.Context, userID uuid.UUID, identity au
 	}
 	defer rows.Close()
 
-	permSet := map[string]struct{}{}
+	// Cada concessão guarda as permissões do perfil e a árvore de unidades
+	// que cobre (ADR 013). A lista achatada é o que a pessoa pode fazer em
+	// ALGUM lugar: concessão com escopo só conta nas permissões que valem
+	// com escopo (auth.EffectivePermissions).
 	scopes := []auth.Scope{}
 	for rows.Next() {
 		var s auth.Scope
-		var perms []string
-		if err := rows.Scan(&s.Perfil, &perms, &s.EntidadeID, &s.UnidadeID, &s.DepartamentoID, &s.Origem); err != nil {
+		if err := rows.Scan(&s.Perfil, &s.Permissions, &s.EntidadeID, &s.UnidadeID, &s.DepartamentoID, &s.Origem, &s.Unidades); err != nil {
 			return nil, nil, fmt.Errorf("iam: scan grant: %w", err)
-		}
-		for _, p := range perms {
-			permSet[p] = struct{}{}
 		}
 		scopes = append(scopes, s)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
+	perms := auth.EffectivePermissions(scopes)
 	// Role de realm nexus-admin equivale a "*" (evita trancar o
 	// administrador fora por um mapeamento mal configurado).
-	if identity.HasRole(auth.RoleAdmin) {
-		permSet["*"] = struct{}{}
+	if identity.HasRole(auth.RoleAdmin) && !slices.Contains(perms, "*") {
+		perms = append([]string{"*"}, perms...)
 	}
-	perms := make([]string, 0, len(permSet))
-	for p := range permSet {
-		perms = append(perms, p)
-	}
-	sort.Strings(perms)
 	return perms, scopes, nil
 }
 

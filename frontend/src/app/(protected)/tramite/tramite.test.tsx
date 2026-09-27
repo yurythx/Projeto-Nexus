@@ -61,7 +61,7 @@ describe("Trâmite — processos", () => {
 
   it("abre processo já na unidade do usuário e vai para ele", async () => {
     const api = mockBackend({
-      ...identityRoutes({ scopes: [{ perfil: "servidor", unidade_id: "u2", origem: "manual" }] }),
+      ...identityRoutes({ scopes: [{ perfil: "servidor", unidade_id: "u2", origem: "manual", permissions: [] }] }),
       "GET v1/tramite/processos": page([]),
       "GET v1/tramite/tipos": { data: [{ id: "t1", slug: "req", nome: "Requerimento", descricao: "" }] },
       "GET v1/iam/org-tree": { data: ORG },

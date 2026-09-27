@@ -78,7 +78,7 @@ describe("Perfil", () => {
     let requests: unknown[] = [];
     const api = mockBackend({
       ...identityRoutes(
-        { name: "", username: "maria", source: "keycloak", permissions: ["a:b", "c:d"], scopes: [{ perfil: "gestor", origem: "ad" }, { perfil: "servidor", origem: "manual" }] },
+        { name: "", username: "maria", source: "keycloak", permissions: ["a:b", "c:d"], scopes: [{ perfil: "gestor", origem: "ad", permissions: ["a:b"] }, { perfil: "servidor", origem: "manual", permissions: [] }] },
         [moduleStatus("directory")],
       ),
       "GET v1/lgpd/minhas-solicitacoes": () => ({ data: requests }),

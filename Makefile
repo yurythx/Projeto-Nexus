@@ -1,5 +1,5 @@
 .PHONY: dev up down logs build test lint format \
-	deploy prod-seed-admin prod-ps prod-logs prod-down \
+	deploy prod-seed-admin prod-ps prod-logs prod-down iam-scope-report \
 	demo-keycloak demo-generate demo-seed demo-test demo-popular \
 	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
@@ -45,6 +45,9 @@ prod-logs: ## Logs dos serviços de produção
 
 prod-down: ## Para os serviços de produção (mantém os volumes)
 	$(COMPOSE_PROD) down
+
+iam-scope-report: ## Impacto da permissão com escopo (ADR 013) nas lotações e grupos atuais
+	$(COMPOSE_PROD) exec -T postgres psql -U $(DB_USER) -d $(DB_NAME) < scripts/iam-scope-report.sql
 
 ## --- Ambiente de teste: Keycloak + dados fictícios (ver docs/DEPLOY.md) ---
 

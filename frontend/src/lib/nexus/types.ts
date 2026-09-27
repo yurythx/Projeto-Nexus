@@ -17,6 +17,8 @@ export interface Scope {
   unidade_id?: UUID;
   departamento_id?: UUID;
   origem: "manual" | "ad";
+  /** Permissões do perfil desta concessão — valem no escopo dela (ADR 013). */
+  permissions: string[];
 }
 
 export interface Me {
