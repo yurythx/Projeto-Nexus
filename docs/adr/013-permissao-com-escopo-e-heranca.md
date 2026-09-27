@@ -1,6 +1,6 @@
 # 013 — Permissão com escopo e herança
 
-- **Status:** Aceito (fases 1 e 2 em implementação; fase 3 depois)
+- **Status:** Aceito (fases 1 e 2 implementadas; fase 3 depois)
 - **Data:** 2026-09-27
 - **Escopo:** `internal/platform/auth`, `internal/platform/iam`, os módulos
   com permissões de gestão, o frontend (hooks de permissão e formulários de
@@ -109,6 +109,25 @@ como hoje. Segmentar a leitura por público-alvo é outra funcionalidade.
    - auditoria filtrada por escopo;
    - contato encaminhado por setor;
    - Arquivos com dono organizacional.
+
+## Como ficou na implementação (fase 2)
+
+- **Wiki:** criar e editar continuam abertos a qualquer autenticado. Marca
+  uma unidade como dona quem está **lotado** nela (`auth.LotadoEm`:
+  concessão de qualquer perfil na unidade, num departamento dela ou numa
+  unidade acima) ou tem `wiki:manage` cobrindo-a. Vazio na criação herda
+  a dona da página-mãe. Trocar a dona exige poder marcar a antiga e a nova.
+- **Agenda:** a dona é da **sala**; o evento é moderado pela gestão da sala
+  reservada. Evento sem sala é institucional; o organizador continua
+  gerindo os próprios. Salas inativas aparecem só para a gestão que as
+  cobre.
+- **Blog:** o post exige dona para quem tem só escopo; a gestão global pode
+  deixá-lo institucional. Rascunhos e arquivados aparecem só para a gestão
+  que cobre a dona.
+- **Mercúrio e Diretório:** sem coluna nova — valem o departamento da sala
+  e a lotação exibida da pessoa (a atual e a nova, ao editar).
+- Fora do escopo, a API responde **403**; na leitura de algo que a pessoa
+  não deve ver, **404**, como antes.
 
 ## Decisões tomadas (2026-09-27)
 

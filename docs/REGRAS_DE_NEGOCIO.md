@@ -223,29 +223,54 @@ Há dois jeitos de alguém receber um perfil. Os dois resultam na mesma coisa:
   unidades.
 - O grupo é comparado sem diferenciar maiúsculas e aceita o caminho do
   Keycloak (`/SEMSA/SEMSA-UPA/SEMSA-UPA-ADM` ou `SEMSA-UPA-ADM`).
-- As permissões efetivas são a **soma** de todos os perfis de todas as
-  lotações e mapeamentos.
+- Cada lotação é uma **concessão** separada: as permissões do perfil
+  valem no escopo daquela lotação, não somadas para a plataforma toda
+  (seção 5). O menu mostra o que a pessoa pode fazer em **algum** lugar.
 - Mudanças valem na próxima requisição da pessoa, sem novo login.
 
 ---
 
 ## 5. Onde o escopo vale (e onde não vale)
 
-> **Regra central:** a **permissão** diz **o que** a pessoa pode fazer, e
-> vale para a plataforma inteira. O **escopo** diz **onde** ela está
-> lotada, e só restringe nos módulos que o consultam.
+> **Regra central (ADR 013):** cada lotação é uma **concessão**: um perfil
+> num lugar. As permissões do perfil valem **só onde a concessão foi dada**
+> e **para baixo** — a unidade cobre as subunidades e os departamentos
+> dela; a entidade cobre todas as unidades. Concessão sem escopo é
+> **global**.
 
-| Módulo | O escopo restringe? | Como |
-|---|---|---|
-| **Trâmite** | Sim | Abrir processo só em unidade onde está lotado; tramitar, juntar documento e concluir só com o processo **na sua unidade**; ver processo restrito só se a sua unidade for a de origem ou a atual |
-| **Arquivos** | Sim, por ACL | Pastas compartilhadas com `unidade`, `departamento` ou `perfil` usam as lotações da pessoa |
-| **Mercúrio** | Sim | Salas de departamento: quem está no grupo ou lotado no departamento |
-| **Diretório** | Só exibição | Mostra a lotação da pessoa, sem restringir acesso |
-| Blog, Catálogo, Wiki, Agenda, Contato, Signum, Egress, IAM, Auditoria, Módulos, Branding | **Não** | Quem tem a permissão pode usá-la em **tudo**, qualquer que seja o escopo da lotação |
+**Permissões com escopo** (valem onde foram concedidas):
+
+| Permissão | Onde o recurso "está" |
+|---|---|
+| `tramite:create`, `tramite:route`, `tramite:manage` | unidade de origem ou atual do processo |
+| `catalog:manage` | unidade responsável do serviço |
+| `blog:manage` | unidade dona do post |
+| `wiki:manage` | unidade dona da página (herdada da página-mãe) |
+| `calendar:manage` | unidade dona da sala (e dos eventos reservados nela) |
+| `mercurio:manage` | departamento da sala |
+| `directory:manage` | lotação exibida da pessoa |
+
+**Permissões de plataforma** (`iam:manage`, `users:*`, `modules:manage`,
+`keycloak:manage`, `branding:manage`, `monitoring:*`, `egress:manage`,
+`audit:*`, `signum:manage`, `files:manage`, `contact:*`): **só valem com
+concessão global**. Dadas com escopo, não valem em lugar nenhum.
+
+**Institucional:** recurso sem unidade dona (tudo o que existia antes do
+ADR 013, e o que a gestão global criar sem dona). Só a gestão global o
+gerencia.
+
+**A leitura não muda:** Blog publicado, Wiki, Catálogo publicado e Agenda
+continuam visíveis a todos como antes. O escopo restringe a **gestão**.
+
+Além disso, **Arquivos** usa as lotações nas ACLs das pastas (`unidade`,
+`departamento`, `perfil`) e o **Trâmite** usa a lotação para abrir e
+tramitar.
 
 Consequência prática: lotar alguém como `gestor-conteudo` **na UPA** dá
-`blog:manage` e `catalog:manage` **para a plataforma inteira**, não só para
-a UPA. O escopo só faz diferença para Trâmite, Arquivos e Mercúrio.
+`blog:manage` e `catalog:manage` **só na UPA** (e nas subunidades dela).
+Para gerir a plataforma inteira, a concessão precisa ser global. O
+relatório `make iam-scope-report` mostra, por lotação, o que vale e o que
+não vale.
 
 ---
 
@@ -285,7 +310,7 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   desativado não abre processo novo.
 - **Numeração:** `NNNNNN/AAAA`, sequencial por ano.
 - **Estados:** `aberto` → `em_tramitacao` → `concluido` → `arquivado`.
-  Reabrir (`tramite:manage`) volta para `em_tramitacao`. Só se arquiva o
+  Reabrir (`tramite:manage` na unidade atual) volta para `em_tramitacao`. Só se arquiva o
   que está **concluído**.
 - **Abrir:** exige `tramite:create` e lotação na unidade de origem, que
   precisa estar ativa (e a entidade dela também).
@@ -296,7 +321,7 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   | Sigilo | Quem vê |
   |---|---|
   | público | qualquer autenticado |
-  | restrito | autor, credenciados, lotados na unidade de origem ou na atual, e `tramite:manage` |
+  | restrito | autor, credenciados, lotados na unidade de origem ou na atual, e `tramite:manage` que cubra uma delas |
   | sigiloso | **somente** o autor e os credenciados nominalmente (nem a unidade nem o gestor) |
 
   Credenciar ou revogar acesso nominal só existe para processo não público
@@ -351,7 +376,8 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   - **de departamento**: acesso por grupo do AD ou lotação no
     departamento, e `mercurio:manage`;
   - **direta** (duas pessoas; não se abre conversa consigo mesmo).
-- Criar ou arquivar sala e moderar mensagens: `mercurio:manage`. Sala
+- Criar ou arquivar sala e moderar mensagens: `mercurio:manage` cobrindo
+  o departamento da sala (sala global e direta: só a gestão global). Sala
   arquivada é só leitura.
 - Mensagens de 1 a 4.000 caracteres. O autor **edita nos primeiros 15
   minutos** e pode excluir. Tudo chega em **tempo real**.
@@ -363,28 +389,39 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   - **interno:** todos os autenticados;
   - **privado:** só o organizador.
 - Duração de até 31 dias.
-- Salas (`calendar:manage`) com capacidade e recursos. **Sem conflito:**
+- Salas com capacidade, recursos e **unidade dona**: criar, editar e
+  excluir exigem `calendar:manage` cobrindo a dona (sala sem dona é
+  institucional). Salas inativas aparecem só para a gestão que as cobre. **Sem conflito:**
   uma sala não aceita duas reservas no mesmo horário. Sala inativa não
   aceita reservas, e sala com reservas futuras não é excluída (desative).
-- Só o organizador ou `calendar:manage` altera. Evento cancelado não se
+- Só o organizador ou `calendar:manage` na unidade dona da **sala
+  reservada** altera, cancela ou vê um evento privado de terceiros. Evento
+  sem sala é institucional. Evento cancelado não se
   altera, cria-se outro. Cancelar libera a sala.
 
 ### Blog
-- `blog:manage` cria, edita, publica, arquiva e exclui.
+- `blog:manage` cria, edita, publica, arquiva e exclui os posts da
+  unidade dona que ele cobre. Quem tem só escopo escolhe a dona entre as
+  suas unidades; post institucional (sem dona) é da gestão global.
 - **Estados:** `draft` → `published` → `archived`, com volta a rascunho.
   Não se publica sem texto.
 - Leitores veem só o publicado. Rascunho e arquivado ficam só para
-  gestores. Slug único. Tipos: notícia ou comunicado.
+  a gestão que cobre a dona. Slug único. Tipos: notícia ou comunicado.
 
 ### Wiki
-- Qualquer autenticado cria e edita. Excluir exige `wiki:manage`.
+- Qualquer autenticado cria e edita. Excluir exige `wiki:manage` cobrindo a
+  **unidade dona** da página (sem dona: só a gestão global).
+- **Unidade dona:** vazia na criação, herda a da página-mãe. Marca uma
+  unidade como dona quem está lotado nela ou tem `wiki:manage` cobrindo-a;
+  trocar a dona exige poder marcar a antiga e a nova.
 - **Controle de concorrência:** a edição informa a versão aberta. Se outra
   pessoa salvou antes, a edição é recusada (`409`) em vez de sobrescrever.
 - Histórico de revisões com restauração. Árvore de páginas: não se exclui
   página com subpáginas, e uma página não fica dentro de si mesma.
 
 ### Catálogo de Serviços (Carta de Serviços)
-- `catalog:manage` cria e publica.
+- `catalog:manage` cria, publica e arquiva os serviços da unidade
+  responsável que ele cobre (sem unidade: gestão global).
 - **Publicar exige** resumo e ao menos um **canal de atendimento** (Lei
   13.460/2017).
 - Publicado aparece no site sem login. Publicado **não é excluído**
@@ -402,7 +439,9 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 - Pessoas e setores. Os dados de identidade (nome, e-mail, grupos) vêm do
   Keycloak/AD.
 - Cada pessoa edita o próprio cargo, telefone, ramal e bio. A **lotação
-  exibida** e o perfil de terceiros exigem `directory:manage`.
+  exibida** e o perfil de terceiros exigem `directory:manage` cobrindo a
+  lotação exibida atual e a nova. Perfis ocultos aparecem só para essa
+  gestão.
 - **Setores públicos** no site listam só entidades, unidades e
   departamentos **ativos**.
 
@@ -445,19 +484,21 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 
 Comportamentos do código hoje que merecem decisão de quem administra:
 
-1. **O escopo não limita permissões fora de Trâmite, Arquivos e
-   Mercúrio** (seção 5). Perfis de gestão com escopo valem para a
-   plataforma toda.
+1. **Permissões de plataforma exigem concessão global** (seção 5): um
+   `audit:read` ou `contact:read` dado numa unidade não vale. A
+   administração delegada (IAM, auditoria e contato por setor) é a fase 3
+   do ADR 013.
 2. **Processo sigiloso não é visto nem por `tramite:manage`.** É
    intencional (só autor e credenciados), mas quem administra precisa
    saber.
-3. **Reabrir processo exige `tramite:manage`,** que nenhum perfil de
-   sistema tem além do administrador. O Protocolo conclui e arquiva, mas
+3. **Reabrir processo exige `tramite:manage`** (na unidade atual),
+   que nenhum perfil de sistema tem além do administrador. O Protocolo conclui e arquiva, mas
    não reabre.
 4. **Sem isolamento entre entidades** (seção 6): uma implantação serve a
    uma organização (que pode ter várias entidades), não a várias
    organizações independentes.
 
-Corrigidos (antes eram pontos de atenção): estrutura desativada seguia
+Corrigidos (antes eram pontos de atenção): perfis de gestão com escopo
+valiam para a plataforma toda (ADR 013); estrutura desativada seguia
 dando acesso e recebendo processos, e excluir uma unidade-mãe deixava as
 subunidades sem mãe em silêncio — ver a seção 2.4.
