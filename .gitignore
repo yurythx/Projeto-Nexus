@@ -49,3 +49,6 @@ secrets/ca/
 
 # Python (cenários de teste)
 __pycache__/
+
+# Marca do povoamento de teste (scripts/demo-data/cenarios/popular.py)
+.demo-popular

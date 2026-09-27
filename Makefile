@@ -1,6 +1,6 @@
 .PHONY: dev up down logs build test lint format \
 	deploy prod-seed-admin prod-ps prod-logs prod-down \
-	demo-keycloak demo-generate demo-seed demo-test \
+	demo-keycloak demo-generate demo-seed demo-test demo-popular \
 	migrate-up migrate-down migrate-status migrate-redo seed-admin \
 	backend-shell frontend-shell rabbitmq-status clean \
 	backend-build backend-test backend-lint backend-sec backend-format \
@@ -61,6 +61,13 @@ demo-test: ## Cenários ponta a ponta com os usuários fictícios (login real pe
 	python3 scripts/demo-data/cenarios/tramite.py
 	python3 scripts/demo-data/cenarios/modulos.py
 	python3 scripts/demo-data/cenarios/conteudo.py
+	python3 scripts/demo-data/cenarios/colaboracao.py
+	python3 scripts/demo-data/cenarios/tramite_documentos.py
+	python3 scripts/demo-data/cenarios/integracoes.py
+	python3 scripts/demo-data/cenarios/plataforma.py
+
+demo-popular: ## Povoa todos os apps com dados fictícios realistas (uma vez)
+	cd scripts/demo-data/cenarios && python3 popular.py
 
 down: ## Para e remove todos os serviços
 	$(COMPOSE) down
