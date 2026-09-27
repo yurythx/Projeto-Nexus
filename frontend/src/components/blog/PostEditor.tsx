@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
+import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
 import { Markdown } from "@/components/nexus/Markdown";
 import { useAction } from "@/components/nexus/useAction";
 import { Button } from "@/components/ui/Button";
@@ -41,6 +42,7 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
       kind: String(fd.get("kind") ?? "noticia"),
       pinned: fd.get("pinned") === "on",
       cover_object_key: coverKey,
+      unidade_id: String(fd.get("unidade_id") ?? "") || null,
       body,
     };
     const res = await run(
@@ -69,6 +71,7 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
           <input type="checkbox" name="pinned" defaultChecked={post?.pinned} className="h-4 w-4 accent-primary" /> Fixar no topo
         </label>
       </div>
+      <UnidadeDonaSelect id="post-unidade" permission="blog:manage" defaultValue={post?.unidade_id} />
       <Textarea id="post-summary" name="summary" label="Resumo" rows={2} maxLength={500} defaultValue={post?.summary} />
       <div className="flex flex-col gap-1">
         <label htmlFor="post-cover" className="text-sm font-medium">

@@ -62,3 +62,35 @@ func TestBlogCoverAndPublicationRules(t *testing.T) {
 	h.expect(http.StatusUnprocessableEntity, http.MethodPost, "/api/v1/blog/posts", admin, `{"title":"???"}`)
 	h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts?status=archived", admin, "")
 }
+
+// blog:manage com escopo (ADR 013): a gestão de A publica pela unidade A e
+// subunidades; não por B nem institucional; rascunhos só no escopo.
+func TestBlogGestaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	gestorA := h.gestorEm(t, o.a, "blog:manage")
+	post := func(unidade string) string {
+		body := `{"title":"Post ` + uuid.NewString()[:8] + `","summary":"s","body":"texto"`
+		if unidade != "" {
+			body += `,"unidade_id":"` + unidade + `"`
+		}
+		return body + `}`
+	}
+	deA := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", gestorA, post(o.a)))
+	h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", gestorA, post(o.sub)) // herança
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/blog/posts", gestorA, post(o.b))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/blog/posts", gestorA, post(""))
+	h.expect(http.StatusOK, http.MethodPost, "/api/v1/blog/posts/"+deA.ID+"/publish", gestorA, "")
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/blog/posts/"+deA.ID, gestorA, post(o.b)) // não move para B
+
+	institucional := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, post("")))
+	rascunhoB := data[postResp](t, h.expect(http.StatusCreated, http.MethodPost, "/api/v1/blog/posts", admin, post(o.b)))
+	h.expect(http.StatusForbidden, http.MethodPost, "/api/v1/blog/posts/"+institucional.ID+"/publish", gestorA, "")
+	h.expect(http.StatusForbidden, http.MethodDelete, "/api/v1/blog/posts/"+rascunhoB.ID, gestorA, "")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/blog/posts/"+rascunhoB.ID, gestorA, "")
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts/"+rascunhoB.ID, admin, "")
+	if lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/blog/posts?status=draft&page_size=100", gestorA, "").Body.String(); strings.Contains(lista, rascunhoB.ID) || strings.Contains(lista, institucional.ID) {
+		t.Fatalf("rascunhos fora do escopo não aparecem para a gestão de A: %s", lista)
+	}
+}

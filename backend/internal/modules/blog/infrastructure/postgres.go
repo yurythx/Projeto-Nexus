@@ -21,14 +21,16 @@ func NewRepository() *Repository { return &Repository{} }
 var _ domain.Repository = (*Repository)(nil)
 
 const cols = `p.id, p.slug, p.title, p.summary, p.body, p.cover_object_key, p.kind, p.status, p.pinned,
-	p.author_id, COALESCE(NULLIF(u.display_name,''), u.username, ''), p.published_at, p.created_at, p.updated_at`
+	p.author_id, COALESCE(NULLIF(u.display_name,''), u.username, ''), p.published_at, p.created_at, p.updated_at, p.unidade_id`
 
 const from = ` FROM blog_posts p LEFT JOIN users u ON u.id = p.author_id `
 
-func scan(row interface{ Scan(...any) error }) (domain.Post, error) {
+// scan lê as colunas de cols (na mesma ordem) e, depois delas, extra —
+// fonte única da ordem das colunas (a busca lê o rank como extra).
+func scan(row interface{ Scan(...any) error }, extra ...any) (domain.Post, error) {
 	var p domain.Post
-	err := row.Scan(&p.ID, &p.Slug, &p.Title, &p.Summary, &p.Body, &p.CoverObjectKey, &p.Kind, &p.Status, &p.Pinned,
-		&p.AuthorID, &p.AuthorName, &p.PublishedAt, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(append([]any{&p.ID, &p.Slug, &p.Title, &p.Summary, &p.Body, &p.CoverObjectKey, &p.Kind, &p.Status, &p.Pinned,
+		&p.AuthorID, &p.AuthorName, &p.PublishedAt, &p.CreatedAt, &p.UpdatedAt, &p.UnidadeID}, extra...)...)
 	return p, err
 }
 
@@ -50,14 +52,19 @@ func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter
 		status = domain.StatusPublished
 	}
 	const where = `WHERE ($1 = 'all' OR p.status = $1) AND ($2 = '' OR p.kind = $2)
-		AND ($3 = '' OR p.search @@ nexus_search_tsquery('portuguese', $3))`
+		AND ($3 = '' OR p.search @@ nexus_search_tsquery('portuguese', $3))
+		AND (p.status = 'published' OR NOT $4 OR p.unidade_id = ANY($5::uuid[]))`
+	unidades := make([]string, 0, len(f.Unidades))
+	for _, u := range f.Unidades {
+		unidades = append(unidades, u.String())
+	}
 	var total int64
-	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, status, f.Kind, f.Query).Scan(&total); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*)`+from+where, status, f.Kind, f.Query, f.Restrito, unidades).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
 	}
 	rows, err := db.Query(ctx, `SELECT `+cols+from+where+`
-		ORDER BY p.pinned DESC, COALESCE(p.published_at, p.updated_at) DESC LIMIT $4 OFFSET $5`,
-		status, f.Kind, f.Query, p.Limit(), p.Offset())
+		ORDER BY p.pinned DESC, COALESCE(p.published_at, p.updated_at) DESC LIMIT $6 OFFSET $7`,
+		status, f.Kind, f.Query, f.Restrito, unidades, p.Limit(), p.Offset())
 	if err != nil {
 		return nil, 0, wrap(err)
 	}
@@ -86,9 +93,9 @@ func (r *Repository) GetBySlug(ctx context.Context, db database.DBTX, slug strin
 
 func (r *Repository) Insert(ctx context.Context, db database.DBTX, p domain.Post) (domain.Post, error) {
 	_, err := db.Exec(ctx, `
-		INSERT INTO blog_posts (id, slug, title, summary, body, cover_object_key, kind, status, pinned, author_id, published_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		p.ID, p.Slug, p.Title, p.Summary, p.Body, p.CoverObjectKey, p.Kind, p.Status, p.Pinned, p.AuthorID, p.PublishedAt)
+		INSERT INTO blog_posts (id, slug, title, summary, body, cover_object_key, kind, status, pinned, author_id, published_at, unidade_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		p.ID, p.Slug, p.Title, p.Summary, p.Body, p.CoverObjectKey, p.Kind, p.Status, p.Pinned, p.AuthorID, p.PublishedAt, p.UnidadeID)
 	if err != nil {
 		return domain.Post{}, wrap(err)
 	}
@@ -98,9 +105,9 @@ func (r *Repository) Insert(ctx context.Context, db database.DBTX, p domain.Post
 func (r *Repository) Update(ctx context.Context, db database.DBTX, p domain.Post) (domain.Post, error) {
 	tag, err := db.Exec(ctx, `
 		UPDATE blog_posts SET slug=$2, title=$3, summary=$4, body=$5, cover_object_key=$6, kind=$7,
-		       status=$8, pinned=$9, published_at=$10
+		       status=$8, pinned=$9, published_at=$10, unidade_id=$11
 		WHERE id = $1`,
-		p.ID, p.Slug, p.Title, p.Summary, p.Body, p.CoverObjectKey, p.Kind, p.Status, p.Pinned, p.PublishedAt)
+		p.ID, p.Slug, p.Title, p.Summary, p.Body, p.CoverObjectKey, p.Kind, p.Status, p.Pinned, p.PublishedAt, p.UnidadeID)
 	if err != nil {
 		return domain.Post{}, wrap(err)
 	}
@@ -131,10 +138,9 @@ func (r *Repository) Search(ctx context.Context, db database.DBTX, query string,
 	var posts []domain.Post
 	var ranks []float64
 	for rows.Next() {
-		var p domain.Post
 		var rank float32
-		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Summary, &p.Body, &p.CoverObjectKey, &p.Kind, &p.Status, &p.Pinned,
-			&p.AuthorID, &p.AuthorName, &p.PublishedAt, &p.CreatedAt, &p.UpdatedAt, &rank); err != nil {
+		p, err := scan(rows, &rank)
+		if err != nil {
 			return nil, nil, wrap(err)
 		}
 		posts = append(posts, p)

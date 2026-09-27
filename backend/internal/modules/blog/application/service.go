@@ -60,6 +60,8 @@ func MapError(err error) error {
 		return apperrors.Conflict("transição de estado não permitida")
 	case errors.Is(err, domain.ErrEmptyBody):
 		return apperrors.Validation("escreva o texto antes de publicar")
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
@@ -73,10 +75,25 @@ func (s *Service) withCover(ctx context.Context, p domain.Post) domain.Post {
 	return p
 }
 
-// List lista publicações. Rascunhos/arquivados só para quem tem blog:manage.
+// gere reporta se identity tem blog:manage sobre uma publicação dessa
+// unidade dona (nil = institucional: só a gestão global — ADR 013).
+func gere(identity auth.Identity, unidade *uuid.UUID) bool {
+	alvo := auth.Target{}
+	if unidade != nil {
+		alvo = auth.InUnidade(*unidade)
+	}
+	return auth.Can(identity, auth.PermBlogManage, alvo)
+}
+
+// List lista publicações. Rascunhos/arquivados só para a gestão que cobre
+// a unidade dona.
 func (s *Service) List(ctx context.Context, identity auth.Identity, f domain.Filter, p pagination.Params) ([]domain.Post, int64, error) {
-	if f.Status != "" && f.Status != domain.StatusPublished && !auth.HasPermission(identity, auth.PermBlogManage) {
-		return nil, 0, apperrors.Forbidden("apenas gestores veem rascunhos e arquivados")
+	if f.Status != "" && f.Status != domain.StatusPublished {
+		if !auth.HasPermission(identity, auth.PermBlogManage) {
+			return nil, 0, apperrors.Forbidden("apenas gestores veem rascunhos e arquivados")
+		}
+		gestao := auth.CoverageOf(identity, auth.PermBlogManage)
+		f.Restrito, f.Unidades = !gestao.All, gestao.Unidades
 	}
 	posts, total, err := s.repo.List(ctx, s.pool, f, p)
 	if err != nil {
@@ -102,7 +119,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, idOrSlug stri
 	if err != nil {
 		return domain.Post{}, MapError(err)
 	}
-	if p.Status != domain.StatusPublished && !auth.HasPermission(identity, auth.PermBlogManage) {
+	if p.Status != domain.StatusPublished && !gere(identity, p.UnidadeID) {
 		return domain.Post{}, MapError(domain.ErrNotFound)
 	}
 	return s.withCover(ctx, p), nil
@@ -117,6 +134,8 @@ type Input struct {
 	Kind           string
 	Pinned         bool
 	CoverObjectKey string
+	// UnidadeID é a unidade dona (nil = institucional).
+	UnidadeID *uuid.UUID
 }
 
 func (s *Service) prepare(ctx context.Context, in Input) (Input, error) {
@@ -141,7 +160,10 @@ func (s *Service) prepare(ctx context.Context, in Input) (Input, error) {
 }
 
 // Create cria um rascunho.
-func (s *Service) Create(ctx context.Context, in Input) (domain.Post, error) {
+func (s *Service) Create(ctx context.Context, identity auth.Identity, in Input) (domain.Post, error) {
+	if !gere(identity, in.UnidadeID) {
+		return domain.Post{}, MapError(domain.ErrOutOfScope)
+	}
 	in, err := s.prepare(ctx, in)
 	if err != nil {
 		return domain.Post{}, err
@@ -152,6 +174,7 @@ func (s *Service) Create(ctx context.Context, in Input) (domain.Post, error) {
 		out, err = s.repo.Insert(ctx, tx, domain.Post{
 			ID: uuid.New(), Slug: in.Slug, Title: in.Title, Summary: in.Summary, Body: in.Body,
 			CoverObjectKey: in.CoverObjectKey, Kind: in.Kind, Status: domain.StatusDraft, Pinned: in.Pinned, AuthorID: author,
+			UnidadeID: in.UnidadeID,
 		})
 		if err != nil {
 			return err
@@ -162,7 +185,10 @@ func (s *Service) Create(ctx context.Context, in Input) (domain.Post, error) {
 }
 
 // Update altera os campos editáveis (qualquer estado).
-func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Post, error) {
+func (s *Service) Update(ctx context.Context, identity auth.Identity, id uuid.UUID, in Input) (domain.Post, error) {
+	if !gere(identity, in.UnidadeID) {
+		return domain.Post{}, MapError(domain.ErrOutOfScope)
+	}
 	in, err := s.prepare(ctx, in)
 	if err != nil {
 		return domain.Post{}, err
@@ -174,6 +200,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Po
 		if err != nil {
 			return err
 		}
+		if !gere(identity, prev.UnidadeID) {
+			return domain.ErrOutOfScope
+		}
 		if prev.Status == domain.StatusPublished && strings.TrimSpace(in.Body) == "" {
 			return domain.ErrEmptyBody
 		}
@@ -182,7 +211,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Po
 		}
 		next := prev
 		next.Slug, next.Title, next.Summary, next.Body = in.Slug, in.Title, in.Summary, in.Body
-		next.Kind, next.Pinned, next.CoverObjectKey = in.Kind, in.Pinned, in.CoverObjectKey
+		next.Kind, next.Pinned, next.CoverObjectKey, next.UnidadeID = in.Kind, in.Pinned, in.CoverObjectKey, in.UnidadeID
 		if out, err = s.repo.Update(ctx, tx, next); err != nil {
 			return err
 		}
@@ -195,12 +224,15 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (domain.Po
 }
 
 // Transition muda o estado; publicar emite o evento no Outbox.
-func (s *Service) Transition(ctx context.Context, id uuid.UUID, to string) (domain.Post, error) {
+func (s *Service) Transition(ctx context.Context, identity auth.Identity, id uuid.UUID, to string) (domain.Post, error) {
 	var out domain.Post
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !gere(identity, prev.UnidadeID) {
+			return domain.ErrOutOfScope
 		}
 		if !domain.CanTransition(prev.Status, to) {
 			return domain.ErrInvalidState
@@ -232,12 +264,15 @@ func (s *Service) Transition(ctx context.Context, id uuid.UUID, to string) (doma
 }
 
 // Delete remove uma publicação.
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UUID) error {
 	var coverKey string
 	err := database.WithTx(ctx, s.pool, func(ctx context.Context, tx pgx.Tx) error {
 		prev, err := s.repo.Get(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if !gere(identity, prev.UnidadeID) {
+			return domain.ErrOutOfScope
 		}
 		coverKey = prev.CoverObjectKey
 		if err := s.repo.Delete(ctx, tx, id); err != nil {

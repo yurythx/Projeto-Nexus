@@ -17,6 +17,9 @@ var (
 	ErrSlugTaken    = errors.New("blog: slug já utilizado")
 	ErrInvalidState = errors.New("blog: transição de estado inválida")
 	ErrEmptyBody    = errors.New("blog: publicação sem texto não pode ser publicada")
+	// ErrOutOfScope: blog:manage não cobre a unidade dona da publicação
+	// (sem dono = institucional, só a gestão global — ADR 013).
+	ErrOutOfScope = errors.New("blog: publicação fora do seu escopo de gestão")
 )
 
 // Estados e tipos.
@@ -42,10 +45,12 @@ type Post struct {
 	Status         string     `json:"status"`
 	Pinned         bool       `json:"pinned"`
 	AuthorID       *uuid.UUID `json:"author_id,omitempty"`
-	AuthorName     string     `json:"author_name,omitempty"`
-	PublishedAt    *time.Time `json:"published_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	// UnidadeID é a unidade dona (ADR 013); nil = institucional.
+	UnidadeID   *uuid.UUID `json:"unidade_id,omitempty"`
+	AuthorName  string     `json:"author_name,omitempty"`
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // Filter restringe a listagem.
@@ -53,6 +58,10 @@ type Filter struct {
 	Status string // vazio = só publicados
 	Kind   string
 	Query  string
+	// Restrito: rascunhos/arquivados só das unidades em Unidades (gestão
+	// com escopo); publicados aparecem sempre.
+	Restrito bool
+	Unidades []uuid.UUID
 }
 
 // Repository é a porta de persistência.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/application"
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/domain"
@@ -21,6 +22,12 @@ type Handlers struct {
 }
 
 // NewHandlers cria os handlers.
+// authIdentity devolve o chamador autenticado (RequireAuth garante que existe).
+func authIdentity(r *http.Request) auth.Identity {
+	id, _ := auth.IdentityFromContext(r.Context())
+	return id
+}
+
 func NewHandlers(svc *application.Service, logger *slog.Logger, maxPageSize int) *Handlers {
 	return &Handlers{svc: svc, logger: logger, maxPageSize: maxPageSize}
 }
@@ -78,12 +85,14 @@ type postRequest struct {
 	Kind           string `json:"kind" validate:"omitempty,oneof=noticia comunicado"`
 	Pinned         bool   `json:"pinned"`
 	CoverObjectKey string `json:"cover_object_key" validate:"max=300"`
+	// UnidadeID: unidade dona (ADR 013); vazio = institucional.
+	UnidadeID *uuid.UUID `json:"unidade_id"`
 }
 
 func (req postRequest) input() application.Input {
 	return application.Input{
 		Title: req.Title, Slug: req.Slug, Summary: req.Summary, Body: req.Body,
-		Kind: req.Kind, Pinned: req.Pinned, CoverObjectKey: req.CoverObjectKey,
+		Kind: req.Kind, Pinned: req.Pinned, CoverObjectKey: req.CoverObjectKey, UnidadeID: req.UnidadeID,
 	}
 }
 
@@ -93,7 +102,7 @@ func (h *Handlers) Create(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	post, err := h.svc.Create(r.Context(), req.input())
+	post, err := h.svc.Create(r.Context(), authIdentity(r), req.input())
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -112,7 +121,7 @@ func (h *Handlers) Update(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	post, err := h.svc.Update(r.Context(), id, req.input())
+	post, err := h.svc.Update(r.Context(), authIdentity(r), id, req.input())
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -127,7 +136,7 @@ func (h *Handlers) transition(to string) http.HandlerFunc {
 			h.fail(w, r, err)
 			return
 		}
-		post, err := h.svc.Transition(r.Context(), id, to)
+		post, err := h.svc.Transition(r.Context(), authIdentity(r), id, to)
 		if err != nil {
 			h.fail(w, r, err)
 			return
@@ -139,7 +148,7 @@ func (h *Handlers) transition(to string) http.HandlerFunc {
 func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := httputil.UUIDParam(r, "id")
 	if err == nil {
-		err = h.svc.Delete(r.Context(), id)
+		err = h.svc.Delete(r.Context(), authIdentity(r), id)
 	}
 	if err != nil {
 		h.fail(w, r, err)

@@ -39,9 +39,13 @@ type env struct {
 	ctx     context.Context
 }
 
+// gestao: blog:manage global (ADR 013 — concessão sem escopo).
+var gestao = auth.Identity{Roles: []string{auth.RoleAdmin}}
+
 func newEnv(t *testing.T) *env {
 	pool := dbtest.Pool(t)
-	m := auth.Identity{UserID: dbtest.User(t, pool), Permissions: []string{string(auth.PermBlogManage)}}
+	m := auth.Identity{UserID: dbtest.User(t, pool), Permissions: []string{string(auth.PermBlogManage)},
+		Scopes: []auth.Scope{{Perfil: "gestor", Permissions: []string{string(auth.PermBlogManage)}}}}
 	return &env{t: t, pool: pool, store: storagetest.New(), manager: m, ctx: auth.WithIdentity(context.Background(), m)}
 }
 
@@ -62,12 +66,12 @@ func (e *env) cover() string {
 
 func (e *env) post(publish bool) domain.Post {
 	e.t.Helper()
-	p, err := e.real().Create(e.ctx, application.Input{Title: "Notícia " + uuid.NewString()[:8], Body: "Texto", CoverObjectKey: e.cover()})
+	p, err := e.real().Create(e.ctx, gestao, application.Input{Title: "Notícia " + uuid.NewString()[:8], Body: "Texto", CoverObjectKey: e.cover()})
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	if publish {
-		if p, err = e.real().Transition(e.ctx, p.ID, domain.StatusPublished); err != nil {
+		if p, err = e.real().Transition(e.ctx, gestao, p.ID, domain.StatusPublished); err != nil {
 			e.t.Fatal(err)
 		}
 	}
@@ -96,27 +100,27 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"Create": func() func(*application.Service) error {
 			return func(s *application.Service) error {
-				_, err := s.Create(ctx, application.Input{Title: "Nova " + uuid.NewString()[:8]})
+				_, err := s.Create(ctx, gestao, application.Input{Title: "Nova " + uuid.NewString()[:8]})
 				return err
 			}
 		},
 		"Update": func() func(*application.Service) error {
 			p := e.post(true)
 			return func(s *application.Service) error {
-				_, err := s.Update(ctx, p.ID, application.Input{Title: p.Title, Body: "novo", CoverObjectKey: e.cover()})
+				_, err := s.Update(ctx, gestao, p.ID, application.Input{Title: p.Title, Body: "novo", CoverObjectKey: e.cover()})
 				return err
 			}
 		},
 		"Transition": func() func(*application.Service) error {
 			p := e.post(false)
 			return func(s *application.Service) error {
-				_, err := s.Transition(ctx, p.ID, domain.StatusPublished)
+				_, err := s.Transition(ctx, gestao, p.ID, domain.StatusPublished)
 				return err
 			}
 		},
 		"Delete": func() func(*application.Service) error {
 			p := e.post(false)
-			return func(s *application.Service) error { return s.Delete(ctx, p.ID) }
+			return func(s *application.Service) error { return s.Delete(ctx, gestao, p.ID) }
 		},
 		"Search": func() func(*application.Service) error {
 			return func(s *application.Service) error { _, _, err := s.Search(ctx, "notícia", 5); return err }
@@ -157,7 +161,7 @@ func TestCoverStorageFailures(t *testing.T) {
 	}
 	e.store.FailPresign = false
 	e.store.FailDelete = true
-	if err := e.real().Delete(e.ctx, p.ID); err != nil {
+	if err := e.real().Delete(e.ctx, gestao, p.ID); err != nil {
 		t.Fatalf("capa não removida não desfaz a exclusão: %v", err)
 	}
 	e.store.FailDelete = false

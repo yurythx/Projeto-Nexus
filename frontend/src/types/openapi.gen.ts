@@ -2569,6 +2569,8 @@ export interface components {
             status: string;
             summary: string;
             title: string;
+            /** Format: uuid */
+            unidade_id?: string;
             /** Format: date-time */
             updated_at: string;
         };
@@ -2581,6 +2583,8 @@ export interface components {
             slug?: string;
             summary?: string;
             title: string;
+            /** Format: uuid */
+            unidade_id?: string | null;
         };
         BlogUploadRequest: {
             content_type: string;

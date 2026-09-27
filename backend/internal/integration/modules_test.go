@@ -183,14 +183,14 @@ func TestPluginsEndToEnd(t *testing.T) {
 
 	t.Run("blog", func(t *testing.T) {
 		svc := blogApp.NewService(e.pool, blogInfra.NewRepository(), e.ob, e.store, bucket, time.Minute, e.logger)
-		post, err := svc.Create(ctx, blogApp.Input{Title: "Comunicado de Manutenção Programada", Body: "O sistema de protocolo ficará indisponível", Kind: "comunicado"})
+		post, err := svc.Create(ctx, gestaoGlobal, blogApp.Input{Title: "Comunicado de Manutenção Programada", Body: "O sistema de protocolo ficará indisponível", Kind: "comunicado"})
 		must(t, err)
-		post, err = svc.Update(ctx, post.ID, blogApp.Input{Title: post.Title, Body: post.Body + " no sábado.", Kind: "comunicado", Pinned: true})
+		post, err = svc.Update(ctx, gestaoGlobal, post.ID, blogApp.Input{Title: post.Title, Body: post.Body + " no sábado.", Kind: "comunicado", Pinned: true})
 		must(t, err)
 		if _, err := svc.Get(ctx, auth.Identity{}, post.Slug); err == nil {
 			t.Fatal("rascunho não pode ser visto sem blog:manage")
 		}
-		post, err = svc.Transition(ctx, post.ID, "published")
+		post, err = svc.Transition(ctx, gestaoGlobal, post.ID, "published")
 		must(t, err)
 		if post.PublishedAt == nil {
 			t.Fatal("publicar deve carimbar published_at")
@@ -206,7 +206,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 			t.Fatal("busca full-text (unaccent + português) deveria achar a publicação")
 		}
 		assertOutbox(t, e.pool, "blog.post.published", post.ID.String())
-		must(t, svc.Delete(ctx, post.ID))
+		must(t, svc.Delete(ctx, gestaoGlobal, post.ID))
 	})
 
 	t.Run("catalog", func(t *testing.T) {

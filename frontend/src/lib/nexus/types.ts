@@ -227,6 +227,8 @@ export interface Post {
   status: "draft" | "published" | "archived";
   pinned: boolean;
   author_name?: string;
+  /** Unidade dona (ADR 013); ausente = institucional. */
+  unidade_id?: UUID;
   published_at?: string;
   created_at: string;
   updated_at: string;
