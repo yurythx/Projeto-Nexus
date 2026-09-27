@@ -24,6 +24,9 @@ O Projeto Nexus atende integralmente aos 5 módulos de conformidade exigidos pel
 - **Clean Architecture nos Módulos:** Módulos de negócio com separação estrita de camadas (`domain`, `application`, `infrastructure`, `transport`).
 - **Módulo Modelo Template (`example`):** Blueprint prático e de referência para novos plug-ins.
 - **Autenticação Dupla:** Keycloak SSO (OIDC + AD) e autenticação local com chaves RSA, Argon2id, rate limiting e lockout progressivo.
+- **Estrutura organizacional multi-entidade:** Entidade > Unidade (com subunidades) > Departamento, perfis e lotações (manuais ou por grupo do AD).
+- **Permissão com escopo e herança (ADR 013):** as permissões de gestão valem onde foram concedidas e nas unidades abaixo — o gestor de uma secretaria gerencia só o conteúdo dela; administração delegada do IAM por entidade/unidade.
+- **Público-alvo (ADR 014):** Blog, Wiki e Agenda podem ser publicados só para secretarias e/ou unidades.
 - **Outbox Transacional & RabbitMQ:** Escrita atômica no PostgreSQL e publicação assíncrona no RabbitMQ com filas Dead-Letter Queue (DLQ).
 - **Auditoria Imutável:** Registros de auditoria append-only protegidos no nível do PostgreSQL.
 - **WebSocket Server:** Broker WebSocket para retransmissão de notificações em tempo real aos plug-ins.
@@ -126,7 +129,7 @@ make seed-admin
 - **API Healthcheck:** [http://localhost:8002/health](http://localhost:8002/health)
 
 ### Regras de negócio
-Estrutura organizacional (entidades, unidades, departamentos), perfis, lotações, onde o escopo vale e as regras de cada módulo: [`docs/REGRAS_DE_NEGOCIO.md`](docs/REGRAS_DE_NEGOCIO.md).
+Estrutura organizacional (entidades, unidades, departamentos), perfis, lotações, onde o escopo vale, o público-alvo e as regras de cada módulo: [`docs/REGRAS_DE_NEGOCIO.md`](docs/REGRAS_DE_NEGOCIO.md). As decisões estão nos ADRs ([`docs/adr/`](docs/adr/README.md)) — em especial o [013](docs/adr/013-permissao-com-escopo-e-heranca.md) (escopo) e o [014](docs/adr/014-publico-alvo.md) (público-alvo).
 
 ### Deploy em servidor
 `./scripts/deploy.sh <ip-ou-dns>` gera `.env` com segredos fortes, a chave RSA e sobe a stack em produção; depois `make prod-seed-admin`. HTTPS com o Caddy como única entrada (`scripts/enable-https.sh`), Keycloak de teste com uma prefeitura fictícia (`make demo-keycloak`, `make demo-popular`), cenários ponta a ponta (`make demo-test`) e backup diário (`scripts/backup.sh`): ordem completa em [`docs/DEPLOY.md`](docs/DEPLOY.md).

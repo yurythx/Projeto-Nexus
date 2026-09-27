@@ -191,3 +191,24 @@ export default function FinanceiroPage() {
 4. **Regras de negócio no domínio e na aplicação, nunca só na tela ou nas struct-tags.** Estados finais (cancelado, arquivado, concluído) recusam mutação, e repetir a transição para o estado atual não gera nova auditoria nem novo evento.
 5. **Erro de banco nunca vira regra.** Uma falha na checagem de ciclo, de acesso ou de existência é propagada como erro, e não mascarada como "ciclo", "sem acesso" ou "não encontrado". Curingas digitados (`%`, `_`) são texto: use `strpos`/`starts_with` ou escape-os.
 6. **100% de cobertura por plug-in (CI).** O módulo gerado já nasce com a matriz de falhas (`application/faults_test.go`) e os testes do repositório com `database/dbtest`; escreva o teste de sistema do fluxo em `internal/app/module_<m>_http_test.go`. Mudou a interface `Repository`? Regenere `faultrepo_test.go` com `scripts/genfault.py`. Detalhes no ADR 009.
+7. **Gestão com escopo (ADR 013).** Se o módulo tem uma permissão de gestão
+   (`<m>:manage`) sobre recursos que pertencem a uma unidade, dê ao recurso
+   uma **unidade dona** (`unidade_id`, `ON DELETE SET NULL`; sem dona =
+   institucional, só a gestão global), inclua a permissão em
+   `auth.ScopedPermissions` e em `scripts/iam-scope-report.sql` (um teste
+   confere que as duas listas andam juntas), e decida cada ação com
+   `auth.Can(identity, perm, auth.InUnidade(dona))` — **nunca** com
+   `auth.HasPermission`, que só diz se a pessoa tem a permissão em *algum*
+   lugar (serve para menus e para o `RequirePermission` da rota). Listas
+   filtram no SQL por `auth.CoverageOf`; fora do escopo, 403 para agir e 404
+   para ler. Permissão de plataforma (fora de `ScopedPermissions`) só vale
+   com concessão global. No frontend, `UnidadeDonaSelect` oferece só as
+   unidades que a pessoa gerencia.
+8. **Público-alvo (ADR 014).** Conteúdo interno que pode ser dirigido a uma
+   secretaria usa uma tabela `<recurso>_publico` (FK `RESTRICT` para
+   entidade/unidade) e o pacote `platform/publico`: `Tabela.Condicao` no
+   SQL das listas e da busca (público, autor e gestão da dona),
+   `Tabela.SemPublico` no que vai ao site, `Carregar`/`Gravar` no
+   repositório e `auth.NoPublico` no detalhe. Evento de Outbox de conteúdo
+   com público leva `"restrito": true` (a difusão geral em tempo real o
+   descarta). No frontend, `PublicoAlvoPicker` e `PublicoBadge`.
