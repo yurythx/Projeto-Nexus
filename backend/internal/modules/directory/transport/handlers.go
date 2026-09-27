@@ -22,6 +22,12 @@ type Handlers struct {
 }
 
 // NewHandlers cria os handlers.
+// authIdentity devolve o chamador autenticado (RequireAuth garante que existe).
+func authIdentity(r *http.Request) auth.Identity {
+	id, _ := auth.IdentityFromContext(r.Context())
+	return id
+}
+
 func NewHandlers(svc *application.Service, logger *slog.Logger, maxPageSize int) *Handlers {
 	return &Handlers{svc: svc, logger: logger, maxPageSize: maxPageSize}
 }
@@ -119,7 +125,7 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	p, err := h.svc.SaveProfile(r.Context(), identity.UserID, req.input(), true)
+	p, err := h.svc.SaveProfile(r.Context(), identity, identity.UserID, req.input(), true)
 	if err != nil {
 		h.fail(w, r, err)
 		return
@@ -138,7 +144,7 @@ func (h *Handlers) UpdatePerson(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	p, err := h.svc.SaveProfile(r.Context(), id, req.input(), false)
+	p, err := h.svc.SaveProfile(r.Context(), authIdentity(r), id, req.input(), false)
 	if err != nil {
 		h.fail(w, r, err)
 		return

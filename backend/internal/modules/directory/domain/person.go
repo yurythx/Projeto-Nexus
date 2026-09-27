@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/yurythx/projeto-nexus/internal/domain/pagination"
+	"github.com/yurythx/projeto-nexus/internal/platform/auth"
 	"github.com/yurythx/projeto-nexus/internal/platform/database"
 )
 
@@ -19,6 +20,10 @@ var ErrNotFound = errors.New("directory: pessoa não encontrada")
 // ErrSector indica unidade/departamento inexistente ou inconsistente (o
 // departamento precisa pertencer à unidade informada).
 var ErrSector = errors.New("directory: unidade ou departamento inexistente ou inconsistente")
+
+// ErrOutOfScope: directory:manage não cobre a lotação exibida da pessoa
+// (a atual ou a nova) — ADR 013.
+var ErrOutOfScope = errors.New("directory: pessoa fora do seu escopo de gestão")
 
 // Person é uma entrada do diretório.
 type Person struct {
@@ -58,6 +63,21 @@ type Filter struct {
 	UnidadeID      *uuid.UUID
 	DepartamentoID *uuid.UUID
 	IncludeHidden  bool
+	// Perfis ocultos visíveis só nas unidades/departamentos que a gestão
+	// (directory:manage com escopo) cobre.
+	HiddenUnidades      []uuid.UUID
+	HiddenDepartamentos []uuid.UUID
+}
+
+// Posicao é a lotação exibida da pessoa; sem ela, a pessoa é
+// "institucional" (só a gestão global a edita — ADR 013).
+func (p Person) Posicao() auth.Target {
+	return Lotacao(p.UnidadeID, p.DepartamentoID)
+}
+
+// Lotacao é o alvo de uma lotação exibida.
+func Lotacao(unidade, departamento *uuid.UUID) auth.Target {
+	return auth.Target{UnidadeID: unidade, DepartamentoID: departamento}
 }
 
 // ProfileInput são os campos do perfil estendido.

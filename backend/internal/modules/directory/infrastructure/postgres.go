@@ -56,20 +56,28 @@ func wrap(err error) error {
 	return fmt.Errorf("directory: %w", err)
 }
 
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
+}
+
 func (r *Repository) List(ctx context.Context, db database.DBTX, f domain.Filter, p pagination.Params) ([]domain.Person, int64, error) {
 	const where = ` WHERE u.active AND u.username NOT LIKE 'anon\_%'
-		AND ($1 OR COALESCE(dp.visible, true))
+		AND ($1 OR COALESCE(dp.visible, true) OR un.id = ANY($5::uuid[]) OR d.id = ANY($6::uuid[]))
 		AND ($2 = '' OR strpos(nexus_unaccent(lower(u.display_name || ' ' || u.username || ' ' || COALESCE(dp.job_title,''))),
 		                        nexus_unaccent(lower($2))) > 0)
 		AND ($3::uuid IS NULL OR un.id = $3)
 		AND ($4::uuid IS NULL OR d.id = $4)`
-	args := []any{f.IncludeHidden, f.Query, f.UnidadeID, f.DepartamentoID}
+	args := []any{f.IncludeHidden, f.Query, f.UnidadeID, f.DepartamentoID, uuidStrings(f.HiddenUnidades), uuidStrings(f.HiddenDepartamentos)}
 	var total int64
 	if err := db.QueryRow(ctx, `SELECT count(*)`+base+where, args...).Scan(&total); err != nil {
 		return nil, 0, wrap(err)
 	}
 	rows, err := db.Query(ctx, `SELECT `+cols+base+where+`
-		ORDER BY lower(COALESCE(NULLIF(u.display_name,''), u.username)) LIMIT $5 OFFSET $6`,
+		ORDER BY lower(COALESCE(NULLIF(u.display_name,''), u.username)) LIMIT $7 OFFSET $8`,
 		append(args, p.Limit(), p.Offset())...)
 	if err != nil {
 		return nil, 0, wrap(err)

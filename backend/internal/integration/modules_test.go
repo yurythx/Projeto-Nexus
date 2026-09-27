@@ -262,7 +262,7 @@ func TestPluginsEndToEnd(t *testing.T) {
 
 	t.Run("directory", func(t *testing.T) {
 		svc := dirApp.NewService(e.pool, dirInfra.NewRepository())
-		_, err := svc.SaveProfile(ctx, e.identity.UserID, dirDomain.ProfileInput{JobTitle: "Analista", Extension: "1234", Visible: true}, true)
+		_, err := svc.SaveProfile(ctx, e.identity, e.identity.UserID, dirDomain.ProfileInput{JobTitle: "Analista", Extension: "1234", Visible: true}, true)
 		must(t, err)
 		people, _, err := svc.List(ctx, e.identity, dirDomain.Filter{Query: "tester"}, p)
 		must(t, err)

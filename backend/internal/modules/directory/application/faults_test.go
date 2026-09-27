@@ -31,6 +31,9 @@ type env struct {
 	pool *pgxpool.Pool
 }
 
+// gestao: directory:manage global (ADR 013 — concessão sem escopo).
+var gestao = auth.Identity{Roles: []string{auth.RoleAdmin}}
+
 func (e *env) svc(repo domain.Repository) *application.Service {
 	return application.NewService(e.pool, repo)
 }
@@ -58,7 +61,7 @@ func TestEveryRepositoryFailureIsPropagated(t *testing.T) {
 		},
 		"SaveProfile": func() func(*application.Service) error {
 			return func(s *application.Service) error {
-				_, err := s.SaveProfile(ctx, user, domain.ProfileInput{JobTitle: "Cargo", Visible: true, DepartamentoID: &dep}, false)
+				_, err := s.SaveProfile(ctx, gestao, user, domain.ProfileInput{JobTitle: "Cargo", Visible: true, DepartamentoID: &dep}, false)
 				return err
 			}
 		},
@@ -104,11 +107,11 @@ func TestModuleAndHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := "Cargo" + strings.ReplaceAll(uuid.NewString()[:8], "-", "")
-	if _, err := e.svc(infrastructure.NewRepository()).SaveProfile(ctx, user, domain.ProfileInput{JobTitle: marker, Visible: true, DepartamentoID: &dep}, false); err != nil {
+	if _, err := e.svc(infrastructure.NewRepository()).SaveProfile(ctx, gestao, user, domain.ProfileInput{JobTitle: marker, Visible: true, DepartamentoID: &dep}, false); err != nil {
 		t.Fatal(err)
 	}
 	other := dbtest.User(t, e.pool)
-	if _, err := e.svc(infrastructure.NewRepository()).SaveProfile(ctx, other, domain.ProfileInput{JobTitle: marker + " sem setor", Visible: true}, false); err != nil {
+	if _, err := e.svc(infrastructure.NewRepository()).SaveProfile(ctx, gestao, other, domain.ProfileInput{JobTitle: marker + " sem setor", Visible: true}, false); err != nil {
 		t.Fatal(err)
 	}
 	sp := m.SearchProviders()[0]

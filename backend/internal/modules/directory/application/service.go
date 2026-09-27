@@ -35,13 +35,16 @@ func MapError(err error) error {
 		return apperrors.NotFound("pessoa não encontrada no diretório")
 	case errors.Is(err, domain.ErrSector):
 		return apperrors.Validation(err.Error())
+	case errors.Is(err, domain.ErrOutOfScope):
+		return apperrors.Forbidden(err.Error())
 	}
 	return err
 }
 
 // List busca pessoas; perfis ocultos só aparecem para directory:manage.
 func (s *Service) List(ctx context.Context, identity auth.Identity, f domain.Filter, p pagination.Params) ([]domain.Person, int64, error) {
-	f.IncludeHidden = auth.HasPermission(identity, auth.PermDirectoryManage)
+	gestao := auth.CoverageOf(identity, auth.PermDirectoryManage)
+	f.IncludeHidden, f.HiddenUnidades, f.HiddenDepartamentos = gestao.All, gestao.Unidades, gestao.Departamentos
 	return s.repo.List(ctx, s.pool, f, p)
 }
 
@@ -51,7 +54,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 	if err != nil {
 		return p, MapError(err)
 	}
-	if !p.Visible && identity.UserID != id && !auth.HasPermission(identity, auth.PermDirectoryManage) {
+	if !p.Visible && identity.UserID != id && !auth.Can(identity, auth.PermDirectoryManage, p.Posicao()) {
 		return domain.Person{}, MapError(domain.ErrNotFound)
 	}
 	return p, nil
@@ -59,7 +62,7 @@ func (s *Service) Get(ctx context.Context, identity auth.Identity, id uuid.UUID)
 
 // SaveProfile atualiza o perfil estendido. self = autoatendimento (não
 // altera a lotação exibida).
-func (s *Service) SaveProfile(ctx context.Context, userID uuid.UUID, in domain.ProfileInput, self bool) (domain.Person, error) {
+func (s *Service) SaveProfile(ctx context.Context, identity auth.Identity, userID uuid.UUID, in domain.ProfileInput, self bool) (domain.Person, error) {
 	if self {
 		// Autoatendimento nunca define a lotação exibida — nem no primeiro
 		// salvamento (quando o perfil ainda não existe).
@@ -80,6 +83,12 @@ func (s *Service) SaveProfile(ctx context.Context, userID uuid.UUID, in domain.P
 				return domain.ErrSector
 			}
 			in.UnidadeID = &unidade
+		}
+		// Gestão (não autoatendimento): directory:manage precisa cobrir a
+		// lotação exibida atual da pessoa e a nova (ADR 013).
+		if !self && (!auth.Can(identity, auth.PermDirectoryManage, prev.Posicao()) ||
+			!auth.Can(identity, auth.PermDirectoryManage, domain.Lotacao(in.UnidadeID, in.DepartamentoID))) {
+			return domain.ErrOutOfScope
 		}
 		if err := s.repo.SaveProfile(ctx, tx, userID, in, self); err != nil {
 			return err

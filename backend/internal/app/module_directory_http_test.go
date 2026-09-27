@@ -122,3 +122,43 @@ func TestDirectoryPersonalDataFollowsLGPDRequests(t *testing.T) {
 		t.Fatalf("eliminação concluída e perfil apagado: %s, %d perfil(is)", status, profiles)
 	}
 }
+
+// directory:manage com escopo (ADR 013): a gestão da unidade A edita a
+// ficha e a lotação exibida das pessoas de A (e subunidades) — não as de
+// B, nem quem ainda não tem lotação exibida (institucional); vê os perfis
+// ocultos só no escopo.
+func TestDirectoryGestaoComEscopo(t *testing.T) {
+	h := newHarness(t)
+	admin := h.admin()
+	o := h.orgEscopo(t)
+	gestorA := h.gestorEm(t, o.a, "directory:manage")
+	pessoa := func(unidade string, visivel bool) string {
+		id, _ := h.user("nexus-user")
+		if unidade != "" {
+			h.expect(http.StatusOK, http.MethodPut, "/api/v1/directory/people/"+id.String(), admin,
+				`{"job_title":"Servidor","unidade_id":"`+unidade+`","visible":`+map[bool]string{true: "true", false: "false"}[visivel]+`}`)
+		}
+		return id.String()
+	}
+	deA, deSub, deB, semLotacao := pessoa(o.a, false), pessoa(o.sub, true), pessoa(o.b, false), pessoa("", true)
+	ficha := func(unidade string) string {
+		return `{"job_title":"Chefe","unidade_id":"` + unidade + `","visible":false}`
+	}
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/directory/people/"+deA, gestorA, ficha(o.a))
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/directory/people/"+deSub, gestorA, ficha(o.sub))    // herança
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/directory/people/"+deA, gestorA, ficha(o.b)) // não move para B
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/directory/people/"+deB, gestorA, ficha(o.a)) // não "puxa" de B
+	h.expect(http.StatusForbidden, http.MethodPut, "/api/v1/directory/people/"+semLotacao, gestorA, ficha(o.a))
+	h.expect(http.StatusOK, http.MethodPut, "/api/v1/directory/people/"+semLotacao, admin, ficha(o.a)) // a global define a 1ª lotação
+
+	// Perfis ocultos: visíveis só para a gestão que cobre a pessoa.
+	h.expect(http.StatusOK, http.MethodGet, "/api/v1/directory/people/"+deA, gestorA, "")
+	h.expect(http.StatusNotFound, http.MethodGet, "/api/v1/directory/people/"+deB, gestorA, "")
+	lista := h.expect(http.StatusOK, http.MethodGet, "/api/v1/directory/people?unidade_id="+o.a, gestorA, "").Body.String()
+	if !strings.Contains(lista, deA) {
+		t.Fatalf("a gestão de A vê o oculto de A na busca: %s", lista)
+	}
+	if outra := h.expect(http.StatusOK, http.MethodGet, "/api/v1/directory/people?unidade_id="+o.b, gestorA, "").Body.String(); strings.Contains(outra, deB) {
+		t.Fatal("o oculto de B não aparece para a gestão de A")
+	}
+}
