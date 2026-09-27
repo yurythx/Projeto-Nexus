@@ -39,6 +39,31 @@ if code in (200, 201):
     code, d = call(servidor, "GET", f"blog/posts/{slug or pid}")
     expect("publicado visível ao servidor", code, 200, d)
 
+print("\n== Público-alvo (ADR 014): publicação por secretaria")
+saude = pickr("SEMSA-UPA-ATD")
+code, d = call(admin, "GET", "iam/org-tree")
+sigla = {e.get("sigla"): e["id"] for e in (d or {}).get("data", [])}
+semsa, semed = sigla.get("SEMSA"), sigla.get("SEMED")
+check("SEMSA e SEMED na estrutura", bool(semsa and semed), sigla)
+code, d = call(editor, "POST", "blog/posts", {"title": f"Escala da saúde {RUN}", "summary": "Só SEMSA", "body": "Plantões da semana.",
+                                          "kind": "comunicado", "publico": {"entidades": [semsa], "unidades": []}})
+expect("editor cria comunicado só para a SEMSA", code, (200, 201), d)
+if code in (200, 201):
+    pid = d["data"]["id"]
+    expect("editor publica", call(editor, "POST", f"blog/posts/{pid}/publish")[0], (200, 204))
+    expect("servidor da SEMSA lê", call(saude, "GET", f"blog/posts/{pid}")[0], 200)
+    expect("servidor da SEMED não lê", call(servidor, "GET", f"blog/posts/{pid}")[0], 404)
+    code, d = call(servidor, "GET", "blog/posts?page_size=100")
+    check("lista da SEMED sem o comunicado da SEMSA", code == 200 and pid not in json.dumps(d), code)
+code, d = call(servidor, "POST", "wiki/pages", {"title": f"Rotina das escolas {RUN}", "body": "Só SEMED", "publico": {"entidades": [semed], "unidades": []}})
+expect("servidor da SEMED cria página só para a SEMED", code, (200, 201), d)
+if code in (200, 201):
+    wid = d["data"]["id"]
+    expect("servidor da SEMSA não lê a página", call(saude, "GET", f"wiki/pages/{wid}")[0], 404)
+    expect("servidor da SEMED lê a própria página", call(servidor, "GET", f"wiki/pages/{wid}")[0], 200)
+    code, d = call(saude, "GET", "wiki/tree")
+    check("árvore da SEMSA sem a página da SEMED", code == 200 and wid not in json.dumps(d), code)
+
 print("\n== Wiki")
 code, d = call(servidor, "POST", "wiki/pages", {"title": f"Rotina do atendimento {RUN}", "body": "v1", "summary": "criação"})
 expect("servidor cria página", code, (200, 201), d)
