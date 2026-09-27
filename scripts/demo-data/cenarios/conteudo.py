@@ -13,11 +13,11 @@ print(f"editor={editor} servidor={servidor}")
 FE = open(os.path.join(ROOT, ".env")).read().split("FRONTEND_URL=")[1].split("\n")[0]
 
 
-def public(method, path, body=None):
+def public(method, path, body=None, headers=None):
     """Chamada anônima pelo proxy público do site (/api/public)."""
     req = urllib.request.Request(f"{FE}/api/public/v1/{path}", method=method,
                                  data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=15, context=SSL_CTX) as r:
             return r.status, json.loads(r.read() or b"null")
@@ -95,16 +95,26 @@ print("\n== Contato (formulário público anônimo)")
 msg = {"name": "Cidadão Fictício", "email": f"cidadao{RUN}@exemplo.test", "subject": "Dúvida de teste",
        "category": "duvida", "message": "Mensagem de teste do formulário público.", "consent": True, "website": ""}
 code, d = public("POST", "contact/messages", {**msg, "consent": False})
-expect("sem consentimento LGPD é recusado", code, (400, 422), d)
-code, d = public("POST", "contact/messages", msg)
-expect("visitante envia mensagem", code, (200, 201, 202), d)
+limited = code == 429
+if limited:
+    # O formulário aceita 5 mensagens/hora por IP e os testes rodam sempre do
+    # mesmo IP: esgotado o limite, a checagem vira "o limite resiste".
+    print("   limite do formulário (5/h por IP) já atingido por este IP — verificando que ele resiste")
+    code, d = public("POST", "contact/messages", msg, {"X-Forwarded-For": "203.0.113.77"})
+    expect("IP forjado no X-Forwarded-For não burla o limite", code, 429, d)
+else:
+    expect("sem consentimento LGPD é recusado", code, (400, 422), d)
+    code, d = public("POST", "contact/messages", msg)
+    expect("visitante envia mensagem", code, (200, 201, 202), d)
 code, _ = call(servidor, "GET", "contact/messages")
 expect("servidor não lê o contato", code, 403)
 code, d = call(editor, "GET", "contact/messages")
 expect("gestor lê as mensagens", code, 200, d)
 if code == 200:
     mine = [m for m in d["data"] if m.get("email") == msg["email"] or msg["email"] in json.dumps(m)]
-    check("mensagem do visitante na caixa", len(mine) == 1, len(mine))
+    if not limited:
+        check("mensagem do visitante na caixa", len(mine) == 1, len(mine))
+    mine = mine or d["data"][:1]
     if mine:
         code, d = call(editor, "PATCH", f"contact/messages/{mine[0]['id']}", {"status": "answered", "notes": "Respondido por e-mail."})
         expect("marca como respondida", code, 200, d)
