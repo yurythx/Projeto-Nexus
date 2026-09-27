@@ -22,9 +22,24 @@ WITH com_escopo AS (
      WHERE num_nonnulls(m.entidade_id, m.unidade_id, m.departamento_id) > 0
 ),
 escopo AS (
-    SELECT 'tramite:create' AS perm UNION ALL SELECT 'tramite:route' UNION ALL SELECT 'tramite:manage'
-    UNION ALL SELECT 'catalog:manage' UNION ALL SELECT 'blog:manage' UNION ALL SELECT 'wiki:manage'
-    UNION ALL SELECT 'calendar:manage' UNION ALL SELECT 'mercurio:manage' UNION ALL SELECT 'directory:manage'
+    SELECT perm FROM unnest(ARRAY[
+        'tramite:create',
+        'tramite:route',
+        'tramite:manage',
+        'catalog:manage',
+        'blog:manage',
+        'wiki:manage',
+        'calendar:manage',
+        'mercurio:manage',
+        'directory:manage',
+        'contact:read',
+        'contact:manage',
+        'audit:read',
+        'files:manage',
+        'iam:manage',
+        'users:read',
+        'users:manage'
+    ]) AS perm
 )
 SELECT c.origem, c.quem, c.perfil,
        concat_ws(' > ', e.sigla, un.sigla, d.sigla) AS escopo,

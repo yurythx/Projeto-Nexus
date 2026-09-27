@@ -197,6 +197,8 @@ Regras:
 
 Criar ou editar um perfil, lotar alguém ou mapear um grupo exige que
 **quem concede** tenha todas as permissões envolvidas. Retirar também exige.
+Na administração delegada (seção 5), vale **no escopo da lotação**: o
+delegado só concede uma permissão que ele próprio tem ali.
 Exemplo: o `gestor-iam` (que não tem `audit:read`) não cria um perfil com
 `audit:read` nem lota alguém num perfil com essa permissão; recebe `403`.
 Só quem tem acesso total concede ou retira `nexus-admin`.
@@ -249,11 +251,15 @@ Há dois jeitos de alguém receber um perfil. Os dois resultam na mesma coisa:
 | `calendar:manage` | unidade dona da sala (e dos eventos reservados nela) |
 | `mercurio:manage` | departamento da sala |
 | `directory:manage` | lotação exibida da pessoa |
+| `contact:read`, `contact:manage` | setor para onde a triagem encaminhou a mensagem |
+| `audit:read` | lotação do autor da ação, gravada no registro |
+| `files:manage` | unidade dona da pasta (ou de uma pasta acima) |
+| `iam:manage`, `users:read`, `users:manage` | estrutura, lotações e contas da área (ver IAM, seção 7) |
 
-**Permissões de plataforma** (`iam:manage`, `users:*`, `modules:manage`,
-`keycloak:manage`, `branding:manage`, `monitoring:*`, `egress:manage`,
-`audit:*`, `signum:manage`, `files:manage`, `contact:*`): **só valem com
-concessão global**. Dadas com escopo, não valem em lugar nenhum.
+**Permissões de plataforma** (`modules:manage`, `keycloak:manage`,
+`branding:manage`, `monitoring:*`, `egress:manage`, `audit:verify`,
+`signum:manage`): **só valem com concessão global**. Dadas com escopo, não
+valem em lugar nenhum.
 
 **Institucional:** recurso sem unidade dona (tudo o que existia antes do
 ADR 013, e o que a gestão global criar sem dona). Só a gestão global o
@@ -359,14 +365,19 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
   **direto** pelo navegador, por URL pré-assinada (15 min); o limite é
   `UPLOAD_MAX_FILE_MB` (100 MB).
 - **Acesso a uma pasta:**
-  - `files:manage` tem acesso total;
+  - `files:manage` global tem acesso total;
+  - `files:manage` com escopo tem acesso total às pastas cuja **unidade
+    dona** (da própria pasta ou de uma acima) ele cobre;
   - o **dono** da pasta, ou de qualquer pasta acima dela, tem acesso total;
   - a **ACL** de qualquer nível acima (herança) dá leitura, e escrita se
     `can_write`.
 - Sujeitos da ACL: `everyone`, `user`, `perfil`, `ad_group`, `unidade`,
   `departamento`.
-- Alterar a ACL, renomear ou excluir a pasta exige ser dono ou ter
-  `files:manage`.
+- Alterar a ACL, renomear ou excluir a pasta exige acesso total.
+- **Unidade dona** (opcional): marca quem está lotado na unidade ou tem
+  `files:manage` cobrindo-a; trocar exige poder marcar a antiga e a nova.
+  Levar para a raiz uma pasta cuja dona era herdada exige ser o dono dela
+  ou marcá-la antes.
 - Nomes são únicos dentro da pasta. Pasta com conteúdo só é excluída com
   confirmação recursiva. Não se move uma pasta para dentro de si mesma.
 
@@ -432,6 +443,10 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 - Exige **consentimento LGPD**. Há um campo-armadilha contra robôs e um
   limite de **5 mensagens por hora por IP**.
 - Ler: `contact:read` (contém dados pessoais). Triar: `contact:manage`.
+- **Setor:** toda mensagem chega na **caixa geral** (só a gestão global).
+  A triagem encaminha a um setor (unidade ativa); `contact:*` com escopo
+  vê e trata só o que chegou à área dele e pode devolver à caixa geral,
+  mas não encaminhar para fora da área.
 - Estados: `new`, `in_progress`, `answered`, `archived`. Pode haver um
   responsável, que precisa ser um usuário ativo.
 
@@ -465,7 +480,26 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 
 ### Auditoria
 - `audit:read` consulta (com filtros) e exporta (LAI: CSV, JSON, XML).
-  `audit:verify` confere a cadeia de hash. A própria exportação é auditada.
+  `audit:verify` confere a cadeia de hash (só global). A própria
+  exportação é auditada.
+- **Com escopo**, `audit:read` vê as ações de quem estava **lotado na
+  área quando agiu** (a lotação gravada no registro, protegida pelo hash).
+  Ações sem lotação registrada (sistema, contas só globais) ficam com a
+  gestão global.
+
+### IAM (administração delegada)
+- **Só a administração global:** entidades, perfis e mapeamentos do AD.
+- **Estrutura:** com `iam:manage` numa unidade, cria e exclui as
+  subunidades dela, edita a própria unidade e as de baixo (mudar de mãe
+  exige cobrir o destino) e cuida dos departamentos. Numa entidade, também
+  cria e exclui as unidades de 1º nível.
+- **Lotações:** só com escopo dentro da área e com perfil cujas permissões
+  o delegado tem naquele escopo. Ele vê só as lotações que cobre.
+- **Contas:** `users:read` com escopo vê as contas com alguma lotação na
+  área (manual ou por grupo do AD) e as sem lotação, para lotá-las.
+  `users:manage` com escopo edita, redefine a senha e desbloqueia só
+  conta **inteiramente** na área (todas as lotações cobertas) e sem o papel
+  de administrador.
 
 ### LGPD
 - **Aceite do termo:** anônimo (identificador do navegador) ou da conta,
@@ -485,9 +519,7 @@ compartilhados, e o administrador vê tudo. Para empresas independentes, use
 Comportamentos do código hoje que merecem decisão de quem administra:
 
 1. **Permissões de plataforma exigem concessão global** (seção 5): um
-   `audit:read` ou `contact:read` dado numa unidade não vale. A
-   administração delegada (IAM, auditoria e contato por setor) é a fase 3
-   do ADR 013.
+   `monitoring:read` ou `modules:manage` dado numa unidade não vale.
 2. **Processo sigiloso não é visto nem por `tramite:manage`.** É
    intencional (só autor e credenciados), mas quem administra precisa
    saber.

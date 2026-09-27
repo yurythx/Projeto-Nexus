@@ -1,6 +1,6 @@
 # 013 — Permissão com escopo e herança
 
-- **Status:** Aceito (fases 1 e 2 implementadas; fase 3 depois)
+- **Status:** Aceito e implementado (fases 1, 2 e 3)
 - **Data:** 2026-09-27
 - **Escopo:** `internal/platform/auth`, `internal/platform/iam`, os módulos
   com permissões de gestão, o frontend (hooks de permissão e formulários de
@@ -55,8 +55,9 @@ com a identidade, então checar não custa consulta.
 
 **Plataforma (só valem com concessão global):** `modules:manage`,
 `keycloak:manage`, `branding:manage`, `monitoring:*`, `egress:manage`,
-`audit:verify`, `signum:manage`, `example:manage`, `iam:manage` e
-`users:*`. A administração delegada do IAM fica para a fase 3.
+`audit:verify`, `signum:manage` e `example:manage`. Na fase 3, `iam:manage`,
+`users:*`, `audit:read`, `contact:*` e `files:manage` passaram a valer com
+escopo (ver "Como ficou na implementação (fase 3)").
 
 **Com escopo (valem onde foram concedidas):**
 
@@ -69,7 +70,10 @@ com a identidade, então checar não custa consulta.
 | `calendar:manage` | dono da sala (moderação dos eventos nela) | nova coluna de dono |
 | `mercurio:manage` | departamento da sala | nada |
 | `directory:manage` | lotação exibida da pessoa | nada |
-| `files:manage`, `contact:*`, `audit:read` | — | continuam globais nesta proposta (fase 3) |
+| `contact:read`, `contact:manage` | setor para onde a triagem encaminhou | nova coluna (fase 3) |
+| `audit:read` | lotação do autor gravada no registro | nada (fase 3) |
+| `files:manage` | unidade dona da pasta ou de uma acima | nova coluna (fase 3) |
+| `iam:manage`, `users:*` | estrutura, lotação e contas da área | nada (fase 3) |
 
 **Dono na criação:**
 - quem tem concessão global escolhe qualquer dono, ou nenhum, o que torna
@@ -129,10 +133,38 @@ como hoje. Segmentar a leitura por público-alvo é outra funcionalidade.
 - Fora do escopo, a API responde **403**; na leitura de algo que a pessoa
   não deve ver, **404**, como antes.
 
+## Como ficou na implementação (fase 3)
+
+- **Contato:** a mensagem chega na caixa geral (institucional, só a
+  gestão global); a triagem encaminha a um setor (unidade ativa).
+  `contact:*` com escopo vê e trata só o que foi encaminhado à área e
+  pode devolver à caixa geral. Migração 129.
+- **Auditoria:** a área de um registro é a lotação do autor **gravada no
+  próprio registro** (`entity_context.scopes`), que entra na cadeia de
+  hash — sem coluna nova, sem reescrever o passado quando a pessoa muda de
+  lotação, e valendo para os registros antigos que já traziam o campo.
+  Vale na consulta, no detalhe e na exportação LAI. `audit:verify` segue
+  global.
+- **Arquivos:** a pasta pode ter unidade dona, herdada pela cadeia até a
+  raiz; `files:manage` com escopo tem acesso total às pastas da área.
+  Marca a dona quem é lotado nela ou a gerencia. Dono pessoal e ACLs não
+  mudam. Migração 130.
+- **IAM delegado:** entidades, perfis e mapeamentos do AD são da
+  administração global. A delegada cria e exclui unidades onde cobre a
+  posição (a mãe, ou a entidade no 1º nível), edita as que cobre e os
+  departamentos delas; lota só dentro da área e com perfil cujas
+  permissões ela tem **naquele escopo**; vê as contas da área e as sem
+  lotação; administra (senha, desbloqueio, edição) só conta inteiramente na
+  área e sem o papel de administrador.
+- O relatório de impacto (`make iam-scope-report`) acompanha a lista, e
+  um teste garante que ela espelhe `auth.ScopedPermissions`.
+
 ## Decisões tomadas (2026-09-27)
 
 1. Conteúdo existente sem dono é **institucional**: só a gestão global o
    gerencia.
 2. Concessão na unidade **cobre as subunidades**.
-3. Administração delegada do IAM fica na **fase 3**.
+3. Administração delegada do IAM fica na **fase 3** — implementada
+   com "lotações + estrutura"; auditoria pelas ações de quem é da área;
+   contato encaminhado pela triagem; pasta da unidade nos Arquivos.
 4. A **leitura continua aberta**. O escopo restringe só a gestão.
