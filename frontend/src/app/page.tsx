@@ -32,14 +32,14 @@ import { ServiceIcon } from "@/lib/catalog/icons";
 import { APP_URL } from "@/lib/env";
 
 const description =
-  "Plataforma completa de soluções especializadas de TI, infraestrutura como código, automação, mensageria e nuvem privada com artigos técnicos e catálogo interativo.";
+  "Plataforma completa de soluções especializadas de TI, infraestrutura como código, automação, mensageria e nuvem privada com novidades e catálogo interativo.";
 
 export const metadata: Metadata = {
-  title: "Início — Soluções de TI, Catálogo & Blog Técnico",
+  title: "Início — Soluções de TI, Catálogo & Blog & Novidades",
   description,
   alternates: { canonical: `${APP_URL}` },
   openGraph: {
-    title: "Início — Soluções de TI, Catálogo & Blog Técnico",
+    title: "Início — Soluções de TI, Catálogo & Blog & Novidades",
     description,
     type: "website",
     url: `${APP_URL}`,
@@ -158,7 +158,7 @@ export default async function HomePage() {
                 href="/blog"
                 className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-surface px-6 py-3.5 text-base font-semibold text-foreground shadow-xs transition-all hover:bg-surface-2"
               >
-                <BookOpen size={18} aria-hidden="true" /> Acessar o Blog de Engenharia
+                <BookOpen size={18} aria-hidden="true" /> Acessar o Blog & Novidades
               </Link>
             </div>
 
@@ -264,7 +264,7 @@ export default async function HomePage() {
         <section className="border-y border-surface-border bg-surface-1/70 px-6 py-16">
           <div className="mx-auto flex max-w-6xl flex-col gap-12">
             <div className="flex flex-col gap-3">
-              <p className="dateline">Engenharia de Software & Arquitetura</p>
+              <p className="dateline">Arquitetura da Plataforma</p>
               <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                 Como Esta Plataforma Foi Desenvolvida
               </h2>
@@ -326,10 +326,10 @@ export default async function HomePage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
               <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-accent">
-                <Newspaper size={16} aria-hidden="true" /> Conhecimento, Origem & Adoção de Mercado
+                <Newspaper size={16} aria-hidden="true" /> Artigos, Origens & Novidades
               </span>
               <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                Blog de Engenharia: Aprofunde-se em Cada Solução
+                Blog & Novidades: Aprofunde-se em Cada Solução
               </h2>
               <p className="max-w-2xl text-base text-muted">
                 Publicações completas e abertas sobre como cada serviço surgiu, suas aplicações reais em produção,
@@ -340,7 +340,7 @@ export default async function HomePage() {
               href="/blog"
               className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline"
             >
-              Explorar todos os artigos <ArrowRight size={15} aria-hidden="true" />
+              Explorar todas as novidades <ArrowRight size={15} aria-hidden="true" />
             </Link>
           </div>
 
@@ -348,7 +348,7 @@ export default async function HomePage() {
           {recentPosts.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface-border py-16 text-center text-muted">
               <BookOpen size={32} aria-hidden="true" />
-              <p className="mt-3 text-sm">Carregando artigos técnicos do Blog...</p>
+              <p className="mt-3 text-sm">Carregando novidades do Blog...</p>
             </div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -358,7 +358,7 @@ export default async function HomePage() {
                     <CardHeader className="flex flex-col gap-2">
                       <div className="flex items-center justify-between text-xs text-muted">
                         <span className="inline-flex items-center gap-1 font-medium text-accent">
-                          Artigo Técnico
+                          Blog & Novidades
                         </span>
                         <span className="inline-flex items-center gap-1">
                           <Clock size={12} aria-hidden="true" />
@@ -374,7 +374,7 @@ export default async function HomePage() {
                         {post.summary}
                       </CardDescription>
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-transform group-hover:translate-x-1">
-                        Ler artigo completo <ArrowRight size={13} aria-hidden="true" />
+                        Ler novidade completa <ArrowRight size={13} aria-hidden="true" />
                       </span>
                     </CardContent>
                   </Card>
@@ -388,7 +388,7 @@ export default async function HomePage() {
               href="/blog"
               className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-accent/90"
             >
-              Ver Todas as Publicações no Blog <ArrowRight size={16} aria-hidden="true" />
+              Ver Todas as Novidades no Blog <ArrowRight size={16} aria-hidden="true" />
             </Link>
           </div>
         </section>

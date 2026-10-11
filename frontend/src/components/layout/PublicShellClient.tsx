@@ -16,7 +16,7 @@ import type { PublicModule } from "@/lib/nexus/types";
 
 const PUBLIC_LINKS: { href: string; label: string; module?: string }[] = [
   { href: "/servicos", label: "Serviços", module: "catalog" },
-  { href: "/blog", label: "Blog", module: "blog" },
+  { href: "/blog", label: "Blog & Novidades", module: "blog" },
   { href: "/faq", label: "FAQ" },
   { href: "/sobre", label: "Sobre" },
   { href: "/contato", label: "Contato", module: "contact" },

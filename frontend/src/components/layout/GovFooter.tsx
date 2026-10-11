@@ -48,7 +48,7 @@ export function GovFooter() {
             )}
             <li>
               <Link href="/blog" className="underline-offset-2 hover:underline">
-                Blog & Artigos Técnicos
+                Blog & Novidades
               </Link>
             </li>
             <li>

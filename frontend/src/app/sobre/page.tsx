@@ -174,7 +174,7 @@ export default async function AboutPage() {
           <div>
             <h2 className="text-xl font-semibold text-foreground">OWASP Top 10 Enterprise</h2>
             <p className="mt-1 text-sm text-muted">
-              Tratado como checklist de engenharia desde o primeiro commit. A coluna da direita descreve a prática hoje na plataforma.
+              Tratado como checklist de desenvolvimento e segurança desde o primeiro commit. A coluna da direita descreve a prática hoje na plataforma.
             </p>
           </div>
           <Table caption="Riscos do OWASP Top 10 e a prática correspondente adotada na plataforma.">

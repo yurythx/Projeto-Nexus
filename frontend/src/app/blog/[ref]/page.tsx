@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getPublicPost((await params).ref);
   if (!post) return { title: "Artigo não encontrado" };
   return {
-    title: `${post.title} — Blog`,
+    title: `${post.title} — Blog & Novidades`,
     description: post.summary,
     alternates: { canonical: `${APP_URL}/blog/${post.slug}` },
     openGraph: {
@@ -58,7 +58,7 @@ export default async function PublicPostPage({ params }: Props) {
           href="/blog"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
         >
-          <ArrowLeft size={15} aria-hidden="true" /> Voltar para o Blog
+          <ArrowLeft size={15} aria-hidden="true" /> Voltar para Blog & Novidades
         </Link>
 
         <header className="flex flex-col gap-4 border-b border-surface-border pb-8">
