@@ -4,6 +4,7 @@
 .env.*.local
 secrets/*.pem
 secrets/*.key
+scripts/askpass.*
 
 # Node / Frontend
 node_modules/
