@@ -32,12 +32,18 @@ func NewHandlers(svc *application.Service, logger *slog.Logger, maxPageSize int)
 	return &Handlers{svc: svc, logger: logger, maxPageSize: maxPageSize}
 }
 
-// RegisterRoutes monta as rotas (autenticadas: publicações INTERNAS).
-func (h *Handlers) RegisterRoutes(r chi.Router) {
+// RegisterPublicRoutes monta as rotas públicas (leitura anônima).
+func (h *Handlers) RegisterPublicRoutes(r chi.Router) {
 	r.Get("/blog/posts", h.List)
 	r.Get("/blog/posts/{ref}", h.Get)
+}
+
+// RegisterAdminRoutes monta as rotas de gestão (blog:manage).
+func (h *Handlers) RegisterAdminRoutes(r chi.Router) {
 	r.Group(func(m chi.Router) {
 		m.Use(auth.RequirePermission(h.logger, auth.PermBlogManage))
+		m.Get("/blog/admin/posts", h.List)
+		m.Get("/blog/admin/posts/{ref}", h.Get)
 		m.Post("/blog/posts", h.Create)
 		m.Put("/blog/posts/{id}", h.Update)
 		m.Post("/blog/posts/{id}/publish", h.transition(domain.StatusPublished))

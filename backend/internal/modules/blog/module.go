@@ -52,10 +52,9 @@ func (m *Module) Manifest() kernel.Manifest {
 func (m *Module) RegisterRoutes(r kernel.Routes) {
 	r.Public.Group(func(pub chi.Router) {
 		pub.Use(httpserver.RateLimit(m.deps.Logger, m.deps.PublicLimiter, httpserver.ClientIPKey))
-		pub.Get("/blog/posts", m.handlers.List)
-		pub.Get("/blog/posts/{ref}", m.handlers.Get)
+		m.handlers.RegisterPublicRoutes(pub)
 	})
-	m.handlers.RegisterRoutes(r.Authed)
+	m.handlers.RegisterAdminRoutes(r.Authed)
 }
 
 // SearchProviders implementa kernel.SearchProvider.

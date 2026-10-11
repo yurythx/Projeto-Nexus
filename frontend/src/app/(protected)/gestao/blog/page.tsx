@@ -33,7 +33,7 @@ export default function BlogPage() {
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
-  const list = useApiPage<Post>(withQuery("v1/blog/posts", { q: query, kind, status: manage ? status : "", page, page_size: 12 }));
+  const list = useApiPage<Post>(withQuery("v1/blog/admin/posts", { q: query, kind, status: manage ? status : "", page, page_size: 12 }));
 
   return (
     <div className="flex flex-col gap-6">

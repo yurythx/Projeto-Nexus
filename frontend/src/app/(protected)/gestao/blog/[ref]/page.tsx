@@ -24,7 +24,7 @@ export default function PostPage() {
   const router = useRouter();
   const { can } = useNexus();
   const manage = can("blog:manage");
-  const post = useApiQuery<Post>(`v1/blog/posts/${encodeURIComponent(ref)}`);
+  const post = useApiQuery<Post>(`v1/blog/admin/posts/${encodeURIComponent(ref)}`);
   const { run, pending } = useAction();
   const [editing, setEditing] = useState(false);
   const p = post.data;
