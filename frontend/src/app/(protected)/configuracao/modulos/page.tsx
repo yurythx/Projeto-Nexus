@@ -106,7 +106,7 @@ export default function ModulosPage() {
               <li key={m.key}>
                 <Card className="flex h-full flex-col gap-3 p-5" aria-labelledby={`mod-${m.key}`}>
                   <div className="flex items-start gap-3">
-                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 shadow-xs dark:border-blue-800/60 dark:bg-blue-950/60 dark:text-blue-300">
                       <ModuleIcon name={m.icon} size={20} aria-hidden="true" />
                     </span>
                     <div className="min-w-0 flex-1">

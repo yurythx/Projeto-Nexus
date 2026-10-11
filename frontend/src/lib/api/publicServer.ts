@@ -23,11 +23,17 @@ interface Envelope<T> {
   meta?: unknown;
 }
 
-export async function publicGet<T>(path: string, revalidateSeconds = 60, tags?: string[]): Promise<{ data: T; meta?: unknown }> {
+export async function publicGet<T>(path: string, revalidateSeconds = 0, tags?: string[]): Promise<{ data: T; meta?: unknown }> {
   const url = new URL(`/api/v1/${path.replace(/^\/+/, "")}`, BACKEND_INTERNAL_URL);
   let res: Response;
   try {
-    res = await fetch(url, { next: { revalidate: revalidateSeconds, ...(tags ? { tags } : {}) }, signal: AbortSignal.timeout(8000) });
+    const fetchInit: RequestInit = {
+      signal: AbortSignal.timeout(8000),
+      ...(revalidateSeconds > 0
+        ? { next: { revalidate: revalidateSeconds, ...(tags ? { tags } : {}) } }
+        : { cache: "no-store" }),
+    };
+    res = await fetch(url, fetchInit);
   } catch {
     throw new PublicApiError(503, "DEPENDENCY_UNAVAILABLE", "serviço indisponível no momento");
   }

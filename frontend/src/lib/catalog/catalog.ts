@@ -8,13 +8,13 @@ import type { CatalogService } from "@/lib/nexus/types";
 // (MODULE_DISABLED) ou serviço inexistente/não publicado.
 
 export async function listPublishedServices(): Promise<CatalogService[]> {
-  return (await publicGet<CatalogService[]>("catalog/services?page_size=100", 60)).data;
+  return (await publicGet<CatalogService[]>("catalog/services?page_size=100", 0)).data;
 }
 
 /** Serviço publicado pelo slug; null quando não existe (ou módulo inativo). */
 export async function getPublishedService(slug: string): Promise<CatalogService | null> {
   try {
-    return (await publicGet<CatalogService>(`catalog/services/${encodeURIComponent(slug)}`, 60)).data;
+    return (await publicGet<CatalogService>(`catalog/services/${encodeURIComponent(slug)}`, 0)).data;
   } catch (err) {
     if (err instanceof PublicApiError && err.status === 404) return null;
     throw err;

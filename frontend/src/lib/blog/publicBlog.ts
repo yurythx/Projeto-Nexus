@@ -11,7 +11,7 @@ export async function listPublicPosts(query = "", kind = "", page = 1, pageSize 
   params.set("page_size", String(pageSize));
 
   try {
-    const res = await publicGet<any>(`blog/posts?${params.toString()}`, 30);
+    const res = await publicGet<any>(`blog/posts?${params.toString()}`, 0);
     if (Array.isArray(res.data)) return res.data;
     if (res.data && Array.isArray(res.data.items)) return res.data.items;
     return [];
@@ -23,7 +23,7 @@ export async function listPublicPosts(query = "", kind = "", page = 1, pageSize 
 
 export async function getPublicPost(ref: string): Promise<Post | null> {
   try {
-    const res = await publicGet<Post>(`blog/posts/${encodeURIComponent(ref)}`, 30);
+    const res = await publicGet<Post>(`blog/posts/${encodeURIComponent(ref)}`, 0);
     return res.data;
   } catch (err) {
     if (err instanceof PublicApiError && err.status === 404) return null;

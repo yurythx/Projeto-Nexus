@@ -28,8 +28,10 @@ import { PublicShell } from "@/components/layout/PublicShell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { listPublishedServices } from "@/lib/catalog/catalog";
 import { listPublicPosts } from "@/lib/blog/publicBlog";
-import { ServiceIcon } from "@/lib/catalog/icons";
+import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";
 import { APP_URL } from "@/lib/env";
+
+export const dynamic = "force-dynamic";
 
 const description =
   "Plataforma completa de soluções especializadas de TI, infraestrutura como código, automação, mensageria e nuvem privada com novidades e catálogo interativo.";
@@ -116,10 +118,20 @@ const HIGHLIGHTED_SERVICES = [
 export default async function HomePage() {
   const [allServices, recentPosts] = await Promise.all([
     listPublishedServices().catch(() => []),
-    listPublicPosts("", "", 1, 6).catch(() => []),
+    listPublicPosts("", "", 1, 10).catch(() => []),
   ]);
 
   const serviceCount = allServices.length > 0 ? allServices.length : 26;
+  const displayedServices = allServices.length > 0 ? allServices.slice(0, 8) : HIGHLIGHTED_SERVICES;
+
+  const publishedSlugs = new Set(allServices.map((s) => s.slug));
+  const activePosts = recentPosts.filter((post) => {
+    if (post.slug.startsWith("artigo-")) {
+      const serviceSlug = post.slug.replace(/^artigo-/, "");
+      return allServices.length === 0 || publishedSlugs.has(serviceSlug);
+    }
+    return true;
+  });
 
   return (
     <PublicShell>
@@ -127,7 +139,7 @@ export default async function HomePage() {
         {/* HERO SECTION */}
         <section className="relative overflow-hidden border-b border-surface-border bg-gradient-to-b from-surface-1 to-surface-2/40 px-6 py-20 sm:py-28">
           <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-4 py-1.5 text-xs font-semibold text-accent shadow-xs">
+            <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-xs font-semibold text-sky-800 shadow-xs dark:border-sky-800/60 dark:bg-sky-950/60 dark:text-sky-300">
               <Zap size={14} aria-hidden="true" /> Plataforma Digital de Serviços & Infraestrutura
             </span>
 
@@ -205,33 +217,36 @@ export default async function HomePage() {
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {HIGHLIGHTED_SERVICES.map((svc) => (
-              <Link key={svc.slug} href={`/servicos/${svc.slug}`} className="group block h-full">
-                <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
-                  <CardHeader className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
-                        <ServiceIcon name={svc.icon} size={22} aria-hidden="true" />
+            {displayedServices.map((svc) => {
+              const iconStyle = getCategoryIconStyles(svc.category);
+              return (
+                <Link key={svc.slug} href={`/servicos/${svc.slug}`} className="group block h-full">
+                  <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
+                    <CardHeader className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 ${iconStyle.badge}`}>
+                          <ServiceIcon name={svc.icon} size={22} aria-hidden="true" />
+                        </span>
+                        <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${iconStyle.tag}`}>
+                          {svc.category || "Geral"}
+                        </span>
+                      </div>
+                      <CardTitle as="h3" className="text-base font-bold text-foreground group-hover:text-primary">
+                        {svc.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-1 flex-col justify-between gap-4">
+                      <CardDescription className="line-clamp-3 text-xs leading-relaxed text-muted">
+                        {svc.summary}
+                      </CardDescription>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                        Detalhes da solução <ArrowRight size={12} aria-hidden="true" />
                       </span>
-                      <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
-                        {svc.category}
-                      </span>
-                    </div>
-                    <CardTitle as="h3" className="text-base font-bold text-foreground group-hover:text-accent">
-                      {svc.title}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col justify-between gap-4">
-                    <CardDescription className="line-clamp-3 text-xs leading-relaxed text-muted">
-                      {svc.summary}
-                    </CardDescription>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent">
-                      Detalhes da solução <ArrowRight size={12} aria-hidden="true" />
-                    </span>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
 
           <div className="rounded-2xl border border-surface-border bg-surface-2/60 p-8 text-center sm:flex sm:items-center sm:justify-between sm:text-left">
@@ -276,7 +291,7 @@ export default async function HomePage() {
 
             <div className="grid gap-6 md:grid-cols-3">
               <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 shadow-xs dark:border-blue-800/60 dark:bg-blue-950/60 dark:text-blue-300">
                   <Workflow size={22} aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground">Core Microkernel em Go</h3>
@@ -288,7 +303,7 @@ export default async function HomePage() {
               </div>
 
               <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-xs dark:border-indigo-800/60 dark:bg-indigo-950/60 dark:text-indigo-300">
                   <Boxes size={22} aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground">Next.js 16 & Padrão DSGov</h3>
@@ -300,7 +315,7 @@ export default async function HomePage() {
               </div>
 
               <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-xs dark:border-emerald-800/60 dark:bg-emerald-950/60 dark:text-emerald-300">
                   <ShieldCheck size={22} aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-bold text-foreground">e-MAG, LGPD & AppSec</h3>
@@ -325,7 +340,7 @@ export default async function HomePage() {
         <section className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-accent">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary">
                 <Newspaper size={16} aria-hidden="true" /> Artigos, Origens & Novidades
               </span>
               <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
@@ -338,26 +353,26 @@ export default async function HomePage() {
             </div>
             <Link
               href="/blog"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
             >
               Explorar todas as novidades <ArrowRight size={15} aria-hidden="true" />
             </Link>
           </div>
 
           {/* Posts Highlights */}
-          {recentPosts.length === 0 ? (
+          {activePosts.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface-border py-16 text-center text-muted">
               <BookOpen size={32} aria-hidden="true" />
               <p className="mt-3 text-sm">Carregando novidades do Blog...</p>
             </div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {recentPosts.slice(0, 6).map((post) => (
+              {activePosts.slice(0, 6).map((post) => (
                 <Link key={post.id} href={`/blog/${post.slug}`} className="group block h-full">
-                  <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-accent/40 hover:shadow-lg">
+                  <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
                     <CardHeader className="flex flex-col gap-2">
                       <div className="flex items-center justify-between text-xs text-muted">
-                        <span className="inline-flex items-center gap-1 font-medium text-accent">
+                        <span className="inline-flex items-center gap-1 font-semibold text-primary">
                           Blog & Novidades
                         </span>
                         <span className="inline-flex items-center gap-1">
@@ -365,7 +380,7 @@ export default async function HomePage() {
                           5 min de leitura
                         </span>
                       </div>
-                      <CardTitle as="h3" className="text-base font-bold leading-snug text-foreground group-hover:text-accent">
+                      <CardTitle as="h3" className="text-base font-bold leading-snug text-foreground group-hover:text-primary">
                         {post.title}
                       </CardTitle>
                     </CardHeader>

@@ -11,6 +11,8 @@ import { APP_URL } from "@/lib/env";
 
 type Props = { params: Promise<{ ref: string }> };
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getPublicPost((await params).ref);
   if (!post) return { title: "Artigo não encontrado" };

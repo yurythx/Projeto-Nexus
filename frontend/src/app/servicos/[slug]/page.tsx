@@ -7,10 +7,12 @@ import { PublicShell } from "@/components/layout/PublicShell";
 import { Markdown } from "@/components/nexus/Markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getPublishedService } from "@/lib/catalog/catalog";
-import { ServiceIcon } from "@/lib/catalog/icons";
+import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";
 import { APP_URL } from "@/lib/env";
 import { safeResourceUrl } from "@/lib/security/safe-url";
 import type { ServiceChannel } from "@/lib/nexus/types";
+
+export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -54,7 +56,7 @@ export default async function ServicoPage({ params }: Props) {
         </Link>
 
         <header className="flex items-start gap-4">
-          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <span className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-xs ${getCategoryIconStyles(svc.category).badge}`}>
             <ServiceIcon name={svc.icon} size={24} aria-hidden="true" />
           </span>
           <div className="flex flex-col gap-2">

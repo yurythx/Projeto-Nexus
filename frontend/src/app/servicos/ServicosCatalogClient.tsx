@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, LayoutGrid, Search, X } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { ServiceIcon } from "@/lib/catalog/icons";
+import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";
 import type { CatalogService } from "@/lib/nexus/types";
 
 interface ServicosCatalogClientProps {
@@ -109,15 +109,15 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
                 onClick={() => setSelectedCategory(cat.name)}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
                   isSelected
-                    ? "bg-accent text-accent-foreground shadow-sm font-semibold"
-                    : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                    : "border border-surface-border bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground"
                 }`}
               >
                 <span>{cat.name}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                     isSelected
-                      ? "bg-black/20 text-white"
+                      ? "bg-white/20 text-primary-foreground"
                       : "bg-surface-3 text-muted"
                   }`}
                 >
@@ -143,7 +143,7 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
                 setSearch("");
                 setSelectedCategory("Todas");
               }}
-              className="mt-2 text-xs font-semibold text-accent hover:underline"
+              className="mt-2 text-xs font-semibold text-primary hover:underline"
             >
               Limpar filtros de busca
             </button>
@@ -151,24 +151,26 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredServices.map((svc) => (
-            <Link key={svc.id} href={`/servicos/${svc.slug}`} className="group block h-full">
-              <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-                <CardHeader className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
-                      <ServiceIcon name={svc.icon} size={22} aria-hidden="true" />
-                    </span>
-                    {svc.category && (
-                      <span className="rounded-md bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-muted">
-                        {svc.category}
+          {filteredServices.map((svc) => {
+            const iconStyle = getCategoryIconStyles(svc.category);
+            return (
+              <Link key={svc.id} href={`/servicos/${svc.slug}`} className="group block h-full">
+                <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                  <CardHeader className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-xl shadow-xs transition-transform group-hover:scale-105 ${iconStyle.badge}`}>
+                        <ServiceIcon name={svc.icon} size={22} aria-hidden="true" />
                       </span>
-                    )}
-                  </div>
-                  <CardTitle as="h2" className="text-lg font-bold text-foreground">
-                    {svc.title}
-                  </CardTitle>
-                </CardHeader>
+                      {svc.category && (
+                        <span className={`rounded-md border px-2.5 py-0.5 text-[11px] font-semibold ${iconStyle.tag}`}>
+                          {svc.category}
+                        </span>
+                      )}
+                    </div>
+                    <CardTitle as="h2" className="text-lg font-bold text-foreground group-hover:text-primary">
+                      {svc.title}
+                    </CardTitle>
+                  </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-between gap-4">
                   <CardDescription className="line-clamp-3 text-sm leading-relaxed text-muted">
                     {svc.summary}

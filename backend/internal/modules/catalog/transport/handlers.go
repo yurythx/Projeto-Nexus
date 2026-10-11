@@ -65,7 +65,7 @@ func (h *Handlers) ListPublic(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Cache-Control", "no-cache, private")
 	httputil.WritePage(w, items, p, total)
 }
 
@@ -75,7 +75,7 @@ func (h *Handlers) GetPublic(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	w.Header().Set("Cache-Control", "no-cache, private")
 	httputil.WriteOK(w, svc)
 }
 

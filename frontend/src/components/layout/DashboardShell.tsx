@@ -1,6 +1,8 @@
 "use client";
 
 import { Suspense, useState, useSyncExternalStore, type ReactNode } from "react";
+import Link from "next/link";
+import { Globe } from "lucide-react";
 
 import { AuthFlashToast } from "@/components/layout/AuthFlashToast";
 import { ConnectionStateProvider } from "@/components/layout/ConnectionStateContext";
@@ -64,6 +66,14 @@ function ShellBody({
         menuExpanded={mobileOpen || !collapsed}
         actions={
           <>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+              title="Acessar portal público inicial"
+            >
+              <Globe size={14} aria-hidden="true" />
+              <span className="hidden sm:inline">Site Público</span>
+            </Link>
             <ConnectionIndicator />
             <ThemeToggle initialTheme={initialTheme} />
             <NotificationBell />

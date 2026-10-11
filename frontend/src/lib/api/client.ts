@@ -82,8 +82,34 @@ async function request<T>(
   // Navegação DURA de propósito (location.replace, não router.push):
   // descarta todo o estado de cliente da tela expirada e reexecuta o
   // middleware; replace() não deixa a tela morta no histórico do back.
+  const PROTECTED_PREFIXES = [
+    "/dashboard",
+    "/configuracao",
+    "/monitoramento",
+    "/auditoria",
+    "/perfil",
+    "/busca",
+    "/mercurio",
+    "/wiki",
+    "/agenda",
+    "/diretorio",
+    "/arquivos",
+    "/signum",
+    "/tramite",
+    "/atlas",
+    "/gestao",
+    "/exemplos",
+  ];
+
+  const isProtectedPath =
+    typeof window !== "undefined" &&
+    PROTECTED_PREFIXES.some(
+      (prefix) =>
+        window.location.pathname === prefix || window.location.pathname.startsWith(prefix + "/"),
+    );
+
   const sessionExpired = res.status === 401 && (!json?.error || json.error.code === "UNAUTHORIZED");
-  if (sessionExpired && typeof window !== "undefined" && window.location.pathname !== "/login") {
+  if (sessionExpired && isProtectedPath && window.location.pathname !== "/login") {
     const target = new URL("/login", window.location.origin);
     target.searchParams.set("callbackUrl", window.location.pathname + window.location.search);
     // Este 401 só acontece pra quem já tinha uma sessão (o proxy BFF exige

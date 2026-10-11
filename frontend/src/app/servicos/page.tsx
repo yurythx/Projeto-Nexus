@@ -9,6 +9,8 @@ import { listPublishedServices } from "@/lib/catalog/catalog";
 import { APP_URL } from "@/lib/env";
 import { ServicosCatalogClient } from "./ServicosCatalogClient";
 
+export const dynamic = "force-dynamic";
+
 const description =
   "Catálogo completo de soluções tecnológicas e serviços especializados de infraestrutura, comunicação, automação e segurança.";
 
