@@ -1,0 +1,42 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+
+import { PublicShell } from "@/components/layout/PublicShell";
+import { listPublicPosts } from "@/lib/blog/publicBlog";
+import { APP_URL } from "@/lib/env";
+import { PublicBlogListClient } from "./PublicBlogListClient";
+
+const description =
+  "Artigos aprofundados, guias de engenharia e análises técnicas sobre as principais soluções de infraestrutura, automação, comunicação e segurança.";
+
+export const metadata: Metadata = {
+  title: "Blog & Artigos Técnicos",
+  description,
+  alternates: { canonical: `${APP_URL}/blog` },
+  openGraph: {
+    title: "Blog & Artigos Técnicos",
+    description,
+    type: "website",
+    url: `${APP_URL}/blog`,
+  },
+};
+
+export default async function BlogPublicPage() {
+  const posts = await listPublicPosts("", "", 1, 100);
+
+  return (
+    <PublicShell>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-12">
+        <div className="flex flex-col gap-3">
+          <p className="dateline">Conhecimento & Engenharia</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            Blog & Publicações Especializadas
+          </h1>
+          <p className="max-w-3xl text-base text-muted">{description}</p>
+        </div>
+
+        <PublicBlogListClient initialPosts={posts} />
+      </div>
+    </PublicShell>
+  );
+}

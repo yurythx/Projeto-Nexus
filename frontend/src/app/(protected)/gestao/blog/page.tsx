@@ -127,7 +127,7 @@ export default function BlogPage() {
       </DataState>
 
       <Dialog open={creating} onClose={() => setCreating(false)} title="Nova publicação" size="xl">
-        {creating && <PostEditor onSaved={(p) => router.push(`/blog/${p.slug}`)} />}
+        {creating && <PostEditor onSaved={(p) => router.push(`/gestao/blog/${p.slug}`)} />}
       </Dialog>
     </div>
   );

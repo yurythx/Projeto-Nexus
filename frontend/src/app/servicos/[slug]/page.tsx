@@ -123,6 +123,19 @@ export default async function ServicoPage({ params }: Props) {
           </Card>
         )}
 
+        <div className="flex flex-col gap-2 rounded-xl border border-accent/20 bg-accent/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col">
+            <span className="text-xs font-bold uppercase tracking-wider text-accent">Artigo Técnico & Análise de Mercado</span>
+            <span className="text-sm font-medium text-foreground">Quer conhecer a origem, empresas que usam e arquitetura desta tecnologia?</span>
+          </div>
+          <Link
+            href={`/blog/artigo-${svc.slug}`}
+            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-accent hover:underline"
+          >
+            Ler artigo no Blog →
+          </Link>
+        </div>
+
         {svc.responsible_unidade && <p className="text-sm text-muted">Unidade responsável: {svc.responsible_unidade}</p>}
 
         <Link href={`/contato?servico=${encodeURIComponent(svc.slug)}`} className="text-sm font-semibold text-primary hover:underline">

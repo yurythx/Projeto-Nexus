@@ -26,11 +26,12 @@ const HIDDEN_FROM_MENU = new Set(["iam", "audit", "egress", "search"]);
 const MENU_PERMISSION: Record<string, string> = {
   catalog: "catalog:manage",
   contact: "contact:read",
+  blog: "blog:manage",
 };
 
 const ADMIN_PERMISSIONS = [
   "modules:manage", "iam:manage", "users:read", "branding:manage", "keycloak:manage", "ia:manage",
-  "egress:manage", "catalog:manage", "contact:read", "mercurio:manage", "calendar:manage",
+  "egress:manage", "catalog:manage", "contact:read", "mercurio:manage", "calendar:manage", "blog:manage",
 ];
 
 /** Monta o menu a partir do estado dos módulos no Kernel e das permissões

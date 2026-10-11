@@ -33,7 +33,6 @@ const PROTECTED_PREFIXES = [
   "/perfil",
   "/busca",
   "/mercurio",
-  "/blog",
   "/wiki",
   "/agenda",
   "/diretorio",

@@ -16,12 +16,14 @@ import type { PublicModule } from "@/lib/nexus/types";
 
 const PUBLIC_LINKS: { href: string; label: string; module?: string }[] = [
   { href: "/servicos", label: "Serviços", module: "catalog" },
+  { href: "/blog", label: "Blog", module: "blog" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/sobre", label: "Sobre" },
+  { href: "/contato", label: "Contato", module: "contact" },
   { href: "/procedimentos", label: "Procedimentos", module: "atlas" },
   { href: "/temporalidade", label: "Temporalidade", module: "atlas" },
   { href: "/setores", label: "Setores", module: "directory" },
   { href: "/eventos", label: "Agenda", module: "calendar" },
-  { href: "/contato", label: "Contato", module: "contact" },
-  { href: "/sobre", label: "Sobre" },
 ];
 
 /** Shell do site institucional (visitante anônimo). Os links de plugins

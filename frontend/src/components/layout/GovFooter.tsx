@@ -47,6 +47,16 @@ export function GovFooter() {
               </li>
             )}
             <li>
+              <Link href="/blog" className="underline-offset-2 hover:underline">
+                Blog & Artigos Técnicos
+              </Link>
+            </li>
+            <li>
+              <Link href="/faq" className="underline-offset-2 hover:underline">
+                Perguntas Frequentes (FAQ)
+              </Link>
+            </li>
+            <li>
               <Link href="/contato" className="underline-offset-2 hover:underline">
                 Fale conosco
               </Link>

@@ -34,8 +34,8 @@ export default function PostPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <Link href="/blog" className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground">
-        <ArrowLeft size={14} aria-hidden="true" /> Todas as publicações
+      <Link href="/gestao/blog" className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground">
+        <ArrowLeft size={14} aria-hidden="true" /> Voltar para o painel de publicações
       </Link>
       <DataState loading={post.isLoading} error={post.error} empty={!p}>
         {p && (

@@ -5,10 +5,13 @@ package blog
 import (
 	"context"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/application"
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/infrastructure"
 	"github.com/yurythx/projeto-nexus/internal/modules/blog/transport"
 	"github.com/yurythx/projeto-nexus/internal/platform/auth"
+	"github.com/yurythx/projeto-nexus/internal/platform/httpserver"
 	"github.com/yurythx/projeto-nexus/internal/platform/kernel"
 	"github.com/yurythx/projeto-nexus/internal/platform/modkit"
 	"github.com/yurythx/projeto-nexus/internal/platform/search"
@@ -19,6 +22,7 @@ const Key = "blog"
 
 // Module é o plugin.
 type Module struct {
+	deps     modkit.Deps
 	svc      *application.Service
 	handlers *transport.Handlers
 }
@@ -27,7 +31,7 @@ type Module struct {
 func New(deps modkit.Deps) *Module {
 	svc := application.NewService(deps.Pool, infrastructure.NewRepository(), deps.Outbox, deps.Storage,
 		deps.Config.MinIO.Bucket, deps.Config.Upload.URLExpiry, deps.Logger)
-	return &Module{svc: svc, handlers: transport.NewHandlers(svc, deps.Logger, deps.Config.MaxPageSize)}
+	return &Module{deps: deps, svc: svc, handlers: transport.NewHandlers(svc, deps.Logger, deps.Config.MaxPageSize)}
 }
 
 // Manifest implementa kernel.Plugin.
@@ -35,16 +39,24 @@ func (m *Module) Manifest() kernel.Manifest {
 	return kernel.Manifest{
 		Key:            Key,
 		Name:           "Blog",
-		Description:    "Publicações internas e comunicados com rascunho e publicação.",
+		Description:    "Publicações institucionais, artigos e comunicados.",
 		DefaultEnabled: true,
+		Public:         true,
 		Icon:           "newspaper",
-		Route:          "/blog",
+		Route:          "/gestao/blog",
 		Permissions:    []kernel.PermissionInfo{{Key: "blog:manage", Description: "Criar, editar, publicar e arquivar publicações"}},
 	}
 }
 
 // RegisterRoutes implementa kernel.RouteProvider.
-func (m *Module) RegisterRoutes(r kernel.Routes) { m.handlers.RegisterRoutes(r.Authed) }
+func (m *Module) RegisterRoutes(r kernel.Routes) {
+	r.Public.Group(func(pub chi.Router) {
+		pub.Use(httpserver.RateLimit(m.deps.Logger, m.deps.PublicLimiter, httpserver.ClientIPKey))
+		pub.Get("/blog/posts", m.handlers.List)
+		pub.Get("/blog/posts/{ref}", m.handlers.Get)
+	})
+	m.handlers.RegisterRoutes(r.Authed)
+}
 
 // SearchProviders implementa kernel.SearchProvider.
 func (m *Module) SearchProviders() []search.Provider { return []search.Provider{provider{m.svc}} }

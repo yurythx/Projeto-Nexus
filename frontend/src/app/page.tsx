@@ -1,239 +1,452 @@
-import {
-  Bell,
-  Blocks,
-  Bug,
-  FileCheck,
-  Globe,
-  KeyRound,
-  Link as LinkIcon,
-  Lock,
-  Package,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  UserCheck,
-} from "lucide-react";
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import Link from "next/link";
+import {
+  ArrowRight,
+  BookOpen,
+  Boxes,
+  CheckCircle2,
+  Clock,
+  Cloud,
+  Cpu,
+  FileText,
+  HelpCircle,
+  KeyRound,
+  Layers,
+  Lock,
+  Mail,
+  MessageSquare,
+  Network,
+  Newspaper,
+  Server,
+  ShieldCheck,
+  Workflow,
+  Wrench,
+  Zap,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { PublicShell } from "@/components/layout/PublicShell";
-import { getServerBranding } from "@/lib/branding/server";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { listPublishedServices } from "@/lib/catalog/catalog";
+import { listPublicPosts } from "@/lib/blog/publicBlog";
+import { ServiceIcon } from "@/lib/catalog/icons";
+import { APP_URL } from "@/lib/env";
 
 const description =
-  "Plataforma institucional modular (Microkernel) em conformidade com e-MAG, DSGov, LGPD e OWASP Top 10.";
+  "Plataforma completa de soluções especializadas de TI, infraestrutura como código, automação, mensageria e nuvem privada com artigos técnicos e catálogo interativo.";
 
 export const metadata: Metadata = {
+  title: "Início — Soluções de TI, Catálogo & Blog Técnico",
   description,
-  openGraph: { description, type: "website" },
+  alternates: { canonical: `${APP_URL}` },
+  openGraph: {
+    title: "Início — Soluções de TI, Catálogo & Blog Técnico",
+    description,
+    type: "website",
+    url: `${APP_URL}`,
+  },
 };
 
-const pillars = [
-  { n: 1, label: "Arquitetura Microkernel & Plug-ins" },
-  { n: 2, label: "Keycloak dedicado + federação AD" },
-  { n: 3, label: "e-MAG Acessibilidade & VLibras" },
-  { n: 4, label: "Identidade Visual DSGov / White-Label" },
-  { n: 5, label: "LGPD & Mascaramento PII em Logs" },
-  { n: 6, label: "Auditoria Imutável & Interoperabilidade" },
-];
-
-const govModules = [
+const HIGHLIGHTED_SERVICES = [
   {
-    code: "M01",
-    title: "Segurança HTTP (OWASP / e-PING)",
-    description: "Headers defensivos (HSTS, CSP com nonce, X-Frame DENY) e timeouts de servidor para prevenir DoS/Slowloris.",
-    reason: "Protege a infraestrutura governamental contra ataques web clássicos e garante interoperabilidade segura.",
+    slug: "whatsapp-api",
+    title: "WhatsApp Business API",
+    category: "Comunicação",
+    icon: "shield",
+    summary:
+      "Conecte o número da empresa à API oficial da Meta. Zero risco de ban, múltiplos agentes simultâneos e templates homologados.",
   },
   {
-    code: "M02",
-    title: "LGPD & Auditoria (Lei 13.709/2018)",
-    description: "Mascaramento PII nativo (CPF, email, telefone), logs estruturados log/slog e correlação X-Request-ID.",
-    reason: "Evita o vazamento acidental de dados sensíveis de cidadãos e servidores em logs e garante rastreabilidade.",
+    slug: "terraform",
+    title: "Terraform",
+    category: "Infraestrutura",
+    icon: "cloud",
+    summary:
+      "Infraestrutura como Código (IaC) declarativa para Proxmox e multi-cloud. Versionamento Git, state locking e drift detection.",
   },
   {
-    code: "M03",
-    title: "Identidade: Keycloak dedicado + RS256",
-    description: "OIDC com Keycloak apartado, federação LDAP/LDAPS com o Active Directory, JWKS com cache e rotação, e fallback local RS256.",
-    reason: "Grupos do AD são mapeados para Perfis e escopos (Entidade, Unidade, Departamento) sem dependência de provedores externos.",
+    slug: "ansible",
+    title: "Ansible",
+    category: "Automação",
+    icon: "cpu",
+    summary:
+      "Automação e gerência de configuração agentless via SSH e WinRM. Playbooks idempotentes em YAML e hardening em lote.",
   },
   {
-    code: "M04",
-    title: "Acessibilidade e-MAG / WCAG 2.1 AA",
-    description: "Barra de atalhos (Alt+1..4), VLibras nativo, alto contraste e-MAG, escala de fonte A+/A-/A e linting jsx-a11y.",
-    reason: "Garante inclusão digital irrestrita para pessoas com deficiência visual, auditiva e motora no serviço público.",
+    slug: "proxmox",
+    title: "Proxmox VE",
+    category: "Infraestrutura",
+    icon: "server",
+    summary:
+      "Plataforma open-source completa de virtualização empresarial, alta disponibilidade, containers LXC e replicação de storages ZFS.",
   },
   {
-    code: "M05",
-    title: "Identidade Visual DSGov (Padrão Digital)",
-    description: "Design system oficial com cores institucionais, componentes unificados (GovHeader, GovFooter) e tipografia oficial.",
-    reason: "Promove padronização visual e transparência institucional em conformidade com o Guia de Identidade da SECOM/MGI.",
-  },
-];
-
-const services = [
-  {
-    icon: LinkIcon,
-    title: "Arquitetura Microkernel (Plug-in System)",
-    description:
-      "Core Kernel em Go. Acople e gerencie novos módulos de negócio como plug-ins independentes com desacoplamento total.",
+    slug: "zabbix",
+    title: "Zabbix Enterprise",
+    category: "Gestão de TI",
+    icon: "eye",
+    summary:
+      "Monitoramento proativo em tempo real de servidores, links de rede, bancos de dados e serviços com dashboards e alertas no Telegram.",
   },
   {
-    icon: Bell,
-    title: "Notificações em Tempo Real",
-    description:
-      "Hub WebSocket integrado ao Kernel para retransmissão instantânea de eventos dos plug-ins aos clientes.",
+    slug: "glpi",
+    title: "GLPI ITSM",
+    category: "Gestão de TI",
+    icon: "wrench",
+    summary:
+      "Central de atendimento (Helpdesk) alinhada às melhores práticas ITIL, inventário automatizado de ativos e gestão de contratos com SLA.",
   },
   {
-    icon: ScrollText,
-    title: "Trilha de Auditoria LGPD",
-    description:
-      "Toda ação de escrita nos plug-ins é registrada em logs de auditoria imutáveis no Postgres com proveniência e contexto.",
+    slug: "nextcloud",
+    title: "Nextcloud Hub",
+    category: "Infraestrutura",
+    icon: "cloud",
+    summary:
+      "Nuvem privada para armazenamento seguro, compartilhamento criptografado de arquivos corporativos e colaboração em documentos.",
   },
   {
-    icon: ShieldCheck,
-    title: "Resiliência & Outbox Transacional",
-    description:
-      "Escrita atômica no banco de dados e publicação em background no RabbitMQ com entrega garantida, idempotência e DLQ para todos os módulos.",
+    slug: "keycloak",
+    title: "Keycloak IAM & SSO",
+    category: "Segurança e Identidade",
+    icon: "key-round",
+    summary:
+      "Gerenciamento centralizado de identidades, Single Sign-On (SSO), federação com Active Directory e autenticação multifator (MFA).",
   },
 ];
 
-const owaspPractices = [
-  { code: "A01", icon: Lock, title: "Broken Access Control", description: "RBAC por permissão em cada rota protegida." },
-  { code: "A02", icon: KeyRound, title: "Cryptographic Failures", description: "Argon2id / bcrypt, JWT assinado RS256 e TLS." },
-  { code: "A03", icon: Bug, title: "Injection", description: "Queries estritamente parametrizadas com pgxpool." },
-  { code: "A04", icon: Blocks, title: "Insecure Design", description: "Arquitetura limpa com pacotes desacoplados." },
-  { code: "A05", icon: Settings, title: "Security Misconfiguration", description: "CSP com nonce por requisição e headers OWASP." },
-  { code: "A06", icon: Package, title: "Vulnerable Components", description: "Verificação contínua de vulnerabilidades e deps." },
-  { code: "A07", icon: UserCheck, title: "Auth Failures", description: "Lockout de conta, rate limiting por IP/user." },
-  { code: "A08", icon: FileCheck, title: "Data Integrity Failures", description: "Chaves de idempotência e outbox transacional." },
-  { code: "A09", icon: ScrollText, title: "Logging & Monitoring", description: "Prometheus metrics e suporte OpenTelemetry." },
-  { code: "A10", icon: Globe, title: "SSRF", description: "Validação rigorosa de endpoints e requisições de saída." },
-];
+export default async function HomePage() {
+  const [allServices, recentPosts] = await Promise.all([
+    listPublishedServices().catch(() => []),
+    listPublicPosts("", "", 1, 6).catch(() => []),
+  ]);
 
-export default async function LandingPage() {
-  await connection();
-  const brand = await getServerBranding();
+  const serviceCount = allServices.length > 0 ? allServices.length : 26;
 
   return (
     <PublicShell>
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-20 px-6 py-12">
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col gap-5">
-            <p className="dateline">{brand.orgName}</p>
-            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.15] text-foreground sm:text-5xl">
-              {brand.appName}
+      <div className="flex flex-col gap-20 pb-20">
+        {/* HERO SECTION */}
+        <section className="relative overflow-hidden border-b border-surface-border bg-gradient-to-b from-surface-1 to-surface-2/40 px-6 py-20 sm:py-28">
+          <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-4 py-1.5 text-xs font-semibold text-accent shadow-xs">
+              <Zap size={14} aria-hidden="true" /> Plataforma Digital de Serviços & Infraestrutura
+            </span>
+
+            <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl">
+              Soluções Tecnológicas Especializadas{" "}
+              <span className="text-accent underline decoration-accent/40 decoration-wavy underline-offset-8">
+                Sob Medida
+              </span>
             </h1>
-            <p className="max-w-2xl text-muted text-base">
-              {brand.appDescription || "Plataforma institucional modular"} — construída em estrita conformidade com as normas federais: <strong className="text-foreground">e-MAG, DSGov, LGPD e OWASP Top 10</strong>.
+
+            <p className="mt-6 max-w-3xl text-lg leading-relaxed text-muted sm:text-xl">
+              Do atendimento homologado na <strong>WhatsApp Business API</strong> à automação declarativa com{" "}
+              <strong>Terraform</strong> e <strong>Ansible</strong>. Conheça nosso catálogo com{" "}
+              <strong className="text-foreground">{serviceCount} serviços corporativos</strong> implantados com total
+              soberania, segurança e suporte contínuo.
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Link href="/login">
-                <Button size="md">Acessar Plataforma</Button>
+
+            {/* CTAs */}
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+              <Link
+                href="/servicos"
+                className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-accent-foreground shadow-md transition-all hover:-translate-y-0.5 hover:bg-accent/90"
+              >
+                Explorar Catálogo de Serviços <ArrowRight size={18} aria-hidden="true" />
               </Link>
-              <Link href="/sobre">
-                <Button size="md" variant="secondary">
-                  Documentação & Conformidade
-                </Button>
+
+              <Link
+                href="/blog"
+                className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-surface px-6 py-3.5 text-base font-semibold text-foreground shadow-xs transition-all hover:bg-surface-2"
+              >
+                <BookOpen size={18} aria-hidden="true" /> Acessar o Blog de Engenharia
+              </Link>
+            </div>
+
+            {/* Key Metric Highlights */}
+            <div className="mt-14 grid w-full max-w-4xl grid-cols-2 gap-4 border-t border-surface-border pt-8 sm:grid-cols-4">
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black text-foreground sm:text-3xl">{serviceCount}+</span>
+                <span className="text-xs font-medium text-muted">Serviços Especializados</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black text-foreground sm:text-3xl">100%</span>
+                <span className="text-xs font-medium text-muted">Soberania dos Dados</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black text-foreground sm:text-3xl">5 a 10 dias</span>
+                <span className="text-xs font-medium text-muted">Prazo de Implantação</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black text-foreground sm:text-3xl">Go + Microkernel</span>
+                <span className="text-xs font-medium text-muted">Arquitetura de Alta Vazão</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION 1: SERVIÇOS EM DESTAQUE */}
+        <section className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-2">
+              <p className="dateline">Catálogo Especializado</p>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                Soluções Estratégicas para sua Operação
+              </h2>
+              <p className="max-w-2xl text-base text-muted">
+                Implementação personalizada, treinamento e monitoramento contínuo das principais ferramentas do mercado.
+              </p>
+            </div>
+            <Link
+              href="/servicos"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline"
+            >
+              Ver todas as {serviceCount} soluções <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {HIGHLIGHTED_SERVICES.map((svc) => (
+              <Link key={svc.slug} href={`/servicos/${svc.slug}`} className="group block h-full">
+                <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-lg">
+                  <CardHeader className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors group-hover:bg-accent group-hover:text-accent-foreground">
+                        <ServiceIcon name={svc.icon} size={22} aria-hidden="true" />
+                      </span>
+                      <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+                        {svc.category}
+                      </span>
+                    </div>
+                    <CardTitle as="h3" className="text-base font-bold text-foreground group-hover:text-accent">
+                      {svc.title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col justify-between gap-4">
+                    <CardDescription className="line-clamp-3 text-xs leading-relaxed text-muted">
+                      {svc.summary}
+                    </CardDescription>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent">
+                      Detalhes da solução <ArrowRight size={12} aria-hidden="true" />
+                    </span>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-surface-border bg-surface-2/60 p-8 text-center sm:flex sm:items-center sm:justify-between sm:text-left">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-lg font-bold text-foreground">
+                Precisa de uma topologia completa para sua infraestrutura?
+              </h3>
+              <p className="text-sm text-muted">
+                Integramos comunicação, storages, redes corporativas e orquestração de servidores sob medida.
+              </p>
+            </div>
+            <div className="mt-4 flex shrink-0 items-center justify-center gap-3 sm:mt-0">
+              <Link
+                href="/servicos"
+                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground shadow-xs hover:bg-accent/90"
+              >
+                Catálogo Completo
+              </Link>
+              <Link
+                href="/contato"
+                className="inline-flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-5 py-2.5 text-sm font-medium text-foreground hover:bg-surface-3"
+              >
+                Fale Conosco
               </Link>
             </div>
           </div>
-
-          <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-surface-border bg-surface-border sm:grid-cols-3 lg:grid-cols-6">
-            {pillars.map((item) => (
-              <li key={item.n} className="flex flex-col gap-2 bg-surface p-4">
-                <span className="font-mono text-xs font-bold text-primary">
-                  {String(item.n).padStart(2, "0")}
-                </span>
-                <span className="text-xs font-medium leading-snug text-foreground">{item.label}</span>
-              </li>
-            ))}
-          </ol>
         </section>
 
-        {/* Seção Principal de Conformidade com Padrões do Governo Federal */}
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <p className="dateline">Conformidade com Padrões Governamentais (SGD/MGI)</p>
-            <h2 className="text-2xl font-bold text-foreground">Os 5 Módulos de Conformidade do Governo Federal</h2>
-            <p className="max-w-3xl text-sm text-muted">
-              Desenvolvido respeitando rigorosamente as diretrizes da Secretaria de Governo Digital (SGD/MGI), garantindo segurança, privacidade, acessibilidade e interoperabilidade.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {govModules.map((item) => (
-              <div key={item.code} className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-5 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">{item.code}</span>
-                  <span className="text-[11px] font-semibold text-success">100% Conforme</span>
+        {/* SECTION 2: COMO A PLATAFORMA FOI CONSTRUÍDA (MENCIONANDO) */}
+        <section className="border-y border-surface-border bg-surface-1/70 px-6 py-16">
+          <div className="mx-auto flex max-w-6xl flex-col gap-12">
+            <div className="flex flex-col gap-3">
+              <p className="dateline">Engenharia de Software & Arquitetura</p>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                Como Esta Plataforma Foi Desenvolvida
+              </h2>
+              <p className="max-w-3xl text-base text-muted">
+                Concebida sob princípios rigorosos de isolamento de módulos, alta performance e conformidade com os
+                padrões federais de acessibilidade, segurança e governança de dados.
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-3">
+              <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Workflow size={22} aria-hidden="true" />
                 </div>
-                <h3 className="text-sm font-bold text-foreground">{item.title}</h3>
-                <p className="text-xs text-muted leading-relaxed">{item.description}</p>
-                <div className="mt-auto pt-3 border-t border-surface-border">
-                  <p className="text-[11px] font-medium text-foreground/80">
-                    <strong className="text-seal">Justificativa:</strong> {item.reason}
-                  </p>
-                </div>
+                <h3 className="text-lg font-bold text-foreground">Core Microkernel em Go</h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  O backend foi desenvolvido em <strong>Go (Golang)</strong> com arquitetura Microkernel: o Kernel
+                  gerencia ciclo de vida, transações atômicas e barramento de eventos (RabbitMQ), enquanto os módulos
+                  operam como plug-ins totalmente desacoplados.
+                </p>
               </div>
-            ))}
-          </div>
-        </section>
 
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <p className="dateline">Segurança & AppSec</p>
-            <h2 className="text-2xl font-bold text-foreground">OWASP Top 10 Enterprise</h2>
-            <p className="max-w-2xl text-sm text-muted">
-              Padrões defensivos rigorosamente aplicados na fundação do sistema.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {owaspPractices.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.code}
-                  className="flex flex-col gap-2 rounded-xl border border-surface-border bg-surface p-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon size={16} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <p className="font-mono text-xs font-bold text-primary">{item.code}</p>
-                      <p className="text-xs font-semibold text-foreground">{item.title}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted leading-relaxed">{item.description}</p>
+              <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Boxes size={22} aria-hidden="true" />
                 </div>
-              );
-            })}
+                <h3 className="text-lg font-bold text-foreground">Next.js 16 & Padrão DSGov</h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  Interface moderna construída em <strong>Next.js 16 (React 19)</strong> com Turbopack, estrita
+                  conformidade com o <strong>Design System de Governo (DSGov)</strong>, zero layout shift e renderização
+                  otimizada para velocidade e experiência do usuário.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <ShieldCheck size={22} aria-hidden="true" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">e-MAG, LGPD & AppSec</h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  Total aderência às diretrizes da SGD/MGI: acessibilidade <strong>e-MAG 2.0 (WCAG 2.1 AA)</strong> com
+                  VLibras nativo, mascaramento automático de PII em logs pela LGPD e fundação blindada na matriz{" "}
+                  <strong>OWASP Top 10</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-surface-border pt-4 text-xs text-muted">
+              <span>Stack: Go 1.23 · Next.js 16 · PostgreSQL 16 · Redis 7 · RabbitMQ · Proxmox VE · Caddy TLS</span>
+              <Link href="/sobre" className="font-semibold text-primary hover:underline">
+                Conhecer arquitetura completa →
+              </Link>
+            </div>
           </div>
         </section>
 
-        <section className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <p className="dateline">Capacidades Prontas</p>
-            <h2 className="text-2xl font-bold text-foreground">Serviços de Plataforma</h2>
+        {/* SECTION 3: FORTE APEGO AO BLOG */}
+        <section className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-accent">
+                <Newspaper size={16} aria-hidden="true" /> Conhecimento, Origem & Adoção de Mercado
+              </span>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                Blog de Engenharia: Aprofunde-se em Cada Solução
+              </h2>
+              <p className="max-w-2xl text-base text-muted">
+                Publicações completas e abertas sobre como cada serviço surgiu, suas aplicações reais em produção,
+                vantagens competitivas e quais gigantes globais confiam nele.
+              </p>
+            </div>
+            <Link
+              href="/blog"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline"
+            >
+              Explorar todos os artigos <ArrowRight size={15} aria-hidden="true" />
+            </Link>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {services.map((service) => {
-              const Icon = service.icon;
-              return (
-                <Card key={service.title}>
-                  <CardHeader className="flex flex-row items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Icon size={18} aria-hidden="true" />
-                    </span>
-                    <CardTitle className="text-sm font-bold">{service.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted leading-relaxed">{service.description}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
+
+          {/* Posts Highlights */}
+          {recentPosts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface-border py-16 text-center text-muted">
+              <BookOpen size={32} aria-hidden="true" />
+              <p className="mt-3 text-sm">Carregando artigos técnicos do Blog...</p>
+            </div>
+          ) : (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {recentPosts.slice(0, 6).map((post) => (
+                <Link key={post.id} href={`/blog/${post.slug}`} className="group block h-full">
+                  <Card className="flex h-full flex-col border-surface-border transition-all duration-200 hover:-translate-y-1 hover:border-accent/40 hover:shadow-lg">
+                    <CardHeader className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-xs text-muted">
+                        <span className="inline-flex items-center gap-1 font-medium text-accent">
+                          Artigo Técnico
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={12} aria-hidden="true" />
+                          5 min de leitura
+                        </span>
+                      </div>
+                      <CardTitle as="h3" className="text-base font-bold leading-snug text-foreground group-hover:text-accent">
+                        {post.title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-1 flex-col justify-between gap-4">
+                      <CardDescription className="line-clamp-3 text-xs leading-relaxed text-muted">
+                        {post.summary}
+                      </CardDescription>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-transform group-hover:translate-x-1">
+                        Ler artigo completo <ArrowRight size={13} aria-hidden="true" />
+                      </span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          <div className="text-center">
+            <Link
+              href="/blog"
+              className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-accent/90"
+            >
+              Ver Todas as Publicações no Blog <ArrowRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+
+        {/* SECTION 4: PILARES PÚBLICOS (SOBRE, CONTATO, FAQ) */}
+        <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6">
+          <div className="grid gap-6 sm:grid-cols-3">
+            <Link href="/sobre" className="group block h-full">
+              <div className="flex h-full flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-6 transition-all hover:border-primary/40 hover:shadow-md">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Layers size={20} aria-hidden="true" />
+                </span>
+                <h3 className="text-base font-bold text-foreground group-hover:text-primary">
+                  Sobre a Plataforma
+                </h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  Conheça nossa arquitetura tecnológica, conformidade e-MAG / DSGov, governança e diretrizes de
+                  segurança.
+                </p>
+                <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                  Saber mais <ArrowRight size={12} aria-hidden="true" />
+                </span>
+              </div>
+            </Link>
+
+            <Link href="/faq" className="group block h-full">
+              <div className="flex h-full flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-6 transition-all hover:border-accent/40 hover:shadow-md">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <HelpCircle size={20} aria-hidden="true" />
+                </span>
+                <h3 className="text-base font-bold text-foreground group-hover:text-accent">
+                  Perguntas Frequentes (FAQ)
+                </h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  Tire dúvidas sobre prazos de implantação, infraestrutura dedicada, SLAs e modelos de contratação.
+                </p>
+                <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-accent">
+                  Consultar FAQ <ArrowRight size={12} aria-hidden="true" />
+                </span>
+              </div>
+            </Link>
+
+            <Link href="/contato" className="group block h-full">
+              <div className="flex h-full flex-col gap-3 rounded-2xl border border-surface-border bg-surface p-6 transition-all hover:border-success/40 hover:shadow-md">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
+                  <MessageSquare size={20} aria-hidden="true" />
+                </span>
+                <h3 className="text-base font-bold text-foreground group-hover:text-success">
+                  Fale Conosco
+                </h3>
+                <p className="text-xs leading-relaxed text-muted">
+                  Envie suas demandas ou tire dúvidas diretamente com nossa equipe técnica de atendimento.
+                </p>
+                <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-success">
+                  Abrir contato <ArrowRight size={12} aria-hidden="true" />
+                </span>
+              </div>
+            </Link>
           </div>
         </section>
       </div>
