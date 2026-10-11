@@ -181,7 +181,8 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
                 </CardContent>
               </Card>
             </Link>
-          ))}
+          );
+        })}
         </div>
       )}
     </div>
