@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 
 import { PublicoAlvoPicker, TODOS } from "@/components/iam/PublicoAlvo";
 import { UnidadeDonaSelect } from "@/components/iam/UnidadeDonaSelect";
@@ -24,6 +24,64 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
   const [coverKey, setCoverKey] = useState(post?.cover_object_key ?? "");
   const [uploading, setUploading] = useState(false);
   const [publico, setPublico] = useState(post?.publico ?? TODOS);
+
+  const storageKey = post ? `nexus_blog_draft_${post.id}` : "nexus_blog_draft_new";
+  const [hasDraft, setHasDraft] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.body && parsed.body !== (post?.body ?? "")) {
+          setHasDraft(true);
+        }
+      }
+    } catch {
+      // LocalStorage pode estar indisponível ou desabilitado
+    }
+  }, [storageKey, post?.body]);
+
+  useEffect(() => {
+    if (!body || body === (post?.body ?? "")) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ body, savedAt: Date.now() }));
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+        setLastSaved(timeStr);
+      } catch {
+        // Ignora erros de cota do localStorage
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [body, storageKey, post?.body]);
+
+  function restoreDraft() {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.body) {
+          setBody(parsed.body);
+        }
+      }
+    } catch {
+      // noop
+    }
+    setHasDraft(false);
+  }
+
+  function discardDraft() {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      // noop
+    }
+    setHasDraft(false);
+    setLastSaved(null);
+  }
 
   async function uploadCover(file: File) {
     setUploading(true);
@@ -53,11 +111,32 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
       () => (post ? apiClient.put<Post>(`v1/blog/posts/${post.id}`, payload) : apiClient.post<Post>("v1/blog/posts", payload)),
       "Publicação salva",
     );
-    if (res) onSaved(res.data);
+    if (res) {
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // noop
+      }
+      onSaved(res.data);
+    }
   }
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {hasDraft && (
+        <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2 text-sm text-foreground">
+          <span>Existe um rascunho anterior salvo localmente no seu navegador.</span>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={restoreDraft}>
+              Restaurar
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={discardDraft}>
+              Descartar
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Input id="post-title" name="title" label="Título *" required maxLength={200} defaultValue={post?.title} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Input id="post-slug" name="slug" label="Slug" maxLength={100} defaultValue={post?.slug} placeholder="gerado do título" />
@@ -110,7 +189,12 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
           <TipTapEditor value={body} onChange={setBody} />
         )}
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {lastSaved && (
+          <span className="text-xs text-muted">
+            ✓ Rascunho salvo localmente às {lastSaved}
+          </span>
+        )}
         <Button type="submit" loading={pending || uploading}>
           Salvar
         </Button>
