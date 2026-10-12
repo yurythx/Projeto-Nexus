@@ -10,8 +10,6 @@ const MODULE_PAGES: { path: string; module: string }[] = [
   { path: "/servicos", module: "catalog" },
   { path: "/procedimentos", module: "atlas" },
   { path: "/temporalidade", module: "atlas" },
-  { path: "/setores", module: "directory" },
-  { path: "/eventos", module: "calendar" },
   { path: "/contato", module: "contact" },
 ];
 

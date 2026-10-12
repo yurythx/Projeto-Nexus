@@ -44,7 +44,7 @@ func (m *Module) Manifest() kernel.Manifest {
 		Name:           "Diretório",
 		Description:    "Consulta de pessoas e setores com base nos dados sincronizados do AD.",
 		DefaultEnabled: true,
-		Public:         true,
+		Public:         false,
 		Icon:           "contact",
 		Route:          "/diretorio",
 		Permissions:    []kernel.PermissionInfo{{Key: "directory:manage", Description: "Editar o perfil e a lotação exibida de qualquer pessoa"}},

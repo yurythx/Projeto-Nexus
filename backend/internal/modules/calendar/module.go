@@ -35,7 +35,7 @@ func (m *Module) Manifest() kernel.Manifest {
 		Name:           "Agenda",
 		Description:    "Eventos corporativos e reserva de salas sem conflito de horário.",
 		DefaultEnabled: true,
-		Public:         true,
+		Public:         false,
 		Icon:           "calendar",
 		Route:          "/agenda",
 		Permissions:    []kernel.PermissionInfo{{Key: "calendar:manage", Description: "Gerenciar salas e moderar eventos de terceiros"}},
