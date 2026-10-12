@@ -19,8 +19,8 @@ volumes ou dados deles (`docker volume ls` mostra todos juntos).
 
 ## Implantação
 
-- Checkout: `/root/Projetos/Projeto-Nexus-v2` (origin `Projeto-Nexus-v2`).
-- `.env`: `COMPOSE_PROJECT_NAME=projeto-nexus-v2`,
+- Checkout: `/root/Projetos/Projeto-Nexus` (origin `Projeto-Nexus`).
+- `.env`: `COMPOSE_PROJECT_NAME=projeto-nexus`,
   `COMPOSE_FILE=docker-compose.yml:docker-compose.keycloak.yml:docker-compose.https.yml`,
   `HOST_BIND=127.0.0.1` (só o Caddy fica exposto na rede).
 - Implantar: `git pull && make deploy`.
@@ -41,7 +41,7 @@ volumes ou dados deles (`docker volume ls` mostra todos juntos).
 ## Verificação depois de cada deploy
 
 ```bash
-cd /root/Projetos/Projeto-Nexus-v2
+cd /root/Projetos/Projeto-Nexus
 docker compose ps                         # 9 serviços "healthy"
 curl -s http://127.0.0.1:8010/health      # postgres, redis, rabbitmq, minio: ok
 df -h /                                   # disco abaixo de ~80%
@@ -119,8 +119,8 @@ modelo `qwen2.5:1.5b`, limite de 2,5 GB e 3 CPUs):
   apontando para ela (`http://<máquina>:11434`); ou usar um fornecedor
   externo pela tela (Configurações → Inteligência artificial — ADR 020).
 - **Sobras:** a imagem do Ollama (9,4 GB, traz bibliotecas de GPU) foi
-  removida; ficou o volume `projeto-nexus-v2_ia_local_modelos` (2,3 GB, os
-  modelos baixados). Se a IA local não for usada aqui:
+  removida; se existir o volume legado `projeto-nexus-v2_ia_local_modelos` (2,3 GB, os
+  modelos baixados):
   `docker volume rm projeto-nexus-v2_ia_local_modelos`.
 
 ### Carga do host Proxmox
