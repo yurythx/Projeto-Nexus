@@ -91,8 +91,30 @@ Foram configuradas **7 salas de reunião corporativas** distribuídas entre as u
 
 ---
 
-### Cenário 5: Governança, IAM e Permissões Administrativas
+### Cenário 5: Base de Conhecimento Wiki & Isolamento de Manuais Técnicos (`/wiki`)
+
+A Wiki corporativa conta com 6 manuais e procedimentos operacionais cadastrados para as unidades de Rondonópolis, com controle de versão e público-alvo:
+- **`onboarding-colaborador`**: *Guia de Boas-Vindas & Integração do Colaborador Nexus* (Mariana Silva — Sede Centro)
+- **`codigo-de-conduta`**: *Código de Ética, Integridade & Conduta Corporativa* (Carlos Mendes — Sede Centro)
+- **`politica-seguranca-informacao`**: *Política de Segurança da Informação, Controle de Acessos & SOC* (Lucas Albuquerque — Hub Aurora)
+- **`guia-desenvolvimento-agrotech`**: *Manual de Boas Práticas de Engenharia e Arquitetura de Software* (Restrito ao Hub Aurora — Lucas Albuquerque)
+- **`manual-operacoes-polo-industrial`**: *Manual Operacional do Complexo Logístico e Segurança do Trabalho (SMS)* (Marcos Souza — Polo Industrial)
+- **`protocolo-atendimento-produtor`**: *Diretrizes de Atendimento Integrado e Triagem Documental* (Ana Paula Ferreira — CIA Poguba)
+
+#### Como validar no navegador:
+1. Faça login como **`lucas.tech`** e acesse `/wiki`:
+   - A árvore lateral exibe **6 páginas**, incluindo o *Manual de Boas Práticas de Engenharia e Arquitetura de Software* restrito à equipe técnica do Hub Aurora.
+2. Faça login como **`marcos.ops`** e acesse `/wiki`:
+   - A árvore exibe **5 páginas**. O manual confidencial de arquitetura do Hub Aurora **não aparece na árvore nem na busca**, demonstrando a aplicação do público-alvo por escopo da unidade (ADR 014 / ADR 030).
+3. Faça login como **`carlos.diretoria`**:
+   - Como Diretor Executivo da Sede, Carlos visualiza toda a base corporativa e o histórico de revisões.
+
+---
+
+### Cenário 6: Governança, IAM e Permissões Administrativas
 1. Faça login como **`carlos.diretoria`**.
 2. Acesse o menu de gestão e confirme permissões de visualização corporativa, governança e catálogo de serviços.
+3. Compare o menu de navegação e as ações disponíveis em relação ao perfil estritamente operacional de **`rodrigo.agro`** (leitura básica e despachos locais).
+
 
 
