@@ -22,6 +22,12 @@ for username, password in creds:
         me = json.loads(res_me.read().decode())["data"]
         perms_count = len(me.get("permissions", []))
         scopes_count = len(me.get("scopes", []))
-        print(f"[OK] {username}: {me['name']} | lotado={scopes_count} escopo(s) | {perms_count} permissoes")
+
+        req_proc = urllib.request.Request("http://127.0.0.1:8010/api/v1/tramite/processos", headers={"Authorization": "Bearer " + token})
+        res_proc = urllib.request.urlopen(req_proc)
+        procs = json.loads(res_proc.read().decode())["data"]
+        procs_count = len(procs) if isinstance(procs, list) else 0
+        print(f"[OK] {username}: {me['name']} | escopos={scopes_count} | permissoes={perms_count} | processos={procs_count}")
     except Exception as e:
         print(f"[FAIL] {username}: {e}")
+
