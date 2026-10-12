@@ -26,6 +26,7 @@ import {
 
 import { PublicShell } from "@/components/layout/PublicShell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { getServerBranding } from "@/lib/branding/server";
 import { listPublishedServices } from "@/lib/catalog/catalog";
 import { listPublicPosts } from "@/lib/blog/publicBlog";
 import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";
@@ -116,9 +117,10 @@ const HIGHLIGHTED_SERVICES = [
 ];
 
 export default async function HomePage() {
-  const [allServices, recentPosts] = await Promise.all([
+  const [allServices, recentPosts, brand] = await Promise.all([
     listPublishedServices().catch(() => []),
     listPublicPosts("", "", 1, 10).catch(() => []),
+    getServerBranding().catch(() => null),
   ]);
 
   const serviceCount = allServices.length > 0 ? allServices.length : 26;
@@ -140,7 +142,7 @@ export default async function HomePage() {
         <section className="relative overflow-hidden border-b border-surface-border bg-gradient-to-b from-surface-1 to-surface-2/40 px-6 py-20 sm:py-28">
           <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-1.5 text-xs font-semibold text-sky-800 shadow-xs dark:border-sky-800/60 dark:bg-sky-950/60 dark:text-sky-300">
-              <Zap size={14} aria-hidden="true" /> Plataforma Digital de Serviços & Infraestrutura
+              <Zap size={14} aria-hidden="true" /> {brand?.appName || brand?.orgName || "Plataforma Digital de Serviços & Infraestrutura"}
             </span>
 
             <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl">

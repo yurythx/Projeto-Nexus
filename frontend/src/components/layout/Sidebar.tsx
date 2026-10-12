@@ -26,7 +26,6 @@ const HIDDEN_FROM_MENU = new Set(["iam", "audit", "egress", "search"]);
 const MENU_PERMISSION: Record<string, string> = {
   catalog: "catalog:manage",
   contact: "contact:read",
-  blog: "blog:manage",
 };
 
 const ADMIN_PERMISSIONS = [
@@ -40,7 +39,11 @@ export function buildNav(modules: ModuleStatus[], can: (p: string) => boolean): 
   const mods = modules
     .filter((m) => m.enabled && !m.core && !HIDDEN_FROM_MENU.has(m.key) && m.route)
     .filter((m) => !MENU_PERMISSION[m.key] || can(MENU_PERMISSION[m.key]!))
-    .map((m) => ({ href: m.route, label: m.name, icon: m.icon }));
+    .map((m) => ({
+      href: m.key === "blog" ? (can("blog:manage") ? "/gestao/blog" : (m.route === "/gestao/blog" ? "/blog" : m.route)) : m.route,
+      label: m.name,
+      icon: m.icon,
+    }));
   const admin: NavItem[] = [];
   if (can("audit:read")) admin.push({ href: "/auditoria", label: "Auditoria", icon: ShieldCheck });
   if (can("monitoring:read")) admin.push({ href: "/monitoramento", label: "Monitoramento", icon: Activity });

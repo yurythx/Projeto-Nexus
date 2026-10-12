@@ -132,9 +132,10 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
       {/* Services Grid or Empty State */}
       {filteredServices.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-surface-border py-16 text-center text-muted">
-          <LayoutGrid size={32} aria-hidden="true" />
           <p className="max-w-md text-sm">
-            Nenhum serviço encontrado para o filtro aplicado.
+            {initialServices.length === 0
+              ? "Nenhum serviço publicado ainda"
+              : "Nenhum serviço encontrado para o filtro aplicado."}
           </p>
           {(search || selectedCategory !== "Todas") && (
             <button

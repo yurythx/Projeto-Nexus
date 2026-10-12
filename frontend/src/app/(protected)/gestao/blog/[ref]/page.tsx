@@ -3,17 +3,14 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Archive, ArrowLeft, Pencil, Send, Trash2, Undo2 } from "lucide-react";
-import { useState } from "react";
 
-import { PostEditor } from "@/components/blog/PostEditor";
 import { ConfirmButton } from "@/components/nexus/ConfirmButton";
 import { DataState } from "@/components/nexus/DataState";
 import { Markdown } from "@/components/nexus/Markdown";
 import { fmtDateTime, useAction } from "@/components/nexus/useAction";
 import { PublicoBadge } from "@/components/iam/PublicoAlvo";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Dialog } from "@/components/ui/Dialog";
+import { Button, buttonClass } from "@/components/ui/Button";
 import { apiClient } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
@@ -26,7 +23,6 @@ export default function PostPage() {
   const manage = can("blog:manage");
   const post = useApiQuery<Post>(`v1/blog/admin/posts/${encodeURIComponent(ref)}`);
   const { run, pending } = useAction();
-  const [editing, setEditing] = useState(false);
   const p = post.data;
 
   const transition = (action: "publish" | "unpublish" | "archive", msg: string) =>
@@ -54,9 +50,9 @@ export default function PostPage() {
 
             {manage && (
               <div className="flex flex-wrap gap-2 rounded-lg border border-surface-border p-3">
-                <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                <Link href={`/gestao/blog/${encodeURIComponent(ref)}/editar`} className={buttonClass("secondary", "sm")}>
                   <Pencil size={14} aria-hidden="true" className="mr-1" /> Editar
-                </Button>
+                </Link>
                 {p.status !== "published" && (
                   <Button size="sm" loading={pending} onClick={() => void transition("publish", "Publicado — evento blog.post.published emitido")}>
                     <Send size={14} aria-hidden="true" className="mr-1" /> Publicar
@@ -93,19 +89,6 @@ export default function PostPage() {
           </article>
         )}
       </DataState>
-
-      <Dialog open={editing} onClose={() => setEditing(false)} title="Editar publicação" size="xl">
-        {editing && p && (
-          <PostEditor
-            post={p}
-            onSaved={(np) => {
-              setEditing(false);
-              if (np.slug !== ref) router.replace(`/blog/${np.slug}`);
-              else void post.mutate();
-            }}
-          />
-        )}
-      </Dialog>
     </div>
   );
 }

@@ -4,17 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Pin, Plus } from "lucide-react";
 import { useState } from "react";
-
-import { PostEditor } from "@/components/blog/PostEditor";
 import { DataState } from "@/components/nexus/DataState";
 import { PageHeader } from "@/components/nexus/PageHeader";
 import { Pagination } from "@/components/nexus/Pagination";
 import { fmtDate } from "@/components/nexus/useAction";
 import { PublicoBadge } from "@/components/iam/PublicoAlvo";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClass } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useApiPage, withQuery } from "@/lib/api/swr";
@@ -32,7 +29,6 @@ export default function BlogPage() {
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [creating, setCreating] = useState(false);
   const list = useApiPage<Post>(withQuery("v1/blog/admin/posts", { q: query, kind, status: manage ? status : "", page, page_size: 12 }));
 
   return (
@@ -43,9 +39,9 @@ export default function BlogPage() {
         description="Notícias e comunicados internos da instituição."
         actions={
           manage && (
-            <Button onClick={() => setCreating(true)}>
+            <Link href="/gestao/blog/novo" className={buttonClass("primary", "md")}>
               <Plus size={16} aria-hidden="true" className="mr-1" /> Nova publicação
-            </Button>
+            </Link>
           )
         }
       />
@@ -139,10 +135,6 @@ export default function BlogPage() {
         </ul>
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </DataState>
-
-      <Dialog open={creating} onClose={() => setCreating(false)} title="Nova publicação" size="xl">
-        {creating && <PostEditor onSaved={(p) => router.push(`/gestao/blog/${p.slug}`)} />}
-      </Dialog>
     </div>
   );
 }

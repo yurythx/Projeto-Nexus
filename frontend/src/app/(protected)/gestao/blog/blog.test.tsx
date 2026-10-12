@@ -8,7 +8,9 @@ import { resetNavigation, router } from "@/test/navigation";
 vi.mock("next/navigation", async () => (await import("@/test/navigation")).navigationModule);
 
 import BlogPage from "./page";
+import NovoPostPage from "./novo/page";
 import PostPage from "./[ref]/page";
+import EditarPostPage from "./[ref]/editar/page";
 
 const post = (extra: Record<string, unknown> = {}) => ({
   id: "p1", slug: "boas-vindas", title: "Boas-vindas", summary: "Resumo", body: "# Olá", kind: "noticia",
@@ -29,7 +31,7 @@ describe("Blog — listagem", () => {
     expect(screen.getByText("Aviso")).toBeInTheDocument();
     expect(screen.getByLabelText("Fixado")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Boas-vindas/ })).toHaveAttribute("href", "/blog/boas-vindas");
-    expect(screen.queryByRole("button", { name: /Nova publicação/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Nova publicação/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Situação")).not.toBeInTheDocument();
   });
 
@@ -54,30 +56,32 @@ describe("Blog — listagem", () => {
     expect(await screen.findByText("banco fora")).toBeInTheDocument();
   });
 
-  it("nova publicação: envia a capa ao MinIO, salva e abre a página", async () => {
+  it("gestor vê link para criar nova publicação na listagem", async () => {
+    mockBackend({ ...identityRoutes(), "GET v1/blog/admin/posts": page([]) });
+    renderApp(<BlogPage />);
+    expect(await screen.findByRole("link", { name: /Nova publicação/ })).toHaveAttribute("href", "/gestao/blog/novo");
+  });
+
+  it("nova publicação: página dedicada envia a capa ao MinIO, salva e abre a página", async () => {
     const api = mockBackend({
       ...identityRoutes(),
-      "GET v1/blog/admin/posts": page([]),
       "POST v1/blog/uploads": { data: { object_key: "blog/capa.png", upload_url: "http://minio.test/b/capa.png", method: "PUT", headers: {}, expires_at: "" } },
       "PUT minio.test/*": { status: 200 },
       "POST v1/blog/posts": (req) => ({ data: post({ ...(req.body as object), slug: "novo" }) }),
     });
-    renderApp(<BlogPage />);
-    await userEvent.click(await screen.findByRole("button", { name: /Nova publicação/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Nova publicação" });
+    renderApp(<NovoPostPage />);
+    await userEvent.type(screen.getByLabelText("Título *"), "Novo edital");
+    await userEvent.selectOptions(screen.getByLabelText("Tipo"), "comunicado");
+    await userEvent.click(screen.getByLabelText(/Fixar no topo/));
+    await userEvent.upload(screen.getByLabelText("Imagem de capa"), new File(["x"], "capa.png", { type: "image/png" }));
+    expect(await screen.findByText("Capa: capa.png")).toBeInTheDocument();
 
-    await userEvent.type(within(dialog).getByLabelText("Título *"), "Novo edital");
-    await userEvent.selectOptions(within(dialog).getByLabelText("Tipo"), "comunicado");
-    await userEvent.click(within(dialog).getByLabelText(/Fixar no topo/));
-    await userEvent.upload(within(dialog).getByLabelText("Imagem de capa"), new File(["x"], "capa.png", { type: "image/png" }));
-    expect(await within(dialog).findByText("Capa: capa.png")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Conteúdo em Markdown"), "**texto**");
+    await userEvent.click(screen.getByRole("button", { name: "Pré-visualizar" }));
+    expect(screen.getByText("texto").tagName).toBe("STRONG");
+    await userEvent.click(screen.getByRole("button", { name: "Editar" }));
 
-    await userEvent.type(within(dialog).getByLabelText("Conteúdo em Markdown"), "**texto**");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Pré-visualizar" }));
-    expect(within(dialog).getByText("texto").tagName).toBe("STRONG");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Editar" }));
-
-    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api.to("POST v1/blog/posts")).toHaveLength(1));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/gestao/blog/novo"));
     expect(api.to("POST v1/blog/posts")[0]!.body).toMatchObject({
@@ -92,13 +96,11 @@ describe("Blog — listagem", () => {
       "POST v1/blog/uploads": { data: { object_key: "blog/x.png", upload_url: "http://minio.test/b/x.png", method: "PUT", headers: {}, expires_at: "" } },
       "PUT minio.test/*": { status: 403 },
     });
-    renderApp(<BlogPage />);
-    await userEvent.click(await screen.findByRole("button", { name: /Nova publicação/ }));
-    const dialog = await screen.findByRole("dialog");
+    renderApp(<NovoPostPage />);
     // tipo vazio (alguns SOs não informam): mimeOf cai no genérico
-    await userEvent.setup({ applyAccept: false }).upload(within(dialog).getByLabelText("Imagem de capa"), new File(["x"], "x.png", { type: "" }));
+    await userEvent.setup({ applyAccept: false }).upload(screen.getByLabelText("Imagem de capa"), new File(["x"], "x.png", { type: "" }));
     expect(await screen.findByText("Operação não concluída")).toBeInTheDocument();
-    expect(within(dialog).queryByText(/Capa:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Capa:/)).not.toBeInTheDocument();
   });
 });
 
@@ -110,7 +112,7 @@ describe("Blog — publicação", () => {
     renderApp(<PostPage />);
     expect(await screen.findByRole("heading", { name: "Boas-vindas", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Olá" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Editar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Editar/ })).not.toBeInTheDocument();
   });
 
   it("gestor despublica, publica, arquiva e exclui", async () => {
@@ -139,7 +141,7 @@ describe("Blog — publicação", () => {
     expect(api.to("DELETE v1/blog/posts/p1")).toHaveLength(1);
   });
 
-  it("editar: mesmo slug recarrega; slug novo troca a URL", async () => {
+  it("editar: página dedicada recarrega mesmo slug ou troca URL", async () => {
     let slug = "boas-vindas";
     const api = mockBackend({
       ...identityRoutes(),
@@ -147,17 +149,17 @@ describe("Blog — publicação", () => {
       "PUT v1/blog/posts/p1": () => ({ data: post({ slug }) }),
     });
     renderApp(<PostPage />);
-    await userEvent.click(await screen.findByRole("button", { name: /Editar/ }));
-    let dialog = await screen.findByRole("dialog", { name: "Editar publicação" });
-    expect(within(dialog).getByLabelText("Título *")).toHaveValue("Boas-vindas");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+    expect(await screen.findByRole("link", { name: /Editar/ })).toHaveAttribute("href", "/gestao/blog/boas-vindas/editar");
+
+    renderApp(<EditarPostPage />);
+    expect(await screen.findByLabelText("Título *")).toHaveValue("Boas-vindas");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api.to("PUT v1/blog/posts/p1")).toHaveLength(1));
     expect(router.replace).not.toHaveBeenCalled();
 
     slug = "novo-slug";
-    await userEvent.click(screen.getByRole("button", { name: /Editar/ }));
-    dialog = await screen.findByRole("dialog", { name: "Editar publicação" });
-    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/blog/novo-slug"));
+    renderApp(<EditarPostPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/gestao/blog/novo-slug"));
   });
 });
