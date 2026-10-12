@@ -76,13 +76,18 @@ export function Seal({
         </textPath>
       </text>
 
-      {/* Miolo: monograma "A" de Nexus (mesmo desenho de Logo.tsx/icon.svg,
-          escalado pro selo) sobre os dizeres de documento oficial. */}
-      <g transform="translate(100 92)">
-        <polygon points="0,-15 -9,15 -15,15" fill="currentColor" />
-        <polygon points="0,-15 15,15 9,15" fill="currentColor" />
-        <rect x="-5.25" y="1.5" width="10.5" height="2.4" fill="currentColor" />
-      </g>
+      {/* Miolo: monograma "N" de Nexus sobre os dizeres de documento oficial. */}
+      <text
+        x="100"
+        y="99"
+        textAnchor="middle"
+        fill="currentColor"
+        fontSize="32"
+        fontWeight="900"
+        style={{ fontFamily: "var(--font-sans, sans-serif)" }}
+      >
+        N
+      </text>
       <path d="M 74 118 H 126" stroke="currentColor" strokeWidth="1.5" />
       <text
         x="100"

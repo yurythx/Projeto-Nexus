@@ -32,20 +32,18 @@ export function Logo({ size = 32, className = "" }: { size?: number; className?:
       <circle cx="14" cy="14" r="10" fill="none" stroke="#F8FAFC" strokeOpacity="0.9" strokeWidth="1" />
       <circle cx="14" cy="14" r="7.6" fill="none" stroke="#F8FAFC" strokeOpacity="0.32" strokeWidth="0.75" />
 
-      {/* Monograma: "A" de Nexus — duas pernas triangulares convergindo
-          no ápice + travessão, na mesma caixa (9.6–18.4, 9–19) que o
-          monograma anterior ocupava. */}
+      {/* Monograma: "N" de Nexus */}
       <text
         x="14"
-        y="17"
+        y="17.5"
         textAnchor="middle"
         fill="#F8FAFC"
-        fontSize="9.5"
-        fontWeight="800"
+        fontSize="11"
+        fontWeight="900"
         fontFamily="sans-serif"
-        letterSpacing="-0.5"
+        letterSpacing="0"
       >
-        AS
+        N
       </text>
 
       {/* Traço em tinta de carimbo */}

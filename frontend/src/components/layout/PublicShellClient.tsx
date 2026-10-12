@@ -12,6 +12,7 @@ import { ToastProvider } from "@/components/notifications/ToastProvider";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { publicFetch } from "@/lib/api/publicClient";
+import { DoorOpen } from "lucide-react";
 import type { PublicModule } from "@/lib/nexus/types";
 
 const PUBLIC_LINKS: { href: string; label: string; module?: string }[] = [
@@ -35,9 +36,11 @@ const PUBLIC_LINKS: { href: string; label: string; module?: string }[] = [
 export function PublicShellClient({
   children,
   initialEnabled = null,
+  initialTheme,
 }: {
   children: ReactNode;
   initialEnabled?: Record<string, boolean> | null;
+  initialTheme?: "light" | "dark";
 }) {
   const { status } = useSession();
   const [enabled, setEnabled] = useState<Record<string, boolean> | null>(initialEnabled);
@@ -81,10 +84,18 @@ export function PublicShellClient({
           }
           actions={
             <>
-              <ThemeToggle />
-              <Link href={status === "authenticated" ? "/dashboard" : "/login"}>
-                <Button size="sm">
-                  {status === "authenticated" ? "Acessar o painel" : "Entrar"}
+              <ThemeToggle initialTheme={initialTheme} />
+              <Link
+                href={status === "authenticated" ? "/dashboard" : "/login"}
+                title={status === "authenticated" ? "Acessar o painel" : "Entrar no sistema"}
+              >
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex h-10 w-10 items-center justify-center p-0 rounded-lg border-surface-border text-foreground hover:bg-surface-2"
+                  aria-label={status === "authenticated" ? "Acessar o painel" : "Entrar"}
+                >
+                  <DoorOpen size={18} aria-hidden="true" />
                 </Button>
               </Link>
             </>

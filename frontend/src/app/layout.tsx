@@ -61,7 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       data-theme={dataTheme}
       data-high-contrast={branding.highContrast ? "true" : undefined}
       data-font-scale={String(branding.fontSizeScale || 100)}
-      className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${newsreader.variable} ${geistMono.variable} ${dataTheme === "dark" ? "dark" : ""} h-full antialiased`}
     >
       {/* Ternário, não `&&`: com tokenCss === "" o `&&` rendia um nó de texto
           vazio dentro de <head>, a hidratação falhava (React #418) e a

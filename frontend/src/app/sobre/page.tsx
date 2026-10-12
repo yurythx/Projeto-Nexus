@@ -69,7 +69,7 @@ const principles = [
     icon: Layers,
     title: "Arquitetura Microkernel (Plug-in System)",
     description:
-      "Core System (Kernel) robusto em Go 1.25 que fornece infraestrutura de segurança e auth, pronto para acoplamento de novos plug-ins de negócio com desacoplamento total.",
+      "Core System (Kernel) robusto em Go 1.26 que fornece infraestrutura de segurança, isolamento de rotas e auth, com suporte nativo a plug-ins de negócio totalmente desacoplados.",
   },
   {
     icon: RefreshCw,
@@ -99,13 +99,15 @@ export default async function AboutPage() {
     <PublicShell>
       <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-12 px-6 py-12">
         <section className="flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-xs font-bold font-mono text-primary uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold font-mono text-accent uppercase tracking-wider">
             <ShieldCheck size={16} className="text-success" />
-            Conformidade Federal SGD/MGI
+            Conformidade Federal SGD/MGI & e-MAG 2.0
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Sobre a plataforma & diretrizes governamentais</h1>
-          <p className="text-muted leading-relaxed">
-            O <strong>{brand.appName}</strong>, operado por <strong>{brand.orgName}</strong>, é uma base Microkernel que unifica os rígidos padrões de <strong>Segurança (OWASP), Acessibilidade (e-MAG / WCAG 2.1 AA), Identidade Visual (DSGov), Privacidade (LGPD) e Interoperabilidade (OIDC / e-PING)</strong>.
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+            Sobre a Plataforma & Diretrizes Governamentais
+          </h1>
+          <p className="text-base text-muted leading-relaxed max-w-3xl">
+            O <strong>{brand.appName || "Projeto Nexus"}</strong> é uma plataforma digital institucional de alto desempenho construída sobre uma arquitetura Microkernel desacoplada em <strong>Go 1.26</strong> e <strong>Next.js 16</strong>. A infraestrutura unifica os mais rígidos padrões de <strong>Segurança (OWASP Top 10), Acessibilidade Digital (e-MAG 2.0 / WCAG 2.1 AA com VLibras), Identidade Visual (DSGov), Privacidade (LGPD Lei 13.709/2018) e Interoperabilidade (OIDC / Keycloak)</strong> com soberania total de dados on-premises e nuvem privada.
           </p>
         </section>
 
@@ -198,13 +200,16 @@ export default async function AboutPage() {
           </Table>
         </section>
 
-        <section className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6">
+        <section className="flex flex-col gap-3 rounded-xl border border-surface-border bg-surface p-6 shadow-xs">
           <h2 className="text-xl font-semibold text-foreground">Stack Tecnológica & Padrões de Projeto</h2>
           <p className="text-sm text-muted leading-relaxed">
-            <strong className="text-foreground">Backend (Go 1.25):</strong> Arquitetura Limpa (Clean Architecture), roteador Chi v5, banco de dados PostgreSQL 16 com `pgxpool`, mensageria RabbitMQ via AMQP, `log/slog` com mascaramento PII, e suporte a testes unitários com 100% de mocks zerados.
+            <strong className="text-foreground">Backend (Go 1.26):</strong> Arquitetura Limpa (Clean Architecture), Microkernel desacoplado, roteador Chi v5, banco de dados PostgreSQL 16 com pooling `pgxpool`, mensageria RabbitMQ via AMQP com Transactional Outbox Pattern e Dead Letter Queues (DLQ), mascaramento nativo de PII com `log/slog`, e cobertura de testes automatizados com mocks rigorosos.
           </p>
           <p className="text-sm text-muted leading-relaxed">
-            <strong className="text-foreground">Frontend (Next.js 16 App Router):</strong> React 19 em TypeScript estrito, Tailwind CSS v4 com temas DSGov/e-MAG, `NextAuth.js` com SSO Keycloak, widget VLibras desacoplado da hidratação, e auditoria de acessibilidade por `jsx-a11y`.
+            <strong className="text-foreground">Frontend (Next.js 16 App Router):</strong> React 19 em TypeScript estrito, Tailwind CSS v4 com tokens acessíveis e suporte a modo escuro persistido, autenticação integrada `NextAuth.js` com SSO Keycloak (OIDC), leitor VLibras nativo desacoplado e 95.5% de cobertura de testes automatizados.
+          </p>
+          <p className="text-sm text-muted leading-relaxed">
+            <strong className="text-foreground">Infraestrutura & Orquestração:</strong> Virtualização Proxmox VE, storage redundante ZFS TrueNAS, monitoramento Zabbix com telemetria Prometheus, e proxy reverso seguro com terminação TLS automatizada.
           </p>
         </section>
       </div>

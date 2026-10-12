@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 import { connection } from "next/server";
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { Suspense, type CSSProperties } from "react";
+import { Suspense } from "react";
 
 import { LoginCard } from "@/components/auth/LoginCard";
 import { getServerBranding } from "@/lib/branding/server";
@@ -16,10 +16,10 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 // tecnologia mais avançada do mercado"), que a versão anterior tinha
 // herdado de um template.
 const capabilities = [
-  "Autenticação unificada via SSO Keycloak e credenciais locais seguras.",
-  "Mensageria resiliente com Transactional Outbox e integração com RabbitMQ.",
-  "Painel de telemetria e monitoramento de microsserviços em tempo real.",
-  "Arquitetura limpa e modular pronta para expansão de novos módulos.",
+  "Autenticação unificada via SSO Keycloak (OIDC) e credenciais locais auditadas.",
+  "Governança digital com isolamento de transações e mensageria RabbitMQ.",
+  "Orquestração Proxmox VE, storage TrueNAS e catálogo de 26 soluções de TI.",
+  "Conformidade estrita com e-MAG 2.0 (WCAG 2.1 AA com VLibras), LGPD e OWASP Top 10.",
 ];
 
 export default async function LoginPage() {
@@ -39,7 +39,6 @@ export default async function LoginPage() {
       <main id="main-content" tabIndex={-1} className="flex min-h-0 flex-1 outline-none">
       <div
         className="relative hidden overflow-hidden bg-brand-panel text-white lg:flex lg:w-[44%] lg:flex-col lg:justify-between lg:p-12"
-        style={{ "--seal": "#d1524a" } as CSSProperties}
       >
         <Seal
           size={520}
@@ -47,32 +46,32 @@ export default async function LoginPage() {
           className="pointer-events-none absolute -bottom-40 -right-40 text-white/[0.06]"
         />
 
-        <div className="relative flex items-center gap-2.5 text-lg font-semibold">
-          <Logo size={30} />
-          {brand.appName}
+        <div className="relative flex items-center gap-2.5 text-lg font-semibold tracking-wide">
+          <Logo size={32} />
+          {brand.appName || "Projeto Nexus"}
         </div>
 
         <div className="relative flex flex-col gap-6">
-          <p className="dateline text-white/60">{brand.orgName}</p>
-          <h1 className="max-w-md text-3xl font-semibold leading-tight text-white">
-            Acesso à plataforma institucional.
+          <p className="dateline text-accent font-semibold tracking-wider text-xs uppercase">{brand.orgName || "Polo Tecnológico"}</p>
+          <h1 className="max-w-md text-3xl font-extrabold leading-tight text-white sm:text-4xl">
+            Acesso à Plataforma Institucional
           </h1>
-          <p className="max-w-sm text-sm text-white/75">
-            {brand.appDescription || "Entre com sua conta corporativa (SSO) ou credencial local."}
+          <p className="max-w-sm text-sm text-white/75 leading-relaxed">
+            {brand.appDescription || "Entre com sua conta corporativa unificada (SSO Keycloak) ou credencial administrativa local."}
           </p>
-          <ul className="mt-1 flex flex-col gap-3 text-sm text-white/90">
+          <ul className="mt-2 flex flex-col gap-3.5 text-sm text-white/90">
             {capabilities.map((item) => (
-              <li key={item} className="flex gap-3">
-                <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-seal" />
-                {item}
+              <li key={item} className="flex items-start gap-3 leading-snug">
+                <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent shadow-xs" />
+                <span>{item}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative flex items-center gap-2 text-xs text-white/55">
-          <ShieldCheck size={14} aria-hidden="true" />
-          Entrada por senha ou SSO corporativo · auditoria de toda ação sensível
+        <p className="relative flex items-center gap-2 text-xs text-white/60">
+          <ShieldCheck size={15} className="text-accent" aria-hidden="true" />
+          Entre com sua conta corporativa (SSO) ou credencial local.
         </p>
       </div>
 

@@ -137,7 +137,7 @@ export default async function HomePage() {
 
             <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl md:text-6xl">
               Soluções Tecnológicas Especializadas{" "}
-              <span className="text-accent underline decoration-accent/40 decoration-wavy underline-offset-8">
+              <span className="text-accent">
                 Sob Medida
               </span>
             </h1>

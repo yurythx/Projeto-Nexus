@@ -1,39 +1,48 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { usePrefersDark } from "@/lib/theme/usePrefersDark";
 
 const COOKIE_NAME = "nexus-theme";
 
 // Alterna entre claro/escuro persistindo a escolha num cookie (lido
-// server-side em app/layout.tsx/app/dashboard/layout.tsx) em vez de usar
-// next-themes: a técnica usual dessa biblioteca para evitar flash de
-// tema errado injeta um <script> inline no <head>, o que a CSP com nonce
-// estrito deste app (script-src sem 'unsafe-inline' — ver src/proxy.ts)
-// bloquearia. Um cookie lido no Server Component raiz alcança o mesmo
-// resultado (o HTML já chega com data-theme certo) sem nenhum script
-// inline.
-//
-// initialTheme vem do servidor (o mesmo cookie, já decodificado em
-// app/dashboard/layout.tsx) — quando ausente (nenhuma escolha explícita
-// ainda), usePrefersDark() decide o ícone a partir do SO via
-// useSyncExternalStore, mantendo este componente livre de qualquer
-// useEffect/setState-em-efeito.
+// server-side em app/layout.tsx e PublicShell) e atualiza instantaneamente
+// o atributo [data-theme] e a classe .dark do Tailwind em document.documentElement.
 export function ThemeToggle({ initialTheme }: { initialTheme?: "light" | "dark" }) {
   const prefersDark = usePrefersDark();
-  const [explicit, setExplicit] = useState<"light" | "dark" | null>(initialTheme ?? null);
+  const [explicit, setExplicit] = useState<"light" | "dark" | null>(() => {
+    if (initialTheme) return initialTheme;
+    if (typeof document !== "undefined") {
+      const fromAttr = document.documentElement.getAttribute("data-theme");
+      if (fromAttr === "dark" || fromAttr === "light") return fromAttr;
+      const match = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_NAME}=([^;]*)`));
+      if (match && (match[1] === "dark" || match[1] === "light")) return match[1] as "light" | "dark";
+    }
+    return null;
+  });
+
   const theme = explicit ?? (prefersDark ? "dark" : "light");
+
+  // Garante sincronização imediata no cliente com as classes Tailwind e o DOM
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     setExplicit(next);
     document.documentElement.setAttribute("data-theme", next);
-    // 1 ano, path=/ — o mesmo cookie que os layouts do servidor leem a
-    // cada request seguinte para decidir o atributo data-theme já no
-    // primeiro paint.
+    document.documentElement.classList.toggle("dark", next === "dark");
+    // 1 ano, path=/ — persistência lida em Server Components e no próximo reload
     document.cookie = `${COOKIE_NAME}=${next}; path=/; max-age=31536000; samesite=lax`;
+    try {
+      localStorage.setItem(COOKIE_NAME, next);
+    } catch {
+      // storage pode estar indisponível
+    }
   }
 
   return (
@@ -42,9 +51,9 @@ export function ThemeToggle({ initialTheme }: { initialTheme?: "light" | "dark" 
       onClick={toggle}
       aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
       title={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-muted transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5"
     >
-      {theme === "dark" ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
+      {theme === "dark" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
     </button>
   );
 }
