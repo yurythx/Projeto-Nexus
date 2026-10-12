@@ -22,7 +22,7 @@ describe("Blog — listagem", () => {
   it("leitor vê as publicações, sem criar nem filtrar por situação", async () => {
     mockBackend({
       ...identityRoutes({ permissions: ["blog:read"] }),
-      "GET v1/blog/posts": page([post({ pinned: true, cover_url: "https://cdn/c.png" }), post({ id: "p2", slug: "c", title: "Aviso", kind: "comunicado", summary: "" })]),
+      "GET v1/blog/admin/posts": page([post({ pinned: true, cover_url: "https://cdn/c.png" }), post({ id: "p2", slug: "c", title: "Aviso", kind: "comunicado", summary: "" })]),
     });
     renderApp(<BlogPage />);
     expect(await screen.findByText("Boas-vindas")).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe("Blog — listagem", () => {
   it("gestor filtra por busca, tipo e situação; lista vazia e erro", async () => {
     const api = mockBackend({
       ...identityRoutes(),
-      "GET v1/blog/posts": (req) =>
+      "GET v1/blog/admin/posts": (req) =>
         req.query.get("status") === "archived" ? fail(500, "banco fora") : req.query.get("q") ? page([]) : page([post({ status: "draft" })]),
     });
     renderApp(<BlogPage />);
@@ -45,10 +45,10 @@ describe("Blog — listagem", () => {
     await userEvent.type(screen.getByLabelText("Buscar"), "  orçamento ");
     await userEvent.click(screen.getByRole("button", { name: "Filtrar" }));
     expect(await screen.findByText("Nenhuma publicação")).toBeInTheDocument();
-    expect(api.to("GET v1/blog/posts").at(-1)!.query.get("q")).toBe("orçamento");
+    expect(api.to("GET v1/blog/admin/posts").at(-1)!.query.get("q")).toBe("orçamento");
 
     await userEvent.selectOptions(screen.getByLabelText("Tipo"), "comunicado");
-    await waitFor(() => expect(api.to("GET v1/blog/posts").at(-1)!.query.get("kind")).toBe("comunicado"));
+    await waitFor(() => expect(api.to("GET v1/blog/admin/posts").at(-1)!.query.get("kind")).toBe("comunicado"));
 
     await userEvent.selectOptions(screen.getByLabelText("Situação"), "archived");
     expect(await screen.findByText("banco fora")).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe("Blog — listagem", () => {
   it("nova publicação: envia a capa ao MinIO, salva e abre a página", async () => {
     const api = mockBackend({
       ...identityRoutes(),
-      "GET v1/blog/posts": page([]),
+      "GET v1/blog/admin/posts": page([]),
       "POST v1/blog/uploads": { data: { object_key: "blog/capa.png", upload_url: "http://minio.test/b/capa.png", method: "PUT", headers: {}, expires_at: "" } },
       "PUT minio.test/*": { status: 200 },
       "POST v1/blog/posts": (req) => ({ data: post({ ...(req.body as object), slug: "novo" }) }),
@@ -79,7 +79,7 @@ describe("Blog — listagem", () => {
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(api.to("POST v1/blog/posts")).toHaveLength(1));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/blog/novo"));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/gestao/blog/novo"));
     expect(api.to("POST v1/blog/posts")[0]!.body).toMatchObject({
       title: "Novo edital", kind: "comunicado", pinned: true, cover_object_key: "blog/capa.png", body: "**texto**",
     });
@@ -106,7 +106,7 @@ describe("Blog — publicação", () => {
   beforeEach(() => resetNavigation({ ref: "boas-vindas" }));
 
   it("leitor só lê", async () => {
-    mockBackend({ ...identityRoutes({ permissions: ["blog:read"] }), "GET v1/blog/posts/boas-vindas": { data: post({ cover_url: "https://cdn/c.png" }) } });
+    mockBackend({ ...identityRoutes({ permissions: ["blog:read"] }), "GET v1/blog/admin/posts/boas-vindas": { data: post({ cover_url: "https://cdn/c.png" }) } });
     renderApp(<PostPage />);
     expect(await screen.findByRole("heading", { name: "Boas-vindas", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Olá" })).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe("Blog — publicação", () => {
     let current = post();
     const api = mockBackend({
       ...identityRoutes(),
-      "GET v1/blog/posts/boas-vindas": () => ({ data: current }),
+      "GET v1/blog/admin/posts/boas-vindas": () => ({ data: current }),
       "POST v1/blog/posts/p1/unpublish": () => ((current = post({ status: "draft" })), { data: current }),
       "POST v1/blog/posts/p1/publish": () => ((current = post()), { data: current }),
       "POST v1/blog/posts/p1/archive": () => ((current = post({ status: "archived", kind: "comunicado" })), { data: current }),
@@ -143,7 +143,7 @@ describe("Blog — publicação", () => {
     let slug = "boas-vindas";
     const api = mockBackend({
       ...identityRoutes(),
-      "GET v1/blog/posts/boas-vindas": { data: post() },
+      "GET v1/blog/admin/posts/boas-vindas": { data: post() },
       "PUT v1/blog/posts/p1": () => ({ data: post({ slug }) }),
     });
     renderApp(<PostPage />);

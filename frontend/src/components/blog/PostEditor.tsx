@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { TipTapEditor } from "@/components/blog/TipTapEditor";
 import { apiClient } from "@/lib/api/client";
 import type { Post, UploadTicket } from "@/lib/nexus/types";
 import { mimeOf, putToTicket } from "@/lib/nexus/upload";
@@ -94,19 +95,21 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
         />
         {coverKey && <span className="text-xs text-muted">Capa: {coverKey.split("/").pop()}</span>}
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Conteúdo (Markdown)</span>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((v) => !v)} aria-pressed={preview}>
-          {preview ? "Editar" : "Pré-visualizar"}
-        </Button>
-      </div>
-      {preview ? (
-        <div className="min-h-48 rounded-lg border border-surface-border p-4">
-          <Markdown source={body || "_(vazio)_"} />
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Conteúdo (Markdown)</span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setPreview((v) => !v)} aria-pressed={preview}>
+            {preview ? "Editar" : "Pré-visualizar"}
+          </Button>
         </div>
-      ) : (
-        <Textarea id="post-body" aria-label="Conteúdo em Markdown" rows={14} maxLength={200000} value={body} onChange={(e) => setBody(e.target.value)} className="font-mono" />
-      )}
+        {preview ? (
+          <div className="min-h-48 rounded-lg border border-surface-border p-6 bg-surface">
+            <Markdown source={body || "_(vazio)_"} />
+          </div>
+        ) : (
+          <TipTapEditor value={body} onChange={setBody} />
+        )}
+      </div>
       <div className="flex justify-end">
         <Button type="submit" loading={pending || uploading}>
           Salvar

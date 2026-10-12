@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Clock, Layers, Share2 } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, User } from "lucide-react";
 
+import { BlogCoverImage } from "@/components/blog/BlogCoverImage";
+import { ReadingProgressBar } from "@/components/blog/ReadingProgressBar";
+import { RelatedPosts } from "@/components/blog/RelatedPosts";
+import { SocialShareBar } from "@/components/blog/SocialShareBar";
+import { TableOfContents } from "@/components/blog/TableOfContents";
 import { PublicShell } from "@/components/layout/PublicShell";
 import { Markdown } from "@/components/nexus/Markdown";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { getPublicPost } from "@/lib/blog/publicBlog";
+import { getPublicPost, listPublicPosts } from "@/lib/blog/publicBlog";
 import { APP_URL } from "@/lib/env";
 
 type Props = { params: Promise<{ ref: string }> };
@@ -16,22 +20,35 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = await getPublicPost((await params).ref);
   if (!post) return { title: "Artigo não encontrado" };
+  const canonicalUrl = `${APP_URL}/blog/${post.slug}`;
+
   return {
     title: `${post.title} — Blog & Novidades`,
     description: post.summary,
-    alternates: { canonical: `${APP_URL}/blog/${post.slug}` },
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: post.title,
       description: post.summary,
       type: "article",
-      url: `${APP_URL}/blog/${post.slug}`,
+      url: canonicalUrl,
+      images: post.cover_url ? [{ url: post.cover_url, alt: post.title }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.summary,
+      images: post.cover_url ? [post.cover_url] : undefined,
     },
   };
 }
 
 export default async function PublicPostPage({ params }: Props) {
   const { ref } = await params;
-  const post = await getPublicPost(ref);
+  const [post, allPosts] = await Promise.all([
+    getPublicPost(ref),
+    listPublicPosts("", "", 1, 10).catch(() => []),
+  ]);
+
   if (!post) notFound();
 
   const formatDate = (dateStr?: string | null) => {
@@ -49,13 +66,45 @@ export default async function PublicPostPage({ params }: Props) {
 
   const words = (post.body || "").split(/\s+/).length;
   const readTime = `${Math.max(1, Math.ceil(words / 200))} min de leitura`;
-
-  // Detect related service slug if post title or slug relates to one of our services
+  const postUrl = `${APP_URL}/blog/${post.slug}`;
   const possibleServiceSlug = post.slug.replace(/^artigo-/, "");
+
+  // Schema.org JSON-LD para SEO técnico (TechArticle / BlogPosting)
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: post.title,
+    description: post.summary,
+    image: post.cover_url ? [post.cover_url] : undefined,
+    datePublished: post.published_at || post.created_at,
+    dateModified: post.updated_at,
+    author: {
+      "@type": "Organization",
+      name: post.author_name || "Nexus Editorial",
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Projeto Nexus",
+      url: APP_URL,
+    },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": postUrl,
+    },
+  };
 
   return (
     <PublicShell>
-      <article className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-12">
+      {/* Barra de Progresso de Leitura */}
+      <ReadingProgressBar />
+
+      {/* Dados Estruturados Schema.org */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
+      <article className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-12">
         <Link
           href="/blog"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
@@ -63,26 +112,35 @@ export default async function PublicPostPage({ params }: Props) {
           <ArrowLeft size={15} aria-hidden="true" /> Voltar para Blog & Novidades
         </Link>
 
-        <header className="flex flex-col gap-4 border-b border-surface-border pb-8">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-            <span className="inline-flex items-center gap-1 font-medium">
-              <Calendar size={13} aria-hidden="true" />
-              {formatDate(post.published_at || post.updated_at)}
-            </span>
-            <span>•</span>
-            <span className="inline-flex items-center gap-1">
-              <Clock size={13} aria-hidden="true" />
-              {readTime}
-            </span>
-            {post.author_name && (
-              <>
-                <span>•</span>
-                <span>Por {post.author_name}</span>
-              </>
-            )}
+        {/* Cabeçalho do Artigo */}
+        <header className="flex flex-col gap-6 border-b border-surface-border pb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span className="inline-flex items-center gap-1 font-medium">
+                <Calendar size={13} aria-hidden="true" />
+                {formatDate(post.published_at || post.updated_at)}
+              </span>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1">
+                <Clock size={13} aria-hidden="true" />
+                {readTime}
+              </span>
+              {post.author_name && (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <User size={13} aria-hidden="true" />
+                    {post.author_name}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Compartilhamento Social */}
+            <SocialShareBar title={post.title} url={postUrl} />
           </div>
 
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl md:text-5xl">
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl md:text-5xl leading-tight">
             {post.title}
           </h1>
 
@@ -91,43 +149,68 @@ export default async function PublicPostPage({ params }: Props) {
               {post.summary}
             </p>
           )}
+
+          {/* Imagem de Capa do Artigo (MinIO ou Fallback Editorial) */}
+          <div className="mt-2 overflow-hidden rounded-xl">
+            <BlogCoverImage
+              coverUrl={post.cover_url}
+              title={post.title}
+              slug={post.slug}
+              aspect="article"
+            />
+          </div>
         </header>
 
-        {post.body && (
-          <div className="prose prose-neutral dark:prose-invert max-w-none">
-            <Markdown source={post.body} />
-          </div>
-        )}
+        {/* Layout do Corpo com ToC Lateral */}
+        <div className="grid gap-10 lg:grid-cols-[1fr_240px]">
+          <div className="min-w-0">
+            {post.body && (
+              <div className="prose prose-neutral dark:prose-invert max-w-none text-base leading-relaxed">
+                <Markdown source={post.body} />
+              </div>
+            )}
 
-        {/* CTA to Catalog Service */}
-        <div className="mt-8 rounded-xl border border-accent/20 bg-accent/5 p-6 sm:p-8">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                Implementação & Serviços Gerenciados
-              </span>
-              <h3 className="text-lg font-bold text-foreground">
-                Deseja implantar esta solução na sua empresa ou órgão público?
-              </h3>
-              <p className="text-sm text-muted">
-                Nossa equipe especializada realiza o planejamento, provisionamento, configuração e suporte contínuo.
-              </p>
+            {/* CTA Contextual para o Catálogo */}
+            <div className="mt-12 rounded-xl border border-accent/20 bg-accent/5 p-6 sm:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-accent">
+                    Implementação & Serviços Gerenciados
+                  </span>
+                  <h3 className="text-lg font-bold text-foreground">
+                    Deseja implantar esta solução na sua organização?
+                  </h3>
+                  <p className="text-sm text-muted">
+                    Nossa equipe técnica cuida do planejamento, provisionamento, segurança e suporte contínuo.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3 pt-2 sm:pt-0">
+                  <Link
+                    href={`/servicos/${possibleServiceSlug}`}
+                    className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent/90"
+                  >
+                    Ver no Catálogo
+                  </Link>
+                  <Link
+                    href="/contato"
+                    className="inline-flex items-center justify-center rounded-lg border border-surface-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
+                  >
+                    Fale Conosco
+                  </Link>
+                </div>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3 pt-2 sm:pt-0">
-              <Link
-                href={`/servicos/${possibleServiceSlug}`}
-                className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground shadow-xs transition-colors hover:bg-accent/90"
-              >
-                Ver no Catálogo
-              </Link>
-              <Link
-                href="/contato"
-                className="inline-flex items-center justify-center rounded-lg border border-surface-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
-              >
-                Fale Conosco
-              </Link>
+
+            {/* Artigos Recomendados */}
+            <div className="mt-12">
+              <RelatedPosts currentSlug={post.slug} posts={allPosts} />
             </div>
           </div>
+
+          {/* Sumário Flutuante Lateral */}
+          <aside className="hidden lg:block">
+            <TableOfContents source={post.body || ""} />
+          </aside>
         </div>
       </article>
     </PublicShell>

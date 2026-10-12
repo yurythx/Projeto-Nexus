@@ -45,3 +45,41 @@ if (typeof HTMLDialogElement !== "undefined") {
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {};
 }
+
+// jsdom não implementa Range.prototype.getClientRects/getBoundingClientRect
+// necessários para ProseMirror e TipTap funcionarem em ambiente de teste.
+if (typeof Range !== "undefined") {
+  if (!Range.prototype.getClientRects) {
+    Range.prototype.getClientRects = () =>
+      [{
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: 0,
+        top: 0,
+        width: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      }] as unknown as DOMRectList;
+  }
+  if (!Range.prototype.getBoundingClientRect) {
+    Range.prototype.getBoundingClientRect = () =>
+      ({
+        bottom: 0,
+        height: 0,
+        left: 0,
+        right: 0,
+        top: 0,
+        width: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      }) as DOMRect;
+  }
+}
+
+// jsdom não implementa document.elementFromPoint
+if (typeof document !== "undefined" && !document.elementFromPoint) {
+  document.elementFromPoint = () => null;
+}
