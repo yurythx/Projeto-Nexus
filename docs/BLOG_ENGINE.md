@@ -158,13 +158,17 @@ GET /blog/rss.xml
 
 1. **Acessar o Painel de Gestão:**
    - Navegue para `/gestao/blog` com usuário que possua a permissão `blog:manage`.
-2. **Criar Nova Matéria:**
-   - Clique em **"Nova publicação"**.
-   - Preencha o título, selecione se deseja fixar no topo (`pinned`) e escolha a unidade dona (ou deixe institucional).
+2. **Criar Nova Matéria (Página Dedicada):**
+   - Clique em **"Nova publicação"** (direciona para a tela de autoria completa em [`/gestao/blog/novo`](frontend/src/app/(protected)/gestao/blog/novo/page.tsx)).
+   - Preencha o título, selecione se deseja fixar no topo (`pinned`) e defina a unidade dona caso pertença a uma unidade específica.
+   - **Público-Alvo Otimizado:** O seletor de audiência inicia recolhido por padrão configurado para **"Todos os usuários (sem restrição)"**. Se for um comunicado restrito a unidades ou departamentos de Rondonópolis, expanda o acordeão e marque os setores desejados (com botão para "Restaurar para Todos" a qualquer momento).
    - Envie uma **Imagem de capa** de alta resolução (recomendado: 1200x630px, `.webp` ou `.png`).
-3. **Escrever o Conteúdo:**
-   - Utilize a barra de ferramentas do **TipTap** para estruturar títulos, listas e citações.
-   - Para ilustrar com diagramas de arquitetura, clique no ícone de imagem da barra de ferramentas e selecione o arquivo local.
-4. **Publicação:**
-   - Salve como rascunho para revisão interna ou clique em **"Publicar"**.
-   - No momento da publicação, o artigo entra imediatamente no feed público, no RSS e no sitemap.
+3. **Escrever o Conteúdo com TipTap:**
+   - Utilize a barra de ferramentas do **TipTap WYSIWYG** para estruturar títulos, listas e citações.
+   - Para ilustrar com diagramas de arquitetura ou prints, clique no ícone de imagem da barra de ferramentas e selecione o arquivo local (enviado diretamente via MinIO S3).
+   - Alternância entre o modo visual e Markdown puro disponível na barra.
+4. **Editar Matéria Existente:**
+   - Na listagem de gestão ou no detalhe do artigo (`/gestao/blog/[ref]`), clique em **"Editar matéria"**, que abre a tela dedicada em [`/gestao/blog/[ref]/editar`](frontend/src/app/(protected)/gestao/blog/[ref]/editar/page.tsx).
+5. **Publicação e Distribuição:**
+   - Salve como rascunho para revisão interna ou marque **"Publicar"**.
+   - No momento da publicação, o artigo entra imediatamente no feed público (`/blog`), no RSS 2.0 (`/blog/rss.xml`) e nas notificações de usuários contemplados pelo público-alvo.
