@@ -276,6 +276,7 @@ export function ServiceCodeSnippet({ slug }: { slug: string }) {
   if (!snippet) return null;
 
   async function handleCopy() {
+    if (!snippet?.code) return;
     try {
       await navigator.clipboard.writeText(snippet.code);
       setCopied(true);
