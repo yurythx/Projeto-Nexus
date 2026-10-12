@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pin, Plus } from "lucide-react";
+import { Pencil, Pin, Plus } from "lucide-react";
 import { useState } from "react";
 
 import { PostEditor } from "@/components/blog/PostEditor";
@@ -98,30 +98,44 @@ export default function BlogPage() {
 
       <DataState loading={list.isLoading} error={list.error} onRetry={() => void list.mutate()} empty={(list.data?.items ?? []).length === 0} emptyTitle="Nenhuma publicação">
         <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(list.data?.items ?? []).map((p) => (
-            <li key={p.id}>
-              <Link href={`/blog/${p.slug}`} className="block h-full rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                <Card className="flex h-full flex-col overflow-hidden transition-shadow hover:shadow-md">
-                  {p.cover_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.cover_url} alt="" className="h-40 w-full object-cover" />
-                  )}
-                  <div className="flex flex-1 flex-col gap-2 p-4">
-                    <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
-                      {p.pinned && <Pin size={12} aria-label="Fixado" />}
-                      <Badge tone={p.kind === "comunicado" ? "info" : "neutral"}>{p.kind === "comunicado" ? "Comunicado" : "Notícia"}</Badge>
-                      {p.status !== "published" && <Badge tone="warning">{STATUS_LABEL[p.status]}</Badge>}
-                      <PublicoBadge publico={p.publico} />
-                      <span>{fmtDate(p.published_at ?? p.updated_at)}</span>
+          {(list.data?.items ?? []).map((p) => {
+            const cardHref = manage ? `/gestao/blog/${p.slug}` : `/blog/${p.slug}`;
+            return (
+              <li key={p.id}>
+                <Link href={cardHref} className="block h-full rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <Card className="flex h-full flex-col overflow-hidden transition-all hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
+                    {p.cover_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.cover_url} alt="" className="h-40 w-full object-cover" />
+                    )}
+                    <div className="flex flex-1 flex-col gap-2 p-4">
+                      <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
+                        {p.pinned && <Pin size={12} aria-label="Fixado" />}
+                        <Badge tone={p.kind === "comunicado" ? "info" : "neutral"}>{p.kind === "comunicado" ? "Comunicado" : "Notícia"}</Badge>
+                        {p.status !== "published" && <Badge tone="warning">{STATUS_LABEL[p.status]}</Badge>}
+                        <PublicoBadge publico={p.publico} />
+                        <span>{fmtDate(p.published_at ?? p.updated_at)}</span>
+                      </div>
+                      <h2 className="font-semibold leading-snug">{p.title}</h2>
+                      {p.summary && <p className="line-clamp-3 text-sm text-muted">{p.summary}</p>}
+                      <div className="mt-auto flex items-center justify-between border-t border-surface-border/60 pt-2.5 text-xs">
+                        {manage ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-accent">
+                            <Pencil size={12} aria-hidden="true" /> Gerenciar / Editar
+                          </span>
+                        ) : (
+                          <span className="text-muted">por {p.author_name || "Nexus"}</span>
+                        )}
+                        {manage && p.author_name && (
+                          <span className="text-muted text-[11px]">por {p.author_name}</span>
+                        )}
+                      </div>
                     </div>
-                    <h2 className="font-semibold leading-snug">{p.title}</h2>
-                    {p.summary && <p className="line-clamp-3 text-sm text-muted">{p.summary}</p>}
-                    {p.author_name && <p className="mt-auto text-xs text-muted">por {p.author_name}</p>}
-                  </div>
-                </Card>
-              </Link>
-            </li>
-          ))}
+                  </Card>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
         <Pagination meta={list.data?.meta} onPage={setPage} />
       </DataState>
