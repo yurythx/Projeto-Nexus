@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Building, Mail, MessagesSquare, Phone, Search } from "lucide-react";
-import { useState } from "react";
+import { Building, Building2, Mail, MapPin, MessagesSquare, Phone, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { ScopePicker } from "@/components/iam/ScopePicker";
 import { SectionTabsInline } from "@/components/nexus/SectionTabsInline";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { apiClient } from "@/lib/api/client";
 import { useApiPage, useApiQuery, withQuery } from "@/lib/api/swr";
 import { useNexus } from "@/lib/nexus/NexusProvider";
@@ -118,21 +119,162 @@ function People() {
 
 function Sectors() {
   const sectors = useApiQuery<Sector[]>("v1/directory/sectors");
+  const [q, setQ] = useState("");
+  const [entidadeFilter, setEntidadeFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState<"todos" | "unidade" | "departamento">("todos");
+
+  const rawList = sectors.data ?? [];
+
+  const entidades = useMemo(() => {
+    const set = new Set<string>();
+    rawList.forEach((s) => {
+      if (s.entidade) set.add(s.entidade);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rawList]);
+
+  const unidadesCount = useMemo(() => rawList.filter((s) => s.kind === "unidade").length, [rawList]);
+  const departamentosCount = useMemo(() => rawList.filter((s) => s.kind === "departamento").length, [rawList]);
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return rawList.filter((s) => {
+      if (entidadeFilter && s.entidade !== entidadeFilter) return false;
+      if (kindFilter !== "todos" && s.kind !== kindFilter) return false;
+      if (!term) return true;
+      const haystack = `${s.nome} ${s.sigla} ${s.entidade} ${s.unidade || ""} ${s.endereco || ""} ${s.email || ""} ${s.telefone || ""}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [rawList, q, entidadeFilter, kindFilter]);
+
   return (
-    <DataState loading={sectors.isLoading} error={sectors.error} empty={(sectors.data ?? []).length === 0} emptyTitle="Nenhum setor cadastrado">
-      <ul className="grid gap-3 md:grid-cols-2">
-        {(sectors.data ?? []).map((s) => (
-          <li key={s.id} className={`rounded-lg border border-surface-border p-4 text-sm ${s.kind === "departamento" ? "ml-4" : ""}`}>
-            <p className="font-semibold">
-              {s.nome} {s.sigla && <span className="text-muted">({s.sigla})</span>}
-            </p>
-            <p className="text-xs text-muted">{s.kind === "departamento" ? `Departamento · ${s.unidade}` : `Unidade · ${s.entidade}`}</p>
-            {s.email && <a href={`mailto:${s.email}`} className="block text-xs text-primary hover:underline">{s.email}</a>}
-            {s.telefone && <p className="text-xs">{s.telefone}</p>}
-            {s.endereco && <p className="text-xs text-muted">{s.endereco}</p>}
-          </li>
-        ))}
-      </ul>
+    <DataState loading={sectors.isLoading} error={sectors.error} empty={rawList.length === 0} emptyTitle="Nenhum setor cadastrado">
+      <div className="flex flex-col gap-5">
+        <div className="rounded-xl border border-surface-border bg-surface-elevated/50 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Building2 size={16} className="text-primary" aria-hidden="true" />
+                Estrutura Organizacional & Lotações
+              </p>
+              <p className="text-xs text-muted max-w-2xl">
+                O Nexus organiza as lotações em 3 níveis: <strong>Entidades</strong> (Secretarias e Órgãos mantenedores), <strong>Unidades</strong> (Escolas, Postos de Saúde e Sedes) e <strong>Departamentos</strong> (divisões internas como RH, DTI e Protocolo).
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0">
+              <Badge tone="neutral">{unidadesCount} Unidades</Badge>
+              <Badge tone="info">{departamentosCount} Departamentos</Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-12 items-end">
+          <div className="sm:col-span-5">
+            <Input
+              id="sector-search"
+              label="Buscar por nome, sigla ou telefone"
+              placeholder="Ex: UBS, Escola, RH, Ramal..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-4">
+            <Select
+              id="sector-entidade"
+              label="Entidade (Secretaria)"
+              placeholder="Todas as secretarias / órgãos"
+              value={entidadeFilter}
+              onChange={(e) => setEntidadeFilter(e.target.value)}
+              options={entidades.map((e) => ({ value: e, label: e }))}
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <Select
+              id="sector-kind"
+              label="Nível hierárquico"
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value as "todos" | "unidade" | "departamento")}
+              options={[
+                { value: "todos", label: "Todos os níveis" },
+                { value: "unidade", label: "Apenas Unidades" },
+                { value: "departamento", label: "Apenas Departamentos" },
+              ]}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted">
+          <span>
+            Exibindo <strong>{filtered.length}</strong> de {rawList.length} registros
+          </span>
+          {(q || entidadeFilter || kindFilter !== "todos") && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setEntidadeFilter("");
+                setKindFilter("todos");
+              }}
+              className="text-primary hover:underline"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-surface-border p-8 text-center">
+            <p className="text-sm font-medium text-foreground">Nenhum resultado encontrado</p>
+            <p className="mt-1 text-xs text-muted">Tente ajustar a busca por texto ou selecionar outra entidade.</p>
+          </div>
+        ) : (
+          <ul className="grid gap-3 md:grid-cols-2">
+            {filtered.map((s) => (
+              <li
+                key={s.id}
+                className={`rounded-xl border border-surface-border bg-surface p-4 text-sm transition-all hover:border-primary/40 ${
+                  s.kind === "departamento" ? "ml-3 border-l-4 border-l-primary/60" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-foreground">
+                    {s.nome} {s.sigla && <span className="text-muted">({s.sigla})</span>}
+                  </p>
+                  <Badge tone={s.kind === "departamento" ? "info" : "neutral"} className="shrink-0">
+                    {s.kind === "departamento" ? "Departamento" : "Unidade"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted mt-1">
+                  {s.kind === "departamento" ? `Departamento · ${s.unidade}` : `Unidade · ${s.entidade}`}
+                </p>
+                {s.kind === "departamento" && s.entidade && (
+                  <p className="text-xs text-muted/80">Órgão: {s.entidade}</p>
+                )}
+                <div className="mt-3 flex flex-col gap-1 text-xs">
+                  {s.email && (
+                    <a href={`mailto:${s.email}`} className="flex items-center gap-1.5 text-primary hover:underline">
+                      <Mail size={13} aria-hidden="true" className="shrink-0" />
+                      {s.email}
+                    </a>
+                  )}
+                  {s.telefone && (
+                    <p className="flex items-center gap-1.5 text-foreground">
+                      <Phone size={13} aria-hidden="true" className="shrink-0 text-muted" />
+                      {s.telefone}
+                    </p>
+                  )}
+                  {s.endereco && (
+                    <p className="flex items-start gap-1.5 text-muted">
+                      <MapPin size={13} aria-hidden="true" className="shrink-0 mt-0.5" />
+                      {s.endereco}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </DataState>
   );
 }
