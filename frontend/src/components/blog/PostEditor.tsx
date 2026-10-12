@@ -26,22 +26,20 @@ export function PostEditor({ post, onSaved }: { post?: Post; onSaved: (p: Post) 
   const [publico, setPublico] = useState(post?.publico ?? TODOS);
 
   const storageKey = post ? `nexus_blog_draft_${post.id}` : "nexus_blog_draft_new";
-  const [hasDraft, setHasDraft] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
-
-  useEffect(() => {
+  const [hasDraft, setHasDraft] = useState(() => {
+    if (typeof window === "undefined") return false;
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.body && parsed.body !== (post?.body ?? "")) {
-          setHasDraft(true);
-        }
+        return Boolean(parsed.body && parsed.body !== (post?.body ?? ""));
       }
     } catch {
-      // LocalStorage pode estar indisponível ou desabilitado
+      return false;
     }
-  }, [storageKey, post?.body]);
+    return false;
+  });
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   useEffect(() => {
     if (!body || body === (post?.body ?? "")) return;

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Pencil, Pin, Plus } from "lucide-react";
 import { useState } from "react";
 import { DataState } from "@/components/nexus/DataState";
@@ -22,7 +21,6 @@ const STATUS_LABEL: Record<Post["status"], string> = { draft: "Rascunho", publis
 
 export default function BlogPage() {
   const { can } = useNexus();
-  const router = useRouter();
   const manage = can("blog:manage");
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");

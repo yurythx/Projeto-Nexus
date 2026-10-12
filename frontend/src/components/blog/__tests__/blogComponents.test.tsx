@@ -142,6 +142,7 @@ describe("RelatedPosts", () => {
       status: "published",
       pinned: false,
       published_at: "2026-10-01T10:00:00Z",
+      created_at: "2026-10-01T10:00:00Z",
       updated_at: "2026-10-01T10:00:00Z",
     },
     {
@@ -154,6 +155,7 @@ describe("RelatedPosts", () => {
       status: "published",
       pinned: false,
       published_at: "2026-10-02T10:00:00Z",
+      created_at: "2026-10-02T10:00:00Z",
       updated_at: "2026-10-02T10:00:00Z",
     },
   ];

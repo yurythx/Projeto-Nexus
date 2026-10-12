@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, LayoutGrid } from "lucide-react";
 
 import { PublicShell } from "@/components/layout/PublicShell";
 import { PublicApiError } from "@/lib/api/publicServer";

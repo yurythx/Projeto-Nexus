@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, LayoutGrid, Search, X } from "lucide-react";
+import { ArrowRight, Search, X } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";

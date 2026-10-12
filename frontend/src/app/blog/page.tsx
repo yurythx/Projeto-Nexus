@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 import { PublicShell } from "@/components/layout/PublicShell";
 import { listPublicPosts } from "@/lib/blog/publicBlog";

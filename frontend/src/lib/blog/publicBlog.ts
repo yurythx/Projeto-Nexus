@@ -11,7 +11,7 @@ export async function listPublicPosts(query = "", kind = "", page = 1, pageSize 
   params.set("page_size", String(pageSize));
 
   try {
-    const res = await publicGet<any>(`blog/posts?${params.toString()}`, 0);
+    const res = await publicGet<{ items?: Post[] } | Post[]>(`blog/posts?${params.toString()}`, 0);
     if (Array.isArray(res.data)) return res.data;
     if (res.data && Array.isArray(res.data.items)) return res.data.items;
     return [];

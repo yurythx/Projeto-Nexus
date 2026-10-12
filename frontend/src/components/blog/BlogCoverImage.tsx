@@ -1,4 +1,3 @@
-import { Cpu, Terminal, Shield, Network, Server, Layers, Cloud } from "lucide-react";
 import { ServiceIcon } from "@/lib/catalog/icons";
 
 interface BlogCoverImageProps {
