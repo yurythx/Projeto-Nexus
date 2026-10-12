@@ -47,6 +47,8 @@ for username, password in creds:
                     total += count_nodes(n["children"])
             return total
 
+        wiki_count = count_nodes(wiki_tree)
+
         req_rooms = urllib.request.Request("http://127.0.0.1:8010/api/v1/mercurio/rooms", headers={"Authorization": "Bearer " + token})
         res_rooms = urllib.request.urlopen(req_rooms)
         rooms = json.loads(res_rooms.read().decode())["data"]
