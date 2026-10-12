@@ -47,11 +47,20 @@ for username, password in creds:
                     total += count_nodes(n["children"])
             return total
 
-        wiki_count = count_nodes(wiki_tree)
+        req_rooms = urllib.request.Request("http://127.0.0.1:8010/api/v1/mercurio/rooms", headers={"Authorization": "Bearer " + token})
+        res_rooms = urllib.request.urlopen(req_rooms)
+        rooms = json.loads(res_rooms.read().decode())["data"]
+        rooms_count = len(rooms) if isinstance(rooms, list) else 0
 
-        print(f"[OK] {username}: {me['name']} | escopos={scopes_count} | permissoes={perms_count} | processos={procs_count} | eventos_agenda={events_count} | paginas_wiki={wiki_count}")
+        req_files = urllib.request.Request("http://127.0.0.1:8010/api/v1/files/browse", headers={"Authorization": "Bearer " + token})
+        res_files = urllib.request.urlopen(req_files)
+        files_data = json.loads(res_files.read().decode())["data"]
+        folders_count = len(files_data.get("folders", []))
+
+        print(f"[OK] {username}: {me['name']} | escopos={scopes_count} | permissoes={perms_count} | processos={procs_count} | eventos_agenda={events_count} | paginas_wiki={wiki_count} | salas_chat={rooms_count} | pastas_arquivos={folders_count}")
     except Exception as e:
         print(f"[FAIL] {username}: {e}")
+
 
 
 
