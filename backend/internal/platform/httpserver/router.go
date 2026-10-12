@@ -58,7 +58,7 @@ func New(opts Options) chi.Router {
 		AllowedOrigins:   opts.AllowedOrigins,
 		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key", "Idempotency-Key", "traceparent", "tracestate"},
-		ExposedHeaders:   []string{"X-Request-ID"},
+		ExposedHeaders:   []string{"X-Request-ID", "traceparent", "tracestate"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))

@@ -7,6 +7,7 @@ import { PublicShell } from "@/components/layout/PublicShell";
 import { Markdown } from "@/components/nexus/Markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { getPublishedService } from "@/lib/catalog/catalog";
+import { ServiceCodeSnippet } from "@/components/catalog/ServiceCodeSnippet";
 import { ServiceIcon, getCategoryIconStyles } from "@/lib/catalog/icons";
 import { APP_URL } from "@/lib/env";
 import { safeResourceUrl } from "@/lib/security/safe-url";
@@ -100,6 +101,9 @@ export default async function ServicoPage({ params }: Props) {
             <ol className="mt-3 ml-6 list-decimal space-y-1">{svc.steps.map((s) => <li key={s}>{s}</li>)}</ol>
           </section>
         )}
+
+        {/* Exemplo de Manifesto Técnico & IaC quando aplicável */}
+        <ServiceCodeSnippet slug={svc.slug} />
 
         {svc.channels.length > 0 && (
           <Card>

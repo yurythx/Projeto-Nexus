@@ -21,8 +21,11 @@ import (
 	"github.com/yurythx/projeto-nexus/internal/platform/outbox"
 )
 
-// EventServicePublished é emitido ao publicar um serviço.
-const EventServicePublished = "catalog.service.published"
+// Eventos do Outbox para o ciclo de vida do Catálogo.
+const (
+	EventServicePublished   = "catalog.service.published"
+	EventServiceDeactivated = "catalog.service.deactivated"
+)
 
 // Service implementa os casos de uso.
 type Service struct {
@@ -198,6 +201,16 @@ func (s *Service) SetStatus(ctx context.Context, identity auth.Identity, id uuid
 			}); err != nil {
 				return err
 			}
+			// Se houver matéria correspondente no blog, sincroniza para publicado
+			_, _ = tx.Exec(ctx, `UPDATE blog_posts SET status = 'published', published_at = COALESCE(published_at, now()), updated_at = now() WHERE slug = $1`, "artigo-"+out.Slug)
+		} else if status != domain.StatusPublished && prev.Status == domain.StatusPublished {
+			if err := s.outbox.Write(ctx, tx, EventServiceDeactivated, "catalog_service", id.String(), uuid.Nil, map[string]any{
+				"id": id.String(), "slug": out.Slug, "title": out.Title, "category": out.Category, "status": status,
+			}); err != nil {
+				return err
+			}
+			// Se houver matéria correspondente no blog, sincroniza status para desativado
+			_, _ = tx.Exec(ctx, `UPDATE blog_posts SET status = $1, updated_at = now() WHERE slug = $2`, status, "artigo-"+out.Slug)
 		}
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "catalog.service."+status, "catalog_service", id.String(),
 			map[string]string{"status": prev.Status}, map[string]string{"status": status}))
@@ -221,6 +234,8 @@ func (s *Service) Delete(ctx context.Context, identity auth.Identity, id uuid.UU
 		if err := s.repo.Delete(ctx, tx, id); err != nil {
 			return err
 		}
+		// Se houver matéria correspondente no blog, reverte para rascunho
+		_, _ = tx.Exec(ctx, `UPDATE blog_posts SET status = 'draft', updated_at = now() WHERE slug = $1`, "artigo-"+prev.Slug)
 		return audit.NewWriter(tx).Record(ctx, audit.Meta(ctx, "catalog.service.deleted", "catalog_service", id.String(), prev, nil))
 	}))
 }

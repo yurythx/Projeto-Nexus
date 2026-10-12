@@ -73,6 +73,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  minio-init:
+    # Cria os buckets padrão e o bucket de auditoria com object-lock (WORM)
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - nexus_internal
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb local/$${MINIO_BUCKET:-nexus} 2>/dev/null || true;
+        mc mb --with-lock local/$${AUDIT_WORM_BUCKET:-nexus-audit-worm} 2>/dev/null || true;
+        exit 0;
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+      MINIO_BUCKET: ${MINIO_BUCKET:-nexus}
+      AUDIT_WORM_BUCKET: ${AUDIT_WORM_BUCKET:-nexus-audit-worm}
   redis:
     # Cache do resolvedor de permissões (IAM), rate limiting, lockout
     # progressivo de login e idempotência — REDIS_URL é obrigatório no

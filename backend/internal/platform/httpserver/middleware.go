@@ -22,26 +22,20 @@ import (
 	"github.com/yurythx/projeto-nexus/pkg/httputil"
 )
 
-const RequestIDHeader = "X-Request-ID"
+const (
+	RequestIDHeader    = "X-Request-ID"
+	TraceparentHeader  = "traceparent"
+	TracestateHeader   = "tracestate"
+)
 
 // RequestID respeita um header X-Request-ID de entrada ou gera um novo,
 // devolve o mesmo valor na resposta, e o guarda no contexto da requisição
 // para que toda linha de log e chamada subsequente (banco, outbox,
 // RabbitMQ) possa carregá-lo — é a base da correlação de logs entre
-// serviços descrita em §50.
+// serviços descrita em §5.
 //
-// O mesmo valor também vira o correlation_id do contexto (achado real
-// desta revisão: logging.WithCorrelationID nunca era chamado em lugar
-// nenhum, então o campo correlation_id nunca aparecia em nenhum log que
-// passa por logging.FromContext — ex.: a própria linha de acesso HTTP
-// abaixo, panic recovered, rate limiter check failed — apesar do
-// comentário de FromContext e do README prometerem os três campos
-// "sempre que disponíveis"). Nunca diverge de request_id aqui na origem
-// — os handlers que precisam de um correlation_id pra passar adiante
-// pra uma operação de negócio já reaproveitam exatamente este mesmo
-// valor; as duas chaves de contexto continuam distintas (não uma só)
-// porque um fluxo de negócio pode um dia abranger mais de uma requisição
-// HTTP, cada uma com seu próprio request_id mas o mesmo correlation_id.
+// Também extrai ou gera o cabeçalho W3C TraceContext (traceparent),
+// garantindo interoperabilidade com coletores OpenTelemetry (OTel / W3C Recommendation).
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(RequestIDHeader)
@@ -49,6 +43,23 @@ func RequestID(next http.Handler) http.Handler {
 			id = uuid.NewString()
 		}
 		w.Header().Set(RequestIDHeader, id)
+
+		// W3C TraceContext (traceparent: 00-{trace_id 32 hex}-{parent_id 16 hex}-01)
+		tp := r.Header.Get(TraceparentHeader)
+		if tp == "" {
+			cleanID := strings.ReplaceAll(id, "-", "")
+			if len(cleanID) < 32 {
+				cleanID = fmt.Sprintf("%032x", time.Now().UnixNano())
+			}
+			traceID := cleanID[:32]
+			spanID := cleanID[16:32]
+			tp = fmt.Sprintf("00-%s-%s-01", traceID, spanID)
+		}
+		w.Header().Set(TraceparentHeader, tp)
+		if ts := r.Header.Get(TracestateHeader); ts != "" {
+			w.Header().Set(TracestateHeader, ts)
+		}
+
 		ctx := logging.WithRequestID(r.Context(), id)
 		ctx = logging.WithCorrelationID(ctx, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
