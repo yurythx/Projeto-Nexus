@@ -54,6 +54,12 @@ func (h *Handlers) RegisterAdminRoutes(r chi.Router) {
 	})
 }
 
+// RegisterRoutes registra tanto as rotas públicas quanto de gestão no roteador.
+func (h *Handlers) RegisterRoutes(r chi.Router) {
+	h.RegisterPublicRoutes(r)
+	h.RegisterAdminRoutes(r)
+}
+
 func (h *Handlers) fail(w http.ResponseWriter, r *http.Request, err error) {
 	httputil.WriteError(w, r, h.logger, application.MapError(err))
 }
