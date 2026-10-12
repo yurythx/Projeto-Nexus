@@ -116,5 +116,58 @@ A Wiki corporativa conta com 6 manuais e procedimentos operacionais cadastrados 
 2. Acesse o menu de gestão e confirme permissões de visualização corporativa, governança e catálogo de serviços.
 3. Compare o menu de navegação e as ações disponíveis em relação ao perfil estritamente operacional de **`rodrigo.agro`** (leitura básica e despachos locais).
 
+---
+
+### Cenário 7: Mensageria & Canais Departamentais no Mercúrio (`/mercurio`)
+
+O módulo Mercúrio possui **7 salas corporativas ativas** integradas à hierarquia de Rondonópolis:
+- **`Geral`**: Canal global aberto a todos os colaboradores com histórico corporativo.
+- **`Diretoria Executiva & Estratégia`**: Sala restrita à Presidência e Diretoria (`carlos.diretoria`).
+- **`Comunicação & Marketing`**: Sala da equipe de assessoria e publicações (`mariana.mkt`).
+- **`Engenharia de Software & P&D`**: Sala dos desenvolvedores do Hub Aurora (`lucas.tech`).
+- **`Operações & Logística Regional`**: Sala da equipe de armazém e frotas do Polo Industrial (`marcos.ops`).
+- **`Protocolo & Atendimento Integrado`**: Sala de triagem documental do CIA Poguba (`ana.protocolo`).
+- **`Terminal Agro & Balança Ferroviária`**: Sala de pesagem e transbordo (`rodrigo.agro`).
+
+#### Como validar no navegador:
+1. Faça login como **`lucas.tech`** e acesse `/mercurio`:
+   - A barra lateral exibe apenas a sala **Geral** e a sala departamental **Engenharia de Software & P&D**.
+2. Faça login como **`carlos.diretoria`**:
+   - Como Diretor Executivo com permissão de gestão/auditoria, Carlos tem acesso e moderação de **todas as 7 salas**.
+3. Envie uma mensagem no canal Geral em uma aba anônima e confira a atualização em tempo real via WebSockets/Mercure.
+
+---
+
+### Cenário 8: Repositório de Arquivos & GED Estruturado (`/arquivos`)
+
+As pastas de documentos corporativos estão organizadas por unidade e departamento com listas de controle de acesso (ACLs):
+- **Sede Centro**: *Diretoria e Governança Corporativa* > *Atas e Deliberações*, *Planejamento Estratégico 2026* (público para todos).
+- **Hub Vila Aurora**: *Engenharia de Software e P&D AgroTech* > *Especificações de APIs*, *Telemetria IoT*.
+- **Polo Industrial**: *Operações Industriais e Logística Regional* > *Laudos de Inspeção*, *Procedimentos Operacionais (POP NR-6)*.
+- **CIA Poguba**: *Atendimento Integrado e Protocolo* > *Formulários de Credenciamento* (leitura pública).
+- **Terminal Agro**: *Terminal Intermodal e Malha Ferroviária* > *Boletins de Pesagem*.
+
+#### Como validar no navegador:
+1. Faça login como **`carlos.diretoria`** e acesse `/arquivos`:
+   - Todas as 5 pastas raiz das unidades aparecem navegáveis.
+2. Faça login como **`mariana.mkt`** ou **`marcos.ops`**:
+   - Apenas a pasta de sua unidade e as pastas corporativas de leitura pública (Plano Estratégico, POP de Segurança) ficam acessíveis.
+
+---
+
+### Cenário 9: Catálogo de Soluções & Serviços Especializados (`/servicos`)
+
+O catálogo público (`/servicos`) conta com **36 serviços e soluções** corporativas, todos vinculados diretamente às unidades de Rondonópolis:
+- **Sede Centro**: Reserva do Auditório Marechal Rondon, Pareceres Jurídicos e Contratos.
+- **Hub Aurora**: Gestão de Identidades SSO / VPN WireGuard, Consultoria de APIs AgroTech, Help Desk TI.
+- **Polo Industrial**: Vistoria de Frotas Bitrem, Requisição de EPIs no Almoxarifado Central.
+- **CIA Poguba**: Cadastro e Homologação de Cooperativas Agropecuárias, Emissão de Certidões.
+- **Terminal Agro**: Pesagem em Balança Rodoferroviária 24h, Fila Virtual de Descarga de Grãos.
+
+#### Como validar no navegador:
+1. Acesse `/servicos` (público ou autenticado).
+2. Observe cada cartão de serviço identificando a unidade responsável em Rondonópolis, canais de contato com ramais locais, SLAs e passos operacionais.
+
+
 
 
