@@ -44,16 +44,29 @@ Todas as personas estão ativas, com hashes criptográficos **Argon2id**, perfis
 
 ---
 
-### Cenário 3: Trâmite de Processos entre Unidades de Rondonópolis
-1. Faça login como **`ana.protocolo`** (CIA Poguba).
-2. Acesse `/tramite` e crie um novo processo eletrônico (ex.: *"Solicitação de Manutenção de Equipamentos de Triagem"*).
-3. Tramite o processo direcionando-o para a unidade **Complexo Operacional - Distrito Industrial (`POLO-IND`)**.
-4. Faça login como **`marcos.ops`** (Polo Industrial), acesse `/tramite`:
-   - O processo aparece na caixa de entrada da unidade.
-   - Marcos pode despachar, anexar parecer ou concluir o processo.
+### Cenário 3: Trâmite de Processos entre Unidades de Rondonópolis (`/tramite`)
+
+Os 4 processos eletrônicos abaixo já estão ativos e circulando no sistema com documentos juntados e histórico auditável:
+
+| Processo | Tipo | Origem | Lotação Atual | Assunto | Documentos / Autores |
+|---|---|---|---|---|---|
+| **`000001/2026`** | Contratação | Hub Aurora (`HUB-AURORA`) | Sede Centro (`SEDE-CENTRO`) | Expansão de Infraestrutura de Servidores para o Laboratório AgroTech | • *Memorando nº 12/2026* (Lucas Albuquerque)<br>• *Despacho Decisório nº 44/2026* (Carlos Mendes) |
+| **`000002/2026`** | Requerimento | Polo Industrial (`POLO-IND`) | Terminal Agro (`TERM-AGRO`) | Revisão e Manutenção Preventiva da Frota Bitrem (Safra 2026/2027) | • *Laudo de Vistoria nº 08/2026* (Marcos Souza)<br>• *Parecer Balança nº 19/2026* (Rodrigo Camargo) |
+| **`000003/2026`** | Requerimento | CIA Poguba (`UNID-POGUBA`) | Hub Aurora (`HUB-AURORA`) | Cadastro e Integração de Cooperativa Agropecuária no Portal Nexus | • *Formulário de Triagem* (Ana Paula Ferreira) |
+| **`000004/2026`** | Memorando | Sede Centro (`SEDE-CENTRO`) | Sede Centro (`SEDE-CENTRO`) | Aprovação de Campanha Institucional e Stand da Nexus na Exposul 2026 | • *Plano de Mídia Exposul* (Mariana Silva)<br>• *Homologação Presidência* (Carlos Mendes) — **Concluído** |
+
+#### Como validar no navegador:
+1. Faça login como **`lucas.tech`** e acesse `/tramite`:
+   - Veja o processo **`000003/2026`** (enviado por Ana da Poguba) aguardando atendimento técnico no Hub Aurora.
+   - Abra o processo e confira o formulário de triagem e o histórico de movimentações.
+2. Faça login como **`rodrigo.agro`** e acesse `/tramite`:
+   - Veja o processo **`000002/2026`** tramitado por Marcos (Polo Industrial) para o Terminal Agro.
+3. Faça login como **`carlos.diretoria`**:
+   - Acesse `/tramite` e veja o processo **`000001/2026`** na Sede Centro, com o despacho decisório de aprovação de verba.
 
 ---
 
 ### Cenário 4: Governança, IAM e Permissões Administrativas
 1. Faça login como **`carlos.diretoria`**.
 2. Acesse o menu de gestão e confirme permissões de visualização corporativa, governança e catálogo de serviços.
+
