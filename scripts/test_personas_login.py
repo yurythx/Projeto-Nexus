@@ -33,8 +33,25 @@ for username, password in creds:
         events = json.loads(res_ev.read().decode())["data"]
         events_count = len(events) if isinstance(events, list) else 0
 
-        print(f"[OK] {username}: {me['name']} | escopos={scopes_count} | permissoes={perms_count} | processos={procs_count} | eventos_agenda={events_count}")
+        req_wiki = urllib.request.Request("http://127.0.0.1:8010/api/v1/wiki/tree", headers={"Authorization": "Bearer " + token})
+        res_wiki = urllib.request.urlopen(req_wiki)
+        wiki_tree = json.loads(res_wiki.read().decode())["data"]
+
+        def count_nodes(nodes):
+            total = 0
+            if not isinstance(nodes, list):
+                return total
+            for n in nodes:
+                total += 1
+                if "children" in n and n["children"]:
+                    total += count_nodes(n["children"])
+            return total
+
+        wiki_count = count_nodes(wiki_tree)
+
+        print(f"[OK] {username}: {me['name']} | escopos={scopes_count} | permissoes={perms_count} | processos={procs_count} | eventos_agenda={events_count} | paginas_wiki={wiki_count}")
     except Exception as e:
         print(f"[FAIL] {username}: {e}")
+
 
 
