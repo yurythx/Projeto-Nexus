@@ -66,7 +66,33 @@ Os 4 processos eletrônicos abaixo já estão ativos e circulando no sistema com
 
 ---
 
-### Cenário 4: Governança, IAM e Permissões Administrativas
+### Cenário 4: Agenda Corporativa & Reserva de Salas em Rondonópolis (`/agenda`)
+
+Foram configuradas **7 salas de reunião corporativas** distribuídas entre as unidades de Rondonópolis:
+- **Sede Centro:** *Auditório Marechal Rondon* (120 lugares) e *Sala Executiva Pantanal* (16 lugares)
+- **Hub Vila Aurora:** *Espaço Inovação & Scrum Hub* (24 lugares) e *Lab de Pesquisa & IoT AgroTech* (12 lugares)
+- **Distrito Industrial:** *Sala de Operações & Logística Polo* (18 lugares)
+- **CIA Poguba:** *Sala de Treinamento CIA Poguba* (30 lugares)
+- **Terminal Agro:** *Sala de Briefing do Terminal Agro* (10 lugares)
+
+#### Eventos cadastrados para o mês:
+1. **Comitê Executivo Nexus:** Amanhã das 09h às 11h30 na *Sala Executiva Pantanal* (Organizado por Carlos Mendes).
+2. **Sprint Review AgroTech:** Em 2 dias das 14h às 16h no *Espaço Inovação Hub Aurora* (Restrito ao Hub Aurora — Organizado por Lucas Albuquerque).
+3. **Alinhamento de Frotas e Safra:** Em 3 dias das 08h30 às 10h30 na *Sala Operações Polo* (Organizado por Marcos Souza).
+4. **Workshop de Atendimento e LGPD:** Em 4 dias das 13h30 às 17h na *Sala CIA Poguba* (Organizado por Ana Paula Ferreira).
+5. **Workshop Aberto Nexus:** Em 7 dias das 19h às 21h30 no *Auditório Marechal Rondon* (Público — Organizado por Mariana Silva).
+
+#### Como validar no navegador:
+1. Faça login como **`lucas.tech`** e acesse `/agenda`:
+   - No calendário do mês, você verá **5 eventos**, incluindo o evento restrito *"Sprint Review: Plataforma de Telemetria e IA AgroTech"*.
+2. Faça login como **`marcos.ops`** e acesse `/agenda`:
+   - Você verá **4 eventos**. O evento do Hub Aurora **não aparece**, validando o filtro de público-alvo por unidade na Agenda!
+3. Acesse sem login em aba anônima na Agenda pública (`/agenda` sem autenticação): apenas o evento público *"Workshop Nexus: O Futuro da Tecnologia no Campo"* no Auditório Marechal Rondon fica visível aos visitantes externos.
+
+---
+
+### Cenário 5: Governança, IAM e Permissões Administrativas
 1. Faça login como **`carlos.diretoria`**.
 2. Acesse o menu de gestão e confirme permissões de visualização corporativa, governança e catálogo de serviços.
+
 
