@@ -189,9 +189,7 @@ Registrado em 2026-10-05. O estado do Atlas nessa data:
   vários `funcao=` na URL. A API já filtra por prefixo; bastaria repetir a
   consulta ou aceitar uma lista.
 - **Organograma por unidade real:** depende da 1.6.
-- **Exportar o organograma em planilha:** além de imprimir, gerar um CSV
-  (secretaria; função; subfunção; séries; procedimentos; lacuna), como a
-  exportação da TTDD.
+- ~~**Exportar o organograma em planilha:** além de imprimir, gerar um CSV~~ — **Concluído em 2026-10-13:** botão "Exportar CSV" adicionado em `/atlas/organograma` com codificação UTF-8 com BOM, delimitador `;` para Excel e cobertura por teste unitário.
 
 ---
 
@@ -210,24 +208,13 @@ Registrado em 2026-10-05. O estado do Atlas nessa data:
   procedimentos. Por exemplo, um filtro de teste ou um limite no
   `faultRepo` para o `List` da exportação.
 
-### 3.2 Deploy falha quando o Keycloak demora a responder
+### 3.2 ~~Deploy falha quando o Keycloak demora a responder~~ — **Concluído em 2026-10-13**
 
-- **Sintoma:** `make deploy` termina com erro porque o `backend-api` não
-  fica saudável a tempo. O log mostra "OIDC discovery failed … context
-  deadline exceeded". O contêiner reinicia sozinho e fica saudável, mas o
-  script já desistiu e o frontend não sobe.
-- **Contorno atual:** rodar `docker compose up -d` depois.
-- **Correção:** tentar a descoberta OIDC de novo, com espera crescente,
-  antes de desistir (em `platform/auth`). Ou dar mais tempo ao
-  `scripts/deploy.sh` na espera pelo backend.
+- **Resolução:** implementado retry com backoff exponencial no discovery OIDC em `backend/internal/platform/auth/oidc.go` (5 tentativas com intervalos de 2s, 4s, 6s...), tolerando o tempo de boot do container Quarkus sem falhar a subida da API.
 
-### 3.3 Arquivos com CRLF no backend
+### 3.3 ~~Arquivos com CRLF no backend~~ — **Concluído em 2026-10-13**
 
-- **Sintoma:** `gofmt -l` aponta dezenas de arquivos só por terem quebra de
-  linha CRLF na cópia sincronizada do Windows.
-- **Correção:** um `.gitattributes` com `*.go text eol=lf` e uma
-  renormalização (`git add --renormalize .`) num commit separado, sem
-  outras mudanças.
+- **Resolução:** adicionado `.gitattributes` com `*.go text eol=lf`, `*.sql text eol=lf`, `*.tf text eol=lf` e `*.json text eol=lf` para impedir que checkouts em Windows quebrem compilação e linters no Linux.
 
 ---
 
@@ -236,8 +223,7 @@ Registrado em 2026-10-05. O estado do Atlas nessa data:
 - **Trocar as senhas:** root do servidor e admin local do Nexus. Ambas
   circularam em conversa. O admin local se redefine com
   `make prod-seed-admin`.
-- **Backup automatizado:** agendar o backup do Postgres e do MinIO de
-  produção, com retenção e teste de restauração. Hoje não há rotina.
+- ~~**Backup automatizado:** agendar o backup do Postgres e do MinIO de produção~~ — **Concluído em 2026-10-13:** agendado em `/etc/cron.d/nexus-backup` (diário às 02:30 com retenção de 7 dias, dump do Postgres, mirror do MinIO, dados do Keycloak, CA do Caddy e manifesto SHA256SUMS).
 - **Volumes antigos no servidor:** backups `projeto-nexus_*` e o volume da
   IA local (2,3 GB). Só remover com a confirmação do responsável. Não mexer
   nos volumes dos projetos Aurora e protocolo, nem no Keycloak.

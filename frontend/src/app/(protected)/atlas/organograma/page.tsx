@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Download, Printer } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
@@ -31,6 +31,71 @@ const PAPEL: Record<Visao, "landscape" | "portrait"> = {
   blocos: "landscape",
   fichas: "landscape",
 };
+
+/** Gera e baixa a planilha do organograma em formato CSV formatado para Excel. */
+function exportarOrganogramaCSV(orgaos: OrgaoOrganograma[]) {
+  const cabecalho = [
+    "Secretaria",
+    "Função",
+    "Subfunção",
+    "Séries Documentais",
+    "Procedimentos Publicados",
+    "Em Validação",
+    "Rascunhos",
+    "Lacuna de Procedimento",
+  ];
+  const linhas: string[][] = [cabecalho];
+
+  for (const o of orgaos) {
+    const sec = `${o.prefixo} ${o.nome}`;
+    for (const f of o.funcoes) {
+      const func = `${f.codigo} ${f.nome}`;
+      if (f.subfuncoes.length === 0) {
+        linhas.push([
+          sec,
+          func,
+          "—",
+          String(f.series),
+          String(f.publicados),
+          String(f.em_validacao),
+          String(f.rascunhos),
+          f.lacunas > 0 ? "Sim" : "Não",
+        ]);
+        continue;
+      }
+      for (const sf of f.subfuncoes) {
+        linhas.push([
+          sec,
+          func,
+          `${sf.codigo} ${sf.nome}`,
+          String(sf.series),
+          String(sf.publicados),
+          String(sf.em_validacao),
+          String(sf.rascunhos),
+          sf.lacunas > 0 ? "Sim" : "Não",
+        ]);
+      }
+    }
+  }
+
+  const csvContent = linhas
+    .map((linha) =>
+      linha
+        .map((campo) => `"${campo.replace(/"/g, '""')}"`)
+        .join(";")
+    )
+    .join("\r\n");
+
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `organograma-ttdd-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function Organograma() {
   const params = useSearchParams();
@@ -71,13 +136,21 @@ function Organograma() {
         title="Organograma da TTDD"
         description="As secretarias, as funções (em geral, os departamentos) e as subfunções da Tabela de Temporalidade, com as séries documentais e os procedimentos de cada uma. Clique numa função para ver os procedimentos dela ou numa subfunção para ver as séries."
         actions={
-          <Button
-            className="print:hidden"
-            onClick={() => window.print()}
-            disabled={orgaos.length === 0}
-          >
-            <Printer size={16} aria-hidden="true" className="mr-1" /> Imprimir
-          </Button>
+          <div className="flex items-center gap-2 print:hidden">
+            <Button
+              variant="secondary"
+              onClick={() => exportarOrganogramaCSV(orgaos)}
+              disabled={orgaos.length === 0}
+            >
+              <Download size={16} aria-hidden="true" className="mr-1" /> Exportar CSV
+            </Button>
+            <Button
+              onClick={() => window.print()}
+              disabled={orgaos.length === 0}
+            >
+              <Printer size={16} aria-hidden="true" className="mr-1" /> Imprimir
+            </Button>
+          </div>
         }
       />
 

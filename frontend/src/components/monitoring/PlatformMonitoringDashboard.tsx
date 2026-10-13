@@ -147,6 +147,15 @@ export function PlatformMonitoringDashboard() {
       type: "Relational DB",
     },
     {
+      id: "redis-cache",
+      name: "Redis 7 In-Memory Cache",
+      description: "Cache de permissões IAM, rate limiting e lockouts de login",
+      port: "6379",
+      icon: Zap,
+      status: backendCheckStatus("redis"),
+      type: "Cache & Store",
+    },
+    {
       id: "rabbitmq-broker",
       name: "RabbitMQ AMQP Broker",
       description: "Fila de mensagens orientada a eventos para desacoplamento de workers",
@@ -192,7 +201,7 @@ export function PlatformMonitoringDashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted">Atualizado às {lastCheckTime}</span>
           <Button
             size="sm"
@@ -203,6 +212,15 @@ export function PlatformMonitoringDashboard() {
           >
             <RefreshCw size={14} className={isValidating ? "animate-spin" : ""} />
             Atualizar
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => window.open("http://192.168.1.42:3005", "_blank")}
+            className="gap-2 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            <Activity size={14} />
+            Abrir Grafana
           </Button>
           <Button
             size="sm"
@@ -260,6 +278,48 @@ export function PlatformMonitoringDashboard() {
 
       {activeTab === "observabilidade" && (
         <>
+          {/* Banner de Acesso à Stack de Observabilidade */}
+          <Card className="border-primary/30 bg-gradient-to-r from-primary/10 via-surface/40 to-surface/20">
+            <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                  <Activity size={22} />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-semibold text-foreground text-sm flex items-center gap-2">
+                    Stack de Observabilidade Dedicada (Prometheus + Grafana)
+                    <span className="inline-flex items-center rounded-full bg-success/20 px-2 py-0.5 text-[10px] font-bold text-success">
+                      Ativo
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted">
+                    Dashboard executivo pré-carregado no nó com métricas em tempo real de latência P99, vazão req/s e pool do PostgreSQL.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-stretch sm:self-auto shrink-0">
+                <a
+                  href="http://192.168.1.42:9090"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border border-surface-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground transition-colors"
+                >
+                  <Layers size={13} />
+                  Prometheus (:9090)
+                </a>
+                <a
+                  href="http://192.168.1.42:3005"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary-hover transition-colors"
+                >
+                  <Activity size={13} />
+                  Painel Grafana (:3005)
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* KPI Cards de Performance */}
           <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-surface/50">

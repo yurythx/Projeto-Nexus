@@ -249,4 +249,24 @@ describe("Atlas — organograma da TTDD", () => {
     renderApp(<OrganogramaPage />);
     expect(await screen.findByRole("button", { name: /Tentar novamente/ })).toBeInTheDocument();
   });
+
+  it("exporta organograma em planilha CSV", async () => {
+    mockBackend(rotas(true));
+    renderApp(<OrganogramaPage />);
+    const btn = await screen.findByRole("button", { name: /exportar csv/i });
+    expect(btn).toBeInTheDocument();
+    expect(btn).not.toBeDisabled();
+
+    const createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    await userEvent.click(btn);
+
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
 });
