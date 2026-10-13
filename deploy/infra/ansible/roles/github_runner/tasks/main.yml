@@ -1,0 +1,36 @@
+---
+- name: Criar diretório para o GitHub Actions Runner
+  ansible.builtin.file:
+    path: /opt/actions-runner
+    state: directory
+    mode: '0755'
+
+- name: Baixar o pacote oficial do GitHub Actions Runner
+  ansible.builtin.get_url:
+    url: https://github.com/actions/runner/releases/download/v2.322.0/actions-runner-linux-x64-2.322.0.tar.gz
+    dest: /opt/actions-runner/actions-runner.tar.gz
+    mode: '0644'
+
+- name: Extrair o runner
+  ansible.builtin.unarchive:
+    src: /opt/actions-runner/actions-runner.tar.gz
+    dest: /opt/actions-runner
+    remote_src: yes
+
+- name: Instalar dependências do runner (.NET e bibliotecas C)
+  ansible.builtin.command:
+    cmd: ./bin/installdependencies.sh
+    chdir: /opt/actions-runner
+  changed_when: false
+
+- name: Instruções para registrar o runner no repositório
+  ansible.builtin.debug:
+    msg: |
+      Para vincular este runner ao seu repositório no GitHub:
+      1. Acesse: https://github.com/yurythx/Projeto-Nexus/settings/actions/runners/new
+      2. Copie o token de registro gerado.
+      3. No terminal do container ou VM, execute:
+         cd /opt/actions-runner
+         ./config.sh --url https://github.com/yurythx/Projeto-Nexus --token <SEU_TOKEN>
+         ./svc.sh install
+         ./svc.sh start

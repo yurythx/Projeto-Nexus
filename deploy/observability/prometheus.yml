@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: "nexus-backend-api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["backend-api:8002"]
+        labels:
+          service: "backend-api"
+          env: "production"
+
+  - job_name: "nexus-backend-worker"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["backend-worker:9100"]
+        labels:
+          service: "backend-worker"
+          env: "production"
+
+  - job_name: "nexus-caddy"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["caddy:2019"]
+        labels:
+          service: "caddy-reverse-proxy"
+          env: "production"
