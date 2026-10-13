@@ -115,7 +115,7 @@ describe("proxy BFF público (allowlist)", () => {
     const res = await GET(new NextRequest("http://app/x"), params("v1", "atlas", "ttdd", "exportar"));
     expect(res.headers.get("content-disposition")).toBe('attachment; filename="ttdd.csv"');
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
-    for (const path of [["v1", "atlas", "modelos", "m1", "arquivo"], ["v1", "atlas", "workflows"]]) {
+    for (const path of [["v1", "atlas", "modelos", "m1", "arquivo"], ["v1", "atlas", "workflows"], ["v1", "blog", "posts"]]) {
       expect((await GET(new NextRequest("http://app/x"), params(...path))).status).toBe(200);
     }
     expect((await GET(new NextRequest("http://app/x"), params("v1", "atlas", "admin", "modelos"))).status).toBe(404);

@@ -12,6 +12,7 @@ const ALLOW: { method: string; prefix: string }[] = [
   { method: "GET", prefix: "v1/branding" },
   { method: "GET", prefix: "v1/system/public-modules" },
   { method: "GET", prefix: "v1/catalog/" },
+  { method: "GET", prefix: "v1/blog/" },
   { method: "GET", prefix: "v1/directory/public/" },
   { method: "GET", prefix: "v1/calendar/public/" },
   { method: "GET", prefix: "v1/signum/verify/" },
