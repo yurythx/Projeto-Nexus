@@ -65,7 +65,7 @@ BEGIN
 
         DELETE FROM user_scopes WHERE user_id = v_u_carlos;
         INSERT INTO user_scopes (user_id, perfil_id, entidade_id, unidade_id, departamento_id, principal, created_by)
-        VALUES (v_u_carlos, v_perf_admin, v_ent_nexus, v_unid_centro, v_dep_dir_exec, true, 'seed-personas'),
+        VALUES (v_u_carlos, v_perf_admin, v_ent_nexus, v_unid_centro, NULL, true, 'seed-personas'),
                (v_u_carlos, v_perf_gestor_i, v_ent_nexus, NULL, NULL, false, 'seed-personas');
     END IF;
 
@@ -129,8 +129,8 @@ BEGIN
 
         DELETE FROM user_scopes WHERE user_id = v_u_ana;
         INSERT INTO user_scopes (user_id, perfil_id, entidade_id, unidade_id, departamento_id, principal, created_by)
-        VALUES (v_u_ana, v_perf_protocolo, v_ent_nexus, v_unid_poguba, v_dep_prot, true, 'seed-personas'),
-               (v_u_ana, v_perf_servidor, v_ent_nexus, v_unid_poguba, NULL, false, 'seed-personas');
+        VALUES (v_u_ana, v_perf_protocolo, v_ent_nexus, v_unid_poguba, NULL, true, 'seed-personas'),
+               (v_u_ana, v_perf_servidor, v_ent_nexus, v_unid_poguba, v_dep_prot, false, 'seed-personas');
     END IF;
 
     -- =========================================================================
