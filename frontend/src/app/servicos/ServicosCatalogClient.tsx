@@ -78,13 +78,13 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome, categoria ou palavra-chave..."
-            className="w-full rounded-lg border border-surface-border bg-surface-1 py-2 pl-10 pr-9 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="w-full min-h-[44px] rounded-lg border border-surface-border bg-surface-1 py-2.5 pl-10 pr-9 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted hover:text-foreground"
+              className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center pr-3 text-muted hover:text-foreground"
               aria-label="Limpar busca"
             >
               <X size={16} aria-hidden="true" />
@@ -92,11 +92,11 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
           )}
         </div>
 
-        {/* Category Pills */}
+        {/* Category Pills - Scroll horizontal no mobile, wrap no desktop */}
         <div
           role="tablist"
           aria-label="Categorias de serviços"
-          className="flex flex-wrap items-center gap-2"
+          className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible"
         >
           {categories.map((cat) => {
             const isSelected = selectedCategory === cat.name;
@@ -107,7 +107,7 @@ export function ServicosCatalogClient({ initialServices }: ServicosCatalogClient
                 role="tab"
                 aria-selected={isSelected}
                 onClick={() => setSelectedCategory(cat.name)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all ${
                   isSelected
                     ? "bg-primary text-primary-foreground shadow-sm font-semibold"
                     : "border border-surface-border bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground"

@@ -89,13 +89,13 @@ export function PublicBlogListClient({ initialPosts }: PublicBlogListClientProps
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por artigos, tecnologias, empresas..."
-              className="w-full rounded-lg border border-surface-border bg-surface-1 py-2 pl-10 pr-9 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-hidden focus:ring-1 focus:ring-accent"
+              className="w-full min-h-[44px] rounded-lg border border-surface-border bg-surface-1 py-2.5 pl-10 pr-9 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-hidden focus:ring-1 focus:ring-accent"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted hover:text-foreground"
+                className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center pr-3 text-muted hover:text-foreground"
                 aria-label="Limpar busca"
               >
                 <X size={16} aria-hidden="true" />
@@ -108,14 +108,18 @@ export function PublicBlogListClient({ initialPosts }: PublicBlogListClientProps
             target="_blank"
             rel="noopener noreferrer"
             title="Assinar Feed RSS"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-surface-2 hover:text-accent"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-surface-border bg-surface px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-surface-2 hover:text-accent"
           >
             <Rss size={14} className="text-amber-500" aria-hidden="true" />
             <span>Feed RSS</span>
           </a>
         </div>
 
-        <div role="tablist" aria-label="Filtros do blog" className="flex flex-wrap items-center gap-2">
+        <div
+          role="tablist"
+          aria-label="Filtros do blog"
+          className="flex items-center gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible"
+        >
           {tags.map((tag) => {
             const isSelected = selectedTag === tag;
             return (
@@ -125,7 +129,7 @@ export function PublicBlogListClient({ initialPosts }: PublicBlogListClientProps
                 role="tab"
                 aria-selected={isSelected}
                 onClick={() => setSelectedTag(tag)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all ${
                   isSelected
                     ? "bg-accent font-semibold text-accent-foreground shadow-xs"
                     : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground"

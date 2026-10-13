@@ -146,9 +146,62 @@ export function Markdown({ source, className = "" }: { source: string; className
       }
       i++;
       blocks.push(
-        <pre key={k++} className="overflow-x-auto rounded-lg bg-surface-hover p-4 font-mono text-sm leading-relaxed">
+        <pre key={k++} className="max-w-full overflow-x-auto rounded-lg bg-surface-hover p-3.5 sm:p-4 font-mono text-xs sm:text-sm leading-relaxed">
           <code>{code.join("\n")}</code>
         </pre>,
+      );
+      continue;
+    }
+
+    // Tabela Markdown GFM (| col1 | col2 | seguido de | --- | --- |)
+    if (/^\s*\|(.+)\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?\s*$/.test(lines[i + 1] ?? "")) {
+      const parseCells = (rowText: string): string[] => {
+        const trimmed = rowText.trim();
+        const withoutEdges = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+        return withoutEdges.split("|").map((c) => c.trim());
+      };
+
+      const headerCells = parseCells(line);
+      const sepCells = parseCells(lines[i + 1] ?? "");
+      const alignments = sepCells.map((sep) => {
+        const left = sep.startsWith(":");
+        const right = sep.endsWith(":");
+        if (left && right) return "text-center";
+        if (right) return "text-right";
+        return "text-left";
+      });
+
+      i += 2; // pula cabeçalho e separador
+      const rows: string[][] = [];
+      while (i < lines.length && /^\s*\|(.+)\|\s*$/.test(lines[i] ?? "")) {
+        rows.push(parseCells(lines[i++] ?? ""));
+      }
+
+      blocks.push(
+        <div key={k++} className="my-6 max-w-full overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-xs">
+          <table className="min-w-full divide-y divide-surface-border text-left text-sm">
+            <thead className="bg-surface-2 text-xs font-bold uppercase tracking-wider text-muted">
+              <tr>
+                {headerCells.map((h, hIdx) => (
+                  <th key={hIdx} className={`px-4 py-3 font-semibold ${alignments[hIdx] ?? "text-left"}`}>
+                    {inline(h, `th${k}-${hIdx}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-border">
+              {rows.map((row, rIdx) => (
+                <tr key={rIdx} className="transition-colors hover:bg-surface-hover/50 even:bg-surface-1/40">
+                  {row.map((cell, cIdx) => (
+                    <td key={cIdx} className={`px-4 py-3 text-sm text-foreground ${alignments[cIdx] ?? "text-left"}`}>
+                      {inline(cell, `td${k}-${rIdx}-${cIdx}`)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
       );
       continue;
     }
@@ -259,7 +312,7 @@ export function Markdown({ source, className = "" }: { source: string; className
     while (
       i < lines.length &&
       (lines[i] ?? "").trim() !== "" &&
-      !/^(#{1,4}\s|```|>|\s*([-*]|\d+\.)\s)/.test(lines[i] ?? "")
+      !/^(#{1,4}\s|```|>|\s*([-*]|\d+\.)\s|\|)/.test(lines[i] ?? "")
     ) {
       para.push(lines[i++] ?? "");
     }

@@ -12,7 +12,7 @@ import { ToastProvider } from "@/components/notifications/ToastProvider";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { publicFetch } from "@/lib/api/publicClient";
-import { DoorOpen } from "lucide-react";
+import { DoorOpen, X } from "lucide-react";
 import type { PublicModule } from "@/lib/nexus/types";
 
 const PUBLIC_LINKS: { href: string; label: string; module?: string }[] = [
@@ -44,12 +44,22 @@ export function PublicShellClient({
 }) {
   const { status } = useSession();
   const [enabled, setEnabled] = useState<Record<string, boolean> | null>(initialEnabled);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     publicFetch<PublicModule[]>("v1/system/public-modules")
       .then((mods) => setEnabled(Object.fromEntries(mods.map((m) => [m.key, m.enabled]))))
       .catch(() => setEnabled((prev) => prev ?? {}));
   }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
 
   const links = PUBLIC_LINKS.filter((l) => !l.module || Boolean(enabled?.[l.module]));
 
@@ -61,6 +71,8 @@ export function PublicShellClient({
         </Suspense>
         <GovHeader
           homeHref="/"
+          onToggleMenu={() => setMobileMenuOpen((v) => !v)}
+          menuExpanded={mobileMenuOpen}
           nav={
             <nav
               id="main-menu"
@@ -101,6 +113,73 @@ export function PublicShellClient({
             </>
           }
         />
+
+        {/* Backdrop e gaveta móvel de navegação */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 top-[var(--topbar-h)] z-40 bg-black/50 backdrop-blur-xs transition-opacity lg:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+        <div
+          id="mobile-drawer"
+          aria-label="Menu móvel"
+          className={`fixed inset-y-0 left-0 top-[var(--topbar-h)] z-50 flex w-72 max-w-[85vw] flex-col justify-between border-r border-surface-border bg-surface p-5 shadow-2xl transition-transform duration-200 ease-out lg:hidden ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
+          }`}
+        >
+          <div className="flex flex-col gap-5">
+            <div className="flex items-center justify-between border-b border-surface-border pb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted">
+                Navegação
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground"
+                aria-label="Fechar menu"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <nav aria-label="Links móveis">
+              <ul className="flex flex-col gap-1">
+                {links.map((l) => (
+                  <li key={l.href}>
+                    <Link
+                      href={l.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex min-h-[44px] items-center rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover hover:text-primary active:bg-surface-2"
+                    >
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+
+          <div className="flex flex-col gap-2.5 border-t border-surface-border pt-4">
+            <Link
+              href={status === "authenticated" ? "/dashboard" : "/login"}
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90"
+            >
+              <DoorOpen size={18} aria-hidden="true" />
+              <span>{status === "authenticated" ? "Acessar o Painel" : "Entrar no Sistema"}</span>
+            </Link>
+            <Link
+              href="/contato"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-surface-border bg-surface-2 px-4 py-2 text-xs font-medium text-muted transition-colors hover:text-foreground"
+            >
+              Central de Atendimento
+            </Link>
+          </div>
+        </div>
+
         <main id="main-content" tabIndex={-1} className="flex-1 outline-none">
           {children}
         </main>

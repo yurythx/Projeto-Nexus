@@ -37,4 +37,20 @@ describe("Markdown seguro", () => {
     expect(safeMarkdownHref("JAVASCRIPT:alert(1)")).toBeNull();
     expect(safeMarkdownHref("http://x.gov.br/")).toBe("http://x.gov.br/");
   });
+
+  it("renderiza tabelas Markdown GFM com scroll responsivo e alinhamento", () => {
+    const tableSource = `
+| Ferramenta | Função | Benefício |
+| :--- | :---: | ---: |
+| Proxmox | Virtualização | Open-source |
+| Ansible | Automação | Idempotência |
+`;
+    const { container } = render(<Markdown source={tableSource} />);
+    const table = container.querySelector("table");
+    expect(table).not.toBeNull();
+    expect(container.querySelectorAll("thead th")).toHaveLength(3);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(container.querySelector("th")).toHaveTextContent("Ferramenta");
+    expect(container.querySelector("td")).toHaveTextContent("Proxmox");
+  });
 });

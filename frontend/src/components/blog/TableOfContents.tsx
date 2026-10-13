@@ -13,9 +13,10 @@ interface HeadingItem {
 
 interface TableOfContentsProps {
   source: string;
+  mobile?: boolean;
 }
 
-export function TableOfContents({ source }: TableOfContentsProps) {
+export function TableOfContents({ source, mobile = false }: TableOfContentsProps) {
   const [activeId, setActiveId] = useState<string>("");
 
   const headings = useMemo(() => {
@@ -62,6 +63,51 @@ export function TableOfContents({ source }: TableOfContentsProps) {
   }, [headings]);
 
   if (headings.length === 0) return null;
+
+  if (mobile) {
+    return (
+      <details className="group rounded-xl border border-surface-border bg-surface p-4 shadow-xs">
+        <summary className="flex cursor-pointer select-none items-center justify-between text-xs font-bold uppercase tracking-wider text-muted hover:text-foreground">
+          <span className="flex items-center gap-2">
+            <ListCollapse size={15} className="text-accent" aria-hidden="true" />
+            <span>Sumário do Artigo ({headings.length} seções)</span>
+          </span>
+          <span className="text-[10px] text-muted transition-transform group-open:rotate-180">
+            ▼
+          </span>
+        </summary>
+        <nav aria-label="Sumário móvel do artigo" className="mt-3 border-t border-surface-border pt-3">
+          <ul className="flex flex-col gap-1 text-sm">
+            {headings.map((h) => {
+              const isActive = activeId === h.id;
+              return (
+                <li key={h.id} className={`${h.level === 3 ? "pl-3 text-xs" : "font-medium"}`}>
+                  <a
+                    href={`#${h.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const target = document.getElementById(h.id);
+                      if (target) {
+                        target.scrollIntoView({ behavior: "smooth" });
+                        setActiveId(h.id);
+                      }
+                    }}
+                    className={`block py-1.5 transition-colors hover:text-accent ${
+                      isActive
+                        ? "font-semibold text-accent underline underline-offset-4"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {h.text}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </details>
+    );
+  }
 
   return (
     <nav

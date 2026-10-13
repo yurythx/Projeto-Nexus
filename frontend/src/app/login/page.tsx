@@ -76,12 +76,12 @@ export default async function LoginPage() {
       </div>
 
       {/* Painel do formulário */}
-      <div className="relative flex flex-1 flex-col items-center justify-center p-6">
+      <div className="relative flex flex-1 flex-col items-center justify-center px-4 py-12 sm:p-8">
         <div className="absolute right-4 top-4">
           <ThemeToggle initialTheme={initialTheme} />
         </div>
 
-        <Link href="/" className="mb-10 flex items-center gap-2 text-lg font-semibold lg:hidden">
+        <Link href="/" className="mb-6 sm:mb-8 flex items-center gap-2 text-lg font-semibold lg:hidden">
           <Logo size={30} />
           {brand.appName}
         </Link>
@@ -90,7 +90,7 @@ export default async function LoginPage() {
           <LoginCard />
         </Suspense>
 
-        <Link href="/" className="mt-10 text-xs text-muted hover:text-foreground">
+        <Link href="/" className="mt-8 text-xs text-muted hover:text-foreground">
           ← Voltar para a página inicial
         </Link>
       </div>

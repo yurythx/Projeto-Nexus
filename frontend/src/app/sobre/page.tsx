@@ -119,35 +119,36 @@ export default async function AboutPage() {
               Mapeamento dos 5 módulos de conformidade implementados na plataforma e suas justificativas técnicas.
             </p>
           </div>
-          <div className="overflow-hidden rounded-xl border border-surface-border bg-surface">
-            <Table caption="Detalhamento das diretrizes federais e justificativas de implementação.">
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>Módulo & Norma</TableHeaderCell>
-                  <TableHeaderCell>Tecnologias & Métodos</TableHeaderCell>
-                  <TableHeaderCell>Justificativa Técnica de Uso</TableHeaderCell>
+          <Table
+            caption="Detalhamento das diretrizes federais e justificativas de implementação."
+            className="min-w-[640px]"
+          >
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell className="w-[30%]">Módulo & Norma</TableHeaderCell>
+                <TableHeaderCell className="w-[30%]">Tecnologias & Métodos</TableHeaderCell>
+                <TableHeaderCell className="w-[40%]">Justificativa Técnica de Uso</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {govConformityModules.map((item) => (
+                <TableRow key={item.module}>
+                  <TableCell className="align-top font-medium text-foreground">
+                    <div className="flex flex-col gap-1">
+                      <span className="font-bold text-xs text-primary">{item.module}</span>
+                      <span className="text-[11px] font-mono text-seal">{item.norm}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="align-top font-mono text-xs text-muted">
+                    {item.tech}
+                  </TableCell>
+                  <TableCell className="align-top text-xs text-muted leading-relaxed">
+                    {item.justification}
+                  </TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody>
-                {govConformityModules.map((item) => (
-                  <TableRow key={item.module}>
-                    <TableCell className="align-top font-medium text-foreground">
-                      <div className="flex flex-col gap-1">
-                        <span className="font-bold text-xs text-primary">{item.module}</span>
-                        <span className="text-[11px] font-mono text-seal">{item.norm}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top font-mono text-xs text-muted">
-                      {item.tech}
-                    </TableCell>
-                    <TableCell className="align-top text-xs text-muted leading-relaxed">
-                      {item.justification}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         </section>
 
         <section className="flex flex-col gap-4">
@@ -179,7 +180,10 @@ export default async function AboutPage() {
               Tratado como checklist de desenvolvimento e segurança desde o primeiro commit. A coluna da direita descreve a prática hoje na plataforma.
             </p>
           </div>
-          <Table caption="Riscos do OWASP Top 10 e a prática correspondente adotada na plataforma.">
+          <Table
+            caption="Riscos do OWASP Top 10 e a prática correspondente adotada na plataforma."
+            className="min-w-[500px]"
+          >
             <TableHead>
               <TableRow>
                 <TableHeaderCell>Risco</TableHeaderCell>

@@ -49,7 +49,7 @@ export function AccessibilityBar({ showSearchShortcut = true }: { showSearchShor
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <Link
           href="/acessibilidade"
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="flex min-h-[28px] items-center gap-1.5 rounded-md px-2 py-1 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <Accessibility size={15} aria-hidden="true" />
           <span className="hidden sm:inline">Acessibilidade</span>
@@ -58,19 +58,19 @@ export function AccessibilityBar({ showSearchShortcut = true }: { showSearchShor
           type="button"
           onClick={toggleHighContrast}
           aria-pressed={branding.highContrast}
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="flex min-h-[28px] items-center gap-1.5 rounded-md px-2 py-1 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
         >
           <Contrast size={14} aria-hidden="true" />
           <span className="hidden sm:inline">Alto contraste</span>
         </button>
         <div role="group" aria-label="Tamanho da fonte" className="flex items-center gap-0.5 rounded-md border border-white/20 bg-white/10 p-0.5">
-          <button type="button" onClick={decreaseFontSize} aria-label="Diminuir fonte" className="rounded px-2 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+          <button type="button" onClick={decreaseFontSize} aria-label="Diminuir fonte" className="flex min-h-[26px] min-w-[26px] items-center justify-center rounded px-1.5 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
             A-
           </button>
-          <button type="button" onClick={resetFontSize} aria-label="Fonte padrão" className="rounded px-2 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+          <button type="button" onClick={resetFontSize} aria-label="Fonte padrão" className="flex min-h-[26px] min-w-[26px] items-center justify-center rounded px-1.5 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
             A
           </button>
-          <button type="button" onClick={increaseFontSize} aria-label="Aumentar fonte" className="rounded px-2 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+          <button type="button" onClick={increaseFontSize} aria-label="Aumentar fonte" className="flex min-h-[26px] min-w-[26px] items-center justify-center rounded px-1.5 py-0.5 hover:bg-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
             A+
           </button>
         </div>

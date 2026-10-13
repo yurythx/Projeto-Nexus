@@ -164,6 +164,13 @@ export default async function PublicPostPage({ params }: Props) {
         {/* Layout do Corpo com ToC Lateral */}
         <div className="grid gap-10 lg:grid-cols-[1fr_240px]">
           <div className="min-w-0">
+            {/* Sumário Móvel Colapsável para Leitura em Celulares */}
+            {post.body && (
+              <div className="mb-6 lg:hidden">
+                <TableOfContents source={post.body} mobile />
+              </div>
+            )}
+
             {post.body && (
               <div className="prose prose-neutral dark:prose-invert max-w-none text-base leading-relaxed">
                 <Markdown source={post.body} />

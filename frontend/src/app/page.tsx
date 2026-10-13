@@ -150,17 +150,17 @@ export default async function HomePage() {
             </p>
 
             {/* CTAs */}
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <div className="mt-10 flex w-full flex-col sm:w-auto sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
               <Link
                 href="/servicos"
-                className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-base font-semibold text-accent-foreground shadow-md transition-all hover:-translate-y-0.5 hover:bg-accent/90"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-center text-base font-semibold text-accent-foreground shadow-md transition-all hover:-translate-y-0.5 hover:bg-accent/90"
               >
                 Explorar Catálogo de Serviços <ArrowRight size={18} aria-hidden="true" />
               </Link>
 
               <Link
                 href="/blog"
-                className="inline-flex items-center gap-2 rounded-xl border border-surface-border bg-surface px-6 py-3.5 text-base font-semibold text-foreground shadow-xs transition-all hover:bg-surface-2"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-surface-border bg-surface px-6 py-3.5 text-center text-base font-semibold text-foreground shadow-xs transition-all hover:bg-surface-2"
               >
                 <BookOpen size={18} aria-hidden="true" /> Acessar o Blog & Novidades
               </Link>
@@ -168,21 +168,21 @@ export default async function HomePage() {
 
             {/* Key Metric Highlights */}
             <div className="mt-14 grid w-full max-w-4xl grid-cols-2 gap-4 border-t border-surface-border pt-8 sm:grid-cols-4">
-              <div className="flex flex-col items-center">
-                <span className="text-2xl font-black text-foreground sm:text-3xl">{serviceCount}+</span>
-                <span className="text-xs font-medium text-muted">Serviços Especializados</span>
+              <div className="flex flex-col items-center text-center">
+                <span className="text-xl font-black text-foreground sm:text-2xl lg:text-3xl">{serviceCount}+</span>
+                <span className="text-[11px] font-medium text-muted sm:text-xs">Serviços Especializados</span>
               </div>
-              <div className="flex flex-col items-center">
-                <span className="text-2xl font-black text-foreground sm:text-3xl">100%</span>
-                <span className="text-xs font-medium text-muted">Soberania dos Dados</span>
+              <div className="flex flex-col items-center text-center">
+                <span className="text-xl font-black text-foreground sm:text-2xl lg:text-3xl">100%</span>
+                <span className="text-[11px] font-medium text-muted sm:text-xs">Soberania dos Dados</span>
               </div>
-              <div className="flex flex-col items-center">
-                <span className="text-2xl font-black text-foreground sm:text-3xl">5 a 10 dias</span>
-                <span className="text-xs font-medium text-muted">Prazo de Implantação</span>
+              <div className="flex flex-col items-center text-center">
+                <span className="text-xl font-black text-foreground sm:text-2xl lg:text-3xl">5 a 10 dias</span>
+                <span className="text-[11px] font-medium text-muted sm:text-xs">Prazo de Implantação</span>
               </div>
-              <div className="flex flex-col items-center">
-                <span className="text-2xl font-black text-foreground sm:text-3xl">Go + Microkernel</span>
-                <span className="text-xs font-medium text-muted">Arquitetura de Alta Vazão</span>
+              <div className="flex flex-col items-center text-center">
+                <span className="text-xl font-black text-foreground sm:text-2xl lg:text-3xl">Go + Microkernel</span>
+                <span className="text-[11px] font-medium text-muted sm:text-xs">Arquitetura de Alta Vazão</span>
               </div>
             </div>
           </div>
@@ -319,7 +319,7 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-surface-border pt-4 text-xs text-muted">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-surface-border pt-4 text-xs text-muted">
               <span>Stack: Go 1.23 · Next.js 16 · PostgreSQL 16 · Redis 7 · RabbitMQ · Proxmox VE · Caddy TLS</span>
               <Link href="/sobre" className="font-semibold text-primary hover:underline">
                 Conhecer arquitetura completa →

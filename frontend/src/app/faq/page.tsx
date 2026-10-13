@@ -106,7 +106,7 @@ export default function FAQPage() {
                         {item.q}
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="pl-11 text-sm leading-relaxed text-muted">
+                    <CardContent className="pl-4 sm:pl-11 text-sm leading-relaxed text-muted">
                       {item.a}
                     </CardContent>
                   </Card>
@@ -117,14 +117,14 @@ export default function FAQPage() {
         </div>
 
         {/* CTA */}
-        <div className="rounded-xl border border-surface-border bg-surface-2 p-8 text-center sm:text-left sm:flex sm:items-center sm:justify-between">
+        <div className="rounded-xl border border-surface-border bg-surface-2 p-6 sm:p-8 text-center sm:text-left sm:flex sm:items-center sm:justify-between">
           <div className="flex flex-col gap-1">
             <h3 className="text-lg font-bold text-foreground">Ainda tem dúvidas?</h3>
             <p className="text-sm text-muted">
               Nossa equipe está pronta para avaliar seu cenário e desenhar a solução ideal.
             </p>
           </div>
-          <div className="mt-4 sm:mt-0 flex shrink-0 items-center gap-3">
+          <div className="mt-4 sm:mt-0 flex flex-wrap shrink-0 items-center justify-center sm:justify-start gap-3">
             <Link
               href="/contato"
               className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground shadow-xs hover:bg-accent/90"
