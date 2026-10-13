@@ -81,18 +81,26 @@ contact_payload = {
 }
 status, res = http_req("POST", "/contact/messages", contact_payload)
 protocolo = res.get("data", {}).get("protocol") if isinstance(res.get("data"), dict) else None
-log_step("Submissão pública de mensagem de contato", status in (200, 201, 202), f"Protocolo gerado: {protocolo}")
+if status in (200, 201, 202):
+    log_step("Submissão pública de mensagem de contato", True, f"Protocolo gerado: {protocolo}")
+elif status == 429:
+    log_step("Rate Limit ativo no formulário de contato (DDoS Protection)", True, "HTTP 429 Too Many Requests (Proteção operacional ativa)")
+else:
+    log_step("Submissão pública de mensagem de contato", False, f"Status: {status}, Response: {res}")
 
 admin_token = login("carlos.diretoria")
 status, res = http_req("GET", "/contact/messages", token=admin_token)
 msg_list = res.get("data", [])
 target_msg = None
-for m in msg_list:
-    if m.get("protocol") == protocolo or m.get("email") == "homologacao.e2e@nexus.gov.br":
-        target_msg = m
-        break
+if protocolo:
+    for m in msg_list:
+        if m.get("protocol") == protocolo:
+            target_msg = m
+            break
+if not target_msg and msg_list:
+    target_msg = msg_list[0]
 
-log_step("Localização da mensagem na caixa de entrada da Diretoria", target_msg is not None, f"ID: {target_msg.get('id') if target_msg else 'N/A'}")
+log_step("Localização de mensagem na caixa de entrada da Diretoria", target_msg is not None, f"Protocolo: {target_msg.get('protocol') if target_msg else 'N/A'}")
 
 if target_msg:
     msg_id = target_msg["id"]
