@@ -1,0 +1,10 @@
+proxmox_endpoint         = "https://192.168.1.13:8006/"
+proxmox_insecure         = true
+proxmox_api_token_id     = "terraform-prov@pve!tf-token"
+proxmox_api_token_secret = "SEU-TOKEN-AQUI"
+proxmox_node_name        = "pve1"
+storage_disk_pool        = "zfs"
+storage_template_pool    = "local"
+network_bridge           = "vmbr0"
+default_gateway          = "192.168.1.1"
+admin_ssh_public_key     = "ssh-ed25519 AAAA... admin@infra"

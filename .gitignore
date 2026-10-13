@@ -57,3 +57,14 @@ __pycache__/
 # Export bruto do Active Directory: contém nomes de servidores (LGPD).
 # A estrutura limpa, sem dados pessoais, fica em deploy/estrutura/.
 docs/AD/
+
+# Terraform & Infraestrutura Proxmox
+*.tfstate
+*.tfstate.*
+deploy/infra/terraform/terraform.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# Ansible
+deploy/infra/ansible/inventory.ini
+*.retry

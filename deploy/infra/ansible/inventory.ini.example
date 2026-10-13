@@ -1,0 +1,20 @@
+# Exemplo de Inventário do Ansible para Proxmox VE
+[all:vars]
+ansible_user=root
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+# Hosts com Docker (VMs KVM)
+[docker_hosts]
+nexus-prod-app ansible_host=192.168.1.42 proxmox_vmid=210
+
+# Containers LXC (Sem Docker)
+[lxc_containers]
+nexus-edge-proxy ansible_host=192.168.1.41 proxmox_vmid=200
+
+# Grupos de Papel
+[nexus_apps]
+nexus-prod-app
+
+[edge_proxies]
+nexus-edge-proxy

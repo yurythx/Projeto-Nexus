@@ -1,0 +1,41 @@
+---
+- name: Criar pasta raiz de projetos
+  ansible.builtin.file:
+    path: /root/Projetos
+    state: directory
+    mode: '0755'
+
+- name: Clonar ou sincronizar repositório Projeto Nexus
+  ansible.builtin.git:
+    repo: 'https://github.com/yurythx/Projeto-Nexus.git'
+    dest: /root/Projetos/Projeto-Nexus
+    version: main
+    force: yes
+
+- name: Liberar portas no firewall UFW para o Nexus
+  community.general.ufw:
+    rule: allow
+    port: '{{ item }}'
+    proto: tcp
+    comment: "Trafego Nexus"
+  loop:
+    - '80'
+    - '443'
+    - '8443'
+
+- name: Subir stack Docker Compose em modo produção
+  community.docker.docker_compose_v2:
+    project_src: /root/Projetos/Projeto-Nexus
+    state: present
+    build: always
+
+- name: Aguardar serviços ficarem saudáveis
+  ansible.builtin.uri:
+    url: https://127.0.0.1:8443/ready
+    method: GET
+    validate_certs: no
+    status_code: 200
+  register: health_check
+  until: health_check.status == 200
+  retries: 15
+  delay: 5

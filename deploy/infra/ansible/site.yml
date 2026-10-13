@@ -1,0 +1,25 @@
+---
+# ==============================================================================
+# PLAYBOOK MESTRE DE PROVISIONAMENTO E CONFIGURAÇÃO - PROJETO NEXUS
+# ==============================================================================
+
+# 1. Configurações de base para todas as máquinas (VMs e LXCs)
+- name: Hardening e Configuração de Base
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+# 2. Instalação e Otimização do Docker Engine
+- name: Configuração do Daemon Docker
+  hosts: docker_hosts
+  become: yes
+  roles:
+    - docker
+
+# 3. Deploy Contínuo da Aplicação Nexus
+- name: Deploy da Stack Projeto Nexus
+  hosts: nexus_apps
+  become: yes
+  roles:
+    - nexus_deploy
