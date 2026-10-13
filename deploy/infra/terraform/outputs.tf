@@ -8,14 +8,9 @@ output "edge_proxy_lxc_ip" {
   value       = module.lxc_edge_proxy.ipv4_address
 }
 
-output "nexus_vm_id" {
-  description = "ID da VM de Produção do Nexus"
-  value       = module.vm_nexus_prod.id
-}
-
-output "nexus_vm_ip" {
-  description = "IP da VM de Produção do Nexus"
-  value       = module.vm_nexus_prod.ipv4_address
+output "nexus_host_ip" {
+  description = "IP do host principal de Produção do Nexus (LXC 103)"
+  value       = "192.168.1.42"
 }
 
 output "ansible_inventory_path" {
