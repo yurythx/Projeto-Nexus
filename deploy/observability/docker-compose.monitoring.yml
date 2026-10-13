@@ -8,8 +8,23 @@ networks:
 volumes:
   prometheus_data: null
   grafana_data: null
+  alertmanager_data: null
 
 services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - nexus_internal
+    ports:
+      - "9093:9093"
+
   prometheus:
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
