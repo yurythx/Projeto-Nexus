@@ -8,9 +8,9 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/sobre", "/servicos", "/contato", "/transparencia", "/acessibilidade", "/privacidade"],
+      allow: ["/", "/sobre", "/servicos", "/blog", "/faq", "/contato", "/transparencia", "/acessibilidade", "/privacidade"],
       disallow: [
-        "/login", "/dashboard", "/configuracao", "/monitoramento", "/auditoria", "/perfil", "/busca", "/mercurio", "/blog",
+        "/login", "/dashboard", "/configuracao", "/monitoramento", "/auditoria", "/perfil", "/busca", "/mercurio",
         "/wiki", "/agenda", "/diretorio", "/arquivos", "/signum", "/tramite", "/atlas", "/gestao", "/exemplos", "/verificar/",
       ],
     },

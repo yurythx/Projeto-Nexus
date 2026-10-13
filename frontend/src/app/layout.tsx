@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
@@ -7,8 +7,19 @@ import "./globals.css";
 import { BRANDING_COOKIE, mergeServerBranding, parseBrandingCookie, tokensToCss } from "@/components/branding/brandingConfig";
 import { publicGetOr } from "@/lib/api/publicServer";
 import { BRANDING_TAG } from "@/lib/branding/tag";
+import { APP_URL } from "@/lib/env";
 import type { Branding } from "@/lib/nexus/types";
 import { Providers } from "./providers";
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#1b365d" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
 
 // Fontes servidas localmente (woff2 de @fontsource, licença OFL em
 // ./fonts): o build não depende de baixar do Google Fonts — o download
@@ -38,9 +49,32 @@ const geistMono = localFont({
 export async function generateMetadata(): Promise<Metadata> {
   const b = await publicGetOr<Branding | null>("branding", null, 60, [BRANDING_TAG]);
   const name = b?.app_name || "Projeto Nexus";
+  const desc =
+    b?.app_description ||
+    "Plataforma completa de soluções corporativas de TI, nuvem privada, catálogo interativo e governança digital.";
+
   return {
+    metadataBase: new URL(APP_URL),
     title: { default: name, template: `%s — ${name}` },
-    description: b?.app_description || "Plataforma corporativa modular (Microkernel) em conformidade com e-MAG, DSGov e LGPD.",
+    description: desc,
+    manifest: "/manifest.webmanifest",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: name,
+    },
+    openGraph: {
+      siteName: name,
+      title: name,
+      description: desc,
+      type: "website",
+      url: APP_URL,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: name,
+      description: desc,
+    },
   };
 }
 

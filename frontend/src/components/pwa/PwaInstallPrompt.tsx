@@ -43,6 +43,10 @@ export function PwaInstallPrompt() {
   const [dismissed, setDismissed] = useState(() => readDismissed());
 
   useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && process.env.NODE_ENV === "production") {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
     function onBeforeInstallPrompt(event: Event) {
       event.preventDefault();
       setDeferredPrompt(event as BeforeInstallPromptEvent);
