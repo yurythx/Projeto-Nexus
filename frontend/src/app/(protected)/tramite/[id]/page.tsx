@@ -7,11 +7,13 @@ import {
   ArrowLeft,
   CheckCheck,
   Download,
+  ExternalLink,
   FilePen,
   Forward,
   Paperclip,
   PenTool,
   RotateCcw,
+  ShieldCheck,
   UserMinus,
   UserPlus,
 } from "lucide-react";
@@ -340,9 +342,21 @@ function DocumentoView({ id }: { id: string }) {
         )
       )}
       {d.envelope_id && (
-        <Link href={`/signum/${d.envelope_id}`} className="text-sm text-primary hover:underline">
-          Ver envelope de assinatura →
-        </Link>
+        <div className="flex flex-wrap items-center gap-4 pt-1 text-sm">
+          <Link href={`/signum/${d.envelope_id}`} className="text-primary hover:underline">
+            Ver envelope de assinatura →
+          </Link>
+          <a
+            href={`/verificar/${d.envelope_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground"
+          >
+            <ShieldCheck size={14} className="text-success" aria-hidden="true" />
+            Certidão de Autenticidade & QR Code
+            <ExternalLink size={11} aria-hidden="true" />
+          </a>
+        </div>
       )}
     </div>
   );
