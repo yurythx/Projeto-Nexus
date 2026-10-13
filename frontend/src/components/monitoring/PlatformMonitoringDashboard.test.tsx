@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -151,5 +151,34 @@ describe("PlatformMonitoringDashboard", () => {
     await screen.findByText("PostgreSQL 16 Engine");
     expect(screen.getByText("Reconectando…")).toBeInTheDocument();
     expect(screen.queryByText("Ao vivo")).not.toBeInTheDocument();
+  });
+
+  it("alterna entre as abas de Testes de Carga e Governança com suporte completo", async () => {
+    mockBackend({ health: { postgres: "ok", rabbitmq: "ok" } });
+    renderDashboard();
+
+    await screen.findByText("PostgreSQL 16 Engine");
+
+    // 1. Clica na aba de Testes de Carga & Benchmark
+    const loadTestTabBtn = screen.getByRole("button", { name: /testes de carga & benchmark/i });
+    fireEvent.click(loadTestTabBtn);
+
+    expect(await screen.findByText("Cockpit de Testes de Carga & Performance")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /iniciar teste de carga/i })).toBeInTheDocument();
+    expect(screen.queryByText("PostgreSQL 16 Engine")).not.toBeInTheDocument();
+
+    // 2. Clica na aba de Governança & Runbooks
+    const runbooksTabBtn = screen.getByRole("button", { name: /governança & runbooks/i });
+    fireEvent.click(runbooksTabBtn);
+
+    expect(await screen.findByText("Disaster Recovery (DR) & Procedimentos de Restauração")).toBeInTheDocument();
+    expect(screen.getByText("Matriz de Identidade & Acessos Homologados (IAM)")).toBeInTheDocument();
+    expect(screen.getByText("Carlos Mendes")).toBeInTheDocument();
+
+    // 3. Retorna para a aba de Observabilidade & Telemetria
+    const obsTabBtn = screen.getByRole("button", { name: /observabilidade & telemetria/i });
+    fireEvent.click(obsTabBtn);
+
+    expect(await screen.findByText("PostgreSQL 16 Engine")).toBeInTheDocument();
   });
 });

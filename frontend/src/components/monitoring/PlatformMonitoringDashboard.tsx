@@ -14,7 +14,8 @@ import {
   Zap,
   Clock,
   Layers,
-  Download
+  Download,
+  BookOpen,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -26,6 +27,8 @@ import { apiClient } from "@/lib/api/client";
 import { useNexus } from "@/lib/nexus/NexusProvider";
 
 import { OutboxRequeueButton } from "./OutboxRequeueButton";
+import { LoadTestTab } from "./LoadTestTab";
+import { RunbooksTab } from "./RunbooksTab";
 import type { IntegrationStatus } from "@/types/api";
 
 // GET /api/v1/monitoring/outbox-stats (ver docs/openapi.yaml) — essa,
@@ -65,6 +68,7 @@ const fetcher = async (url: string): Promise<SystemHealthResponse> => {
 };
 
 export function PlatformMonitoringDashboard() {
+  const [activeTab, setActiveTab] = useState<"observabilidade" | "load-test" | "runbooks">("observabilidade");
   const [lastCheckTime, setLastCheckTime] = useState<string>(new Date().toLocaleTimeString("pt-BR"));
   // Estado REAL da conexão WebSocket (DashboardShell → ConnectionStateProvider
   // → aqui) — o card "Conexão WebSocket" mostrava "Ativa" fixo no
@@ -212,8 +216,52 @@ export function PlatformMonitoringDashboard() {
         </div>
       </header>
 
-      {/* KPI Cards de Performance */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Seletor de Abas de Operação e Governança */}
+      <nav aria-label="Abas de Operação e Monitoramento" className="flex border-b border-surface-border">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("observabilidade")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "observabilidade"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            <Activity size={16} />
+            Observabilidade & Telemetria
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("load-test")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "load-test"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            <Zap size={16} />
+            Testes de Carga & Benchmark
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("runbooks")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "runbooks"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted hover:text-foreground"
+            }`}
+          >
+            <BookOpen size={16} />
+            Governança & Runbooks
+          </button>
+        </div>
+      </nav>
+
+      {activeTab === "observabilidade" && (
+        <>
+          {/* KPI Cards de Performance */}
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-surface/50">
           <CardContent className="pt-4 flex items-center justify-between">
             <div className="flex flex-col gap-1">
@@ -392,6 +440,12 @@ export function PlatformMonitoringDashboard() {
           </CardContent>
         </Card>
       </section>
+    </>
+    )}
+
+    {activeTab === "load-test" && <LoadTestTab />}
+
+    {activeTab === "runbooks" && <RunbooksTab />}
     </div>
   );
 }
