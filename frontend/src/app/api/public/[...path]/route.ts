@@ -57,8 +57,23 @@ async function forward(req: NextRequest, path: string[]): Promise<NextResponse> 
     // Arquivos (modelo do Atlas, CSV da TTDD) passam em bytes, com o nome:
     // .text() corromperia o binário e tiraria o BOM do CSV.
     const respHeaders: Record<string, string> = { "Content-Type": contentType };
-    const disposition = res.headers.get("content-disposition");
-    if (disposition) respHeaders["Content-Disposition"] = disposition;
+    const forwardHeaders = [
+      "content-disposition",
+      "retry-after",
+      "x-ratelimit-limit",
+      "x-ratelimit-remaining",
+      "x-ratelimit-reset",
+      "cache-control",
+    ];
+    for (const h of forwardHeaders) {
+      const v = res.headers.get(h);
+      if (v) respHeaders[h] = v;
+    }
+    if (req.method === "GET" && res.status === 200 && !respHeaders["cache-control"]) {
+      if (joined.startsWith("v1/catalog/") || joined.startsWith("v1/blog/") || joined.startsWith("v1/branding")) {
+        respHeaders["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300";
+      }
+    }
     const body = contentType.startsWith("application/json")
       ? await res.text()
       : await res.arrayBuffer();

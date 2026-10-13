@@ -35,6 +35,7 @@
 https://{$PUBLIC_HOST} {
 	import tls_local
 	log
+	encode zstd gzip
 	handle /ws {
 		reverse_proxy backend-api:{$HTTP_PORT}
 	}

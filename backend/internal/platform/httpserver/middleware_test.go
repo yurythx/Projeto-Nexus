@@ -247,6 +247,9 @@ func TestRateLimit_AllowsWithinBurstThenRejects(t *testing.T) {
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429 once burst is exhausted", rec.Code)
 	}
+	if rec.Header().Get("Retry-After") != "60" {
+		t.Errorf("Retry-After = %q, want 60", rec.Header().Get("Retry-After"))
+	}
 }
 
 func TestRateLimit_DifferentKeysAreIndependent(t *testing.T) {

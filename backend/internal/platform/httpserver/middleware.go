@@ -237,6 +237,8 @@ func RateLimit(logger *slog.Logger, limiter Limiter, keyFunc func(*http.Request)
 				return
 			}
 			if !allowed {
+				w.Header().Set("Retry-After", "60")
+				w.Header().Set("X-RateLimit-Limit", "120")
 				httputil.WriteError(w, r, logger, apperrors.RateLimited("too many requests, please try again later"))
 				return
 			}
