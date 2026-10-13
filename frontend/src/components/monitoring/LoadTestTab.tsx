@@ -225,6 +225,97 @@ const TARGETS: TargetItem[] = [
         "Os clientes recebem o header 'Retry-After: 60' informando o tempo de espera necessário até a liberação da janela.",
     },
   },
+  {
+    id: "modelos_minio",
+    name: "Modelos de Documentos & Storage MinIO/S3",
+    url: "/api/public/v1/atlas/modelos",
+    description: "Consulta e streaming de modelos e templates documentais armazenados no MinIO S3",
+    impactLevel: "Armazenamento S3 & MinIO",
+    pipeline: ["Caddy (Proxy TLS)", "Next.js BFF (Allowlist)", "Go Core REST", "MinIO S3 Engine", "PostgreSQL"],
+    testExplanation: {
+      overview:
+        "Mede a vazão e estabilidade do subsistema de armazenamento de objetos S3 (MinIO) integrado ao catálogo de modelos e procedimentos do Atlas.",
+      subsystems: [
+        "MinIO (S3 API): Conexões simultâneas de leitura de metadados e objetos binários",
+        "PostgreSQL: Consulta de versões ativas, integridade de hashes SHA-256 e MIME types",
+        "Go REST Streamer: Streaming em bytes com zero-copy para entrega rápida ao navegador",
+        "Caddy: Compressão e terminação TLS sem bufferização excessiva de binários",
+      ],
+      stressVector: "Concorrência de leitura em armazenamento de objetos S3 e validação de integridade criptográfica.",
+      expectedBehavior:
+        "P95 nominal abaixo de 45ms para metadados e streaming contínuo sem estouro de buffers de memória.",
+    },
+    performanceGuide: {
+      slaTarget: "P95 < 45ms | 0% falhas de storage | 100% integridade SHA-256",
+      latencyInterpretation:
+        "Latências baixas confirmam que o MinIO responde localmente na rede interna sem filas de lock em disco.",
+      rateLimitBehavior:
+        "Obedece à cota de leitura pública para evitar raspagem automatizada em massa de documentos institucionais.",
+      optimizationTip:
+        "Para arquivos volumosos frequentes, o uso de URLs pré-assinadas com cache HTTP alivia o tráfego do gateway da API.",
+    },
+  },
+  {
+    id: "outbox_messaging",
+    name: "Barramento Transacional & Mensageria (RabbitMQ / Outbox)",
+    url: "/api/backend/v1/monitoring/outbox-stats",
+    description: "Monitoramento de vazão do Transactional Outbox e saúde da fila de eventos AMQP",
+    impactLevel: "Mensageria & Broker AMQP",
+    pipeline: ["Caddy (Proxy TLS)", "Next.js BFF Auth", "Go Core REST", "PostgreSQL (outbox_events)", "RabbitMQ 3.13"],
+    testExplanation: {
+      overview:
+        "Avalia a integridade do padrão Transactional Outbox da plataforma Nexus sob concorrência, verificando o status de publicação assíncrona para o RabbitMQ.",
+      subsystems: [
+        "PostgreSQL 16: Contagem atômica de eventos pendentes, publicados e em Dead Letter (DLQ)",
+        "RabbitMQ 3.13: Disponibilidade dos canais AMQP e estabilidade do broker de mensagens",
+        "Go Background Relay: Worker de despacho assíncrono entre banco e filas",
+        "Next.js BFF Auth: Injeção de credencial segura de sessão de monitoramento",
+      ],
+      stressVector: "Consultas de telemetria transacional concorrentes durante despacho de eventos assíncronos.",
+      expectedBehavior:
+        "P95 abaixo de 35ms, com 0 falhas na contagem de dead letters e fila de pendências estável.",
+    },
+    performanceGuide: {
+      slaTarget: "P95 < 35ms | 0 eventos em Dead Letter | 100% entrega transacional",
+      latencyInterpretation:
+        "Latência consistente indica que as transações de outbox no Postgres não estão sofrendo lock de tabela.",
+      rateLimitBehavior:
+        "Endpoint autenticado com cota por identidade administrativa protegendo o canal de auditoria.",
+      optimizationTip:
+        "Manter o pool de conexões do worker de mensageria dimensionado para evitar acúmulo de outbox_events pendentes.",
+    },
+  },
+  {
+    id: "cluster_probes",
+    name: "Sondas de Cluster & Infraestrutura (RabbitMQ, MinIO, Redis & DB)",
+    url: "/api/health",
+    description: "Estresse simultâneo dos 4 pilares da stack: Postgres 16, Redis 7.4, RabbitMQ 3.13 e MinIO",
+    impactLevel: "Alta Concorrência Multi-Serviço",
+    pipeline: ["Caddy (Proxy TLS)", "Next.js Runtime", "Go /ready Core", "4x Sondas Paralelas (PG, Redis, RabbitMQ, MinIO)"],
+    testExplanation: {
+      overview:
+        "Dispara probes concorrentes no endpoint central de readiness, que executa pings TCP e liveness simultâneos em todos os 4 serviços da infraestrutura Proxmox.",
+      subsystems: [
+        "PostgreSQL: Validação de pool e conectividade de transação",
+        "Redis: Teste de PING em memória e resposta do cluster",
+        "RabbitMQ: Checagem de handshake no protocolo AMQP 0-9-1",
+        "MinIO: Validação de probe do bucket S3 e credenciais de acesso",
+        "Next.js Runtime: Orquestração de timeouts de 3 segundos por sonda",
+      ],
+      stressVector: "Inundação de probes de liveness para verificar se a infraestrutura aguenta checagens de alta frequência sem degradação.",
+      expectedBehavior:
+        "Status HTTP 200 OK com 'status: ok' para 100% dos 4 serviços. P95 inferior a 45ms.",
+    },
+    performanceGuide: {
+      slaTarget: "P95 < 45ms | 100% dos serviços saudáveis | 0% timeouts",
+      latencyInterpretation:
+        "Se o tempo ultrapassar 100ms, o log individual indica qual dos 4 serviços está com atraso de handshake.",
+      rateLimitBehavior:
+        "Sondas operam livres de rate limit para não mascarar incidentes em orquestradores.",
+      optimizationTip:
+        "Pings reutilizam conexões pré-estabelecidas com keep-alive para minimizar handshakes TCP repetitivos.",
+    },
+  },
 ];
 
 const DEFAULT_TARGET: TargetItem = TARGETS[0]!;
