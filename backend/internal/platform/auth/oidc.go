@@ -52,25 +52,47 @@ type Verifier struct {
 // (nenhum verifier Keycloak — só o local, se localSigner existir), nunca
 // um erro por si só; ver a checagem de "Keycloak inalcançável" mais
 // abaixo, feita por quem chama (NewVerifier no boot, Reload em runtime).
-func buildState(ctx context.Context, cfg config.KeycloakConfig) (*verifierState, error) {
+func buildState(ctx context.Context, cfg config.KeycloakConfig, maxAttempts int) (*verifierState, error) {
 	if cfg.IssuerURL == "" {
 		return &verifierState{idTokenVerifier: nil, clientID: cfg.ClientID}, nil
 	}
 
-	discoveryCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
-	defer cancel()
-
-	provider, err := oidc.NewProvider(discoveryCtx, cfg.IssuerURL)
-	if err != nil {
-		return nil, fmt.Errorf("auth: OIDC discovery failed for issuer %q: %w", cfg.IssuerURL, err)
+	if maxAttempts <= 0 {
+		maxAttempts = 1
 	}
 
-	verifier := provider.VerifierContext(ctx, &oidc.Config{
-		ClientID:             cfg.Audience,
-		SupportedSigningAlgs: []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256},
-	})
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		discoveryCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
+		provider, err := oidc.NewProvider(discoveryCtx, cfg.IssuerURL)
+		cancel()
 
-	return &verifierState{idTokenVerifier: verifier, clientID: cfg.ClientID}, nil
+		if err == nil {
+			verifier := provider.VerifierContext(ctx, &oidc.Config{
+				ClientID:             cfg.Audience,
+				SupportedSigningAlgs: []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256},
+			})
+			return &verifierState{idTokenVerifier: verifier, clientID: cfg.ClientID}, nil
+		}
+
+		lastErr = err
+
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("auth: OIDC discovery aborted: %w", ctx.Err())
+		}
+
+		if attempt < maxAttempts {
+			// Espera crescente: 2s, 4s, etc.
+			backoff := time.Duration(attempt*2) * time.Second
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("auth: OIDC discovery aborted during backoff: %w", ctx.Err())
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("auth: OIDC discovery failed for issuer %q: %w", cfg.IssuerURL, lastErr)
 }
 
 // NewVerifier faz o discovery OIDC contra cfg.IssuerURL. Falha rápido
@@ -86,7 +108,9 @@ func NewVerifier(ctx context.Context, cfg config.KeycloakConfig, localSigner *Lo
 		return nil, fmt.Errorf("auth: Keycloak IssuerURL is empty and LocalAuth is disabled")
 	}
 
-	state, err := buildState(ctx, cfg)
+	// 5 tentativas com backoff crescente (2s, 4s, 6s, 8s) para tolerar
+	// o tempo de boot do Keycloak em orquestrações de contêineres.
+	state, err := buildState(ctx, cfg, 5)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +131,8 @@ func NewVerifier(ctx context.Context, cfg config.KeycloakConfig, localSigner *Lo
 // nenhuns, então o chamador nunca troca a configuração persistida sem
 // primeiro confirmar, por este mesmo caminho, que o novo issuer responde.
 func (v *Verifier) Reload(ctx context.Context, cfg config.KeycloakConfig) error {
-	state, err := buildState(ctx, cfg)
+	// Reload testa exatamente 1 vez para feedback imediato na UI de admin.
+	state, err := buildState(ctx, cfg, 1)
 	if err != nil {
 		return err
 	}
