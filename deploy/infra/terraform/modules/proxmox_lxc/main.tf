@@ -28,6 +28,14 @@ resource "proxmox_virtual_environment_container" "this" {
     size         = var.disk_size
   }
 
+  dynamic "features" {
+    for_each = var.nesting || var.keyctl ? [1] : []
+    content {
+      nesting = var.nesting
+      keyctl  = var.keyctl
+    }
+  }
+
   initialization {
     hostname = var.hostname
 

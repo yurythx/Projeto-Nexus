@@ -24,7 +24,32 @@ module "lxc_edge_proxy" {
   ssh_public_keys  = var.admin_ssh_public_key != "" ? [var.admin_ssh_public_key] : []
 }
 
-# 2. Geração Automática do Inventário do Ansible
+# 2. Container LXC Dedicado: Servidor Docker Principal do Projeto Nexus
+module "lxc_nexus_app" {
+  source = "./modules/proxmox_lxc"
+
+  node_name        = var.proxmox_node_name
+  vm_id            = 201
+  hostname         = "nexus-prod-app"
+  description      = "Container Dedicado Docker Host - Projeto Nexus"
+  tags             = ["prod", "docker", "nexus", "lxc"]
+  cores            = 4
+  memory           = 6144
+  swap             = 2048
+  disk_storage     = var.storage_disk_pool
+  disk_size        = 40
+  template_file_id = "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+  os_type          = "ubuntu"
+  network_bridge   = var.network_bridge
+  ipv4_address     = "192.168.1.46/24"
+  ipv4_gateway     = var.default_gateway
+  nesting          = true
+  keyctl           = true
+  ssh_public_keys  = var.admin_ssh_public_key != "" ? [var.admin_ssh_public_key] : []
+  root_password    = "Nexus@Rondonopolis2026!"
+}
+
+# 3. Geração Automática do Inventário do Ansible
 resource "local_file" "ansible_inventory" {
   filename        = "${path.module}/../ansible/inventory.ini"
   file_permission = "0644"
@@ -38,9 +63,9 @@ resource "local_file" "ansible_inventory" {
     ansible_python_interpreter=/usr/bin/python3
     ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 
-    # --- Hosts com Docker Engine (Produção Principal) ---
+    # --- Hosts com Docker Engine (Produção Principal Dedicada) ---
     [docker_hosts]
-    nexus-prod-app ansible_host=192.168.1.42 proxmox_vmid=103
+    nexus-prod-app ansible_host=192.168.1.46 proxmox_vmid=${module.lxc_nexus_app.id}
 
     # --- Containers LXC Leves (Serviços e Runner) ---
     [lxc_containers]

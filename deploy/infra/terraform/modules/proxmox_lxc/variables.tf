@@ -108,3 +108,15 @@ variable "start_on_boot" {
   type        = bool
   default     = true
 }
+
+variable "nesting" {
+  description = "Habilitar nesting para suporte a containers Docker/LXC internos"
+  type        = bool
+  default     = false
+}
+
+variable "keyctl" {
+  description = "Habilitar keyctl para suporte ao gerenciamento de chaves do kernel em containers unprivileged"
+  type        = bool
+  default     = false
+}
