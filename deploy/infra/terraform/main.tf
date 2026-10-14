@@ -44,7 +44,7 @@ module "lxc_nexus_app" {
   ipv4_address     = "192.168.1.46/24"
   ipv4_gateway     = var.default_gateway
   nesting          = true
-  keyctl           = true
+  keyctl           = false
   ssh_public_keys  = var.admin_ssh_public_key != "" ? [var.admin_ssh_public_key] : []
   root_password    = "Nexus@Rondonopolis2026!"
 }

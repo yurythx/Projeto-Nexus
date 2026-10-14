@@ -29,10 +29,9 @@ resource "proxmox_virtual_environment_container" "this" {
   }
 
   dynamic "features" {
-    for_each = var.nesting || var.keyctl ? [1] : []
+    for_each = var.nesting ? [1] : []
     content {
       nesting = var.nesting
-      keyctl  = var.keyctl
     }
   }
 
