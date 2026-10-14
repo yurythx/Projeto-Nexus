@@ -35,14 +35,14 @@ export default async function ContatoPage({
 
   return (
     <PublicShell>
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-14">
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:gap-8 sm:px-6 sm:py-14">
         <div className="flex flex-col gap-3">
           <p className="dateline">Contato</p>
-          <h1 className="text-3xl font-bold text-foreground sm:text-4xl">Fale com a gente</h1>
-          <p className="text-muted">{description}</p>
+          <h1 className="text-2xl font-bold text-foreground sm:text-4xl">Fale com a gente</h1>
+          <p className="text-sm text-muted sm:text-base">{description}</p>
         </div>
 
-        <div className="rounded-xl border border-surface-border bg-surface p-6 sm:p-8">
+        <div className="rounded-xl border border-surface-border bg-surface p-4 sm:p-8">
           <ContactForm defaultServiceSlug={servico} />
         </div>
 

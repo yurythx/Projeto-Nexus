@@ -54,10 +54,10 @@ function MessageDetail({ id, onChanged }: { id: string; onChanged: () => void })
   return (
     <div className="flex flex-col gap-4 text-sm">
       <dl className="grid gap-2 sm:grid-cols-2">
-        <div><dt className="text-xs text-muted">Protocolo</dt><dd className="font-mono">{m.protocol}</dd></div>
+        <div><dt className="text-xs text-muted">Protocolo</dt><dd className="font-mono break-all">{m.protocol}</dd></div>
         <div><dt className="text-xs text-muted">Recebida</dt><dd>{fmtDateTime(m.created_at)}</dd></div>
-        <div><dt className="text-xs text-muted">Nome</dt><dd>{m.name}</dd></div>
-        <div><dt className="text-xs text-muted">E-mail</dt><dd><a href={`mailto:${m.email}?subject=${encodeURIComponent(`Re: ${m.subject} [${m.protocol}]`)}`} className="text-primary hover:underline">{m.email}</a></dd></div>
+        <div><dt className="text-xs text-muted">Nome</dt><dd className="break-all">{m.name}</dd></div>
+        <div><dt className="text-xs text-muted">E-mail</dt><dd className="break-all"><a href={`mailto:${m.email}?subject=${encodeURIComponent(`Re: ${m.subject} [${m.protocol}]`)}`} className="text-primary hover:underline">{m.email}</a></dd></div>
         {m.phone && <div><dt className="text-xs text-muted">Telefone</dt><dd>{m.phone}</dd></div>}
         <div><dt className="text-xs text-muted">Consentimento LGPD</dt><dd>{fmtDateTime(m.consent_at)}</dd></div>
       </dl>
@@ -104,19 +104,22 @@ export default function GestaoContatoPage() {
           setStatus(e.target.value);
         }}
         options={[{ value: "", label: "Todas" }, ...Object.entries(STATUS).map(([value, s]) => ({ value, label: s.label }))]}
-        className="max-w-xs"
+        className="w-full sm:max-w-xs"
       />
       <DataState loading={list.isLoading} error={list.error} onRetry={() => void list.mutate()} empty={(list.data?.items ?? []).length === 0} emptyTitle="Nenhuma mensagem">
-        <Table caption="Mensagens de contato">
+        <div className="flex items-center justify-between text-[11px] text-muted sm:hidden px-1 mb-1">
+          <span>↔ Deslize a tabela para ver todas as colunas</span>
+        </div>
+        <Table caption="Mensagens de contato" className="min-w-[720px]">
           <TableHead>
             <TableRow>
-              <TableHeaderCell>Protocolo</TableHeaderCell>
-              <TableHeaderCell>Assunto</TableHeaderCell>
-              <TableHeaderCell>Remetente</TableHeaderCell>
-              <TableHeaderCell>Setor</TableHeaderCell>
-              <TableHeaderCell>Situação</TableHeaderCell>
-              <TableHeaderCell>Recebida</TableHeaderCell>
-              <TableHeaderCell>
+              <TableHeaderCell className="w-28">Protocolo</TableHeaderCell>
+              <TableHeaderCell className="min-w-[160px]">Assunto</TableHeaderCell>
+              <TableHeaderCell className="min-w-[140px]">Remetente</TableHeaderCell>
+              <TableHeaderCell className="min-w-[130px]">Setor</TableHeaderCell>
+              <TableHeaderCell className="w-28">Situação</TableHeaderCell>
+              <TableHeaderCell className="w-36">Recebida</TableHeaderCell>
+              <TableHeaderCell className="w-12 text-right">
                 <span className="sr-only">Abrir</span>
               </TableHeaderCell>
             </TableRow>
@@ -124,18 +127,18 @@ export default function GestaoContatoPage() {
           <TableBody>
             {(list.data?.items ?? []).map((m) => (
               <TableRow key={m.id}>
-                <TableCell className="font-mono text-xs">{m.protocol}</TableCell>
-                <TableCell>
-                  {m.subject}
+                <TableCell className="font-mono text-xs whitespace-nowrap">{m.protocol}</TableCell>
+                <TableCell className="min-w-[160px]">
+                  <span className="font-medium text-foreground">{m.subject}</span>
                   <span className="block text-xs text-muted">{m.category}</span>
                 </TableCell>
-                <TableCell className="text-sm">{m.name}</TableCell>
-                <TableCell className="text-sm">{setor(m.unidade_id)}</TableCell>
-                <TableCell>
+                <TableCell className="text-sm whitespace-nowrap">{m.name}</TableCell>
+                <TableCell className="text-sm whitespace-nowrap">{setor(m.unidade_id)}</TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
                 </TableCell>
-                <TableCell className="text-xs text-muted">{fmtDateTime(m.created_at)}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-xs text-muted whitespace-nowrap">{fmtDateTime(m.created_at)}</TableCell>
+                <TableCell className="text-right w-12">
                   <Button variant="ghost" size="sm" aria-label={`Abrir ${m.protocol}`} onClick={() => setOpen(m)}>
                     <Eye size={16} aria-hidden="true" />
                   </Button>

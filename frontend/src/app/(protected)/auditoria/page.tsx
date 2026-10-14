@@ -23,21 +23,25 @@ function hasKeys(v: unknown): boolean {
 
 function Json({ value }: { value: unknown }) {
   if (value === undefined || value === null) return <p className="text-xs text-muted">—</p>;
-  return <pre className="max-h-64 overflow-auto rounded-md bg-surface-hover p-3 font-mono text-xs">{JSON.stringify(value, null, 2)}</pre>;
+  return (
+    <pre className="max-h-64 overflow-x-auto overflow-y-auto rounded-md bg-surface-hover p-3 font-mono text-xs whitespace-pre-wrap break-all sm:whitespace-pre sm:break-normal">
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  );
 }
 
 function RecordDetail({ r }: { r: AuditRecord }) {
   return (
     <div className="flex flex-col gap-4 text-sm">
       <dl className="grid gap-3 sm:grid-cols-2">
-        <div><dt className="text-xs text-muted">Ação</dt><dd className="font-mono">{r.action}</dd></div>
-        <div><dt className="text-xs text-muted">Recurso</dt><dd className="font-mono text-xs">{r.resource_type ?? "—"} {r.resource_id ?? ""}</dd></div>
-        <div><dt className="text-xs text-muted">Ator</dt><dd>{r.actor_name ?? r.actor_subject ?? "sistema"}</dd></div>
+        <div><dt className="text-xs text-muted">Ação</dt><dd className="font-mono break-all">{r.action}</dd></div>
+        <div><dt className="text-xs text-muted">Recurso</dt><dd className="font-mono text-xs break-all">{r.resource_type ?? "—"} {r.resource_id ?? ""}</dd></div>
+        <div><dt className="text-xs text-muted">Ator</dt><dd className="break-all">{r.actor_name ?? r.actor_subject ?? "sistema"}</dd></div>
         <div><dt className="text-xs text-muted">Perfis do ator</dt><dd>{r.actor_roles.join(", ") || "—"}</dd></div>
         <div><dt className="text-xs text-muted">IP</dt><dd className="font-mono text-xs">{r.ip_address ?? "—"}</dd></div>
         <div><dt className="text-xs text-muted">Data (UTC)</dt><dd>{new Date(r.timestamp_utc).toISOString()}</dd></div>
         <div className="sm:col-span-2"><dt className="text-xs text-muted">User-Agent</dt><dd className="break-all text-xs">{r.user_agent ?? "—"}</dd></div>
-        <div className="sm:col-span-2"><dt className="text-xs text-muted">Correlação (X-Request-ID)</dt><dd className="font-mono text-xs">{r.correlation_id ?? "—"}</dd></div>
+        <div className="sm:col-span-2"><dt className="text-xs text-muted">Correlação (X-Request-ID)</dt><dd className="font-mono text-xs break-all">{r.correlation_id ?? "—"}</dd></div>
       </dl>
       <div className="grid gap-3 md:grid-cols-2">
         <div><h3 className="mb-1 text-xs font-semibold text-muted">Antes</h3><Json value={r.diff_before} /></div>
@@ -137,19 +141,24 @@ export default function AuditoriaPage() {
         <Input id="au-resource" label="Tipo de recurso" value={filters.resource_type} onChange={(e) => setFilters({ ...filters, resource_type: e.target.value.trim() })} />
         <Input id="au-from" type="date" label="De" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
         <Input id="au-to" type="date" label="Até" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
-        <Button type="submit" variant="secondary">Filtrar</Button>
+        <div className="sm:col-span-2 lg:col-span-1">
+          <Button type="submit" variant="secondary" className="w-full">Filtrar</Button>
+        </div>
       </form>
 
       <DataState loading={list.isLoading} error={list.error} onRetry={() => void list.mutate()} empty={(list.data?.items ?? []).length === 0} emptyTitle="Nenhum registro no período" rows={6}>
-        <Table caption="Registros de auditoria">
+        <div className="flex items-center justify-between text-[11px] text-muted sm:hidden px-1 mb-1">
+          <span>↔ Deslize a tabela para ver todos os dados</span>
+        </div>
+        <Table caption="Registros de auditoria" className="min-w-[660px]">
           <TableHead>
             <TableRow>
-              <TableHeaderCell>#</TableHeaderCell>
-              <TableHeaderCell>Quando</TableHeaderCell>
-              <TableHeaderCell>Ator</TableHeaderCell>
-              <TableHeaderCell>Ação</TableHeaderCell>
-              <TableHeaderCell>Recurso</TableHeaderCell>
-              <TableHeaderCell>
+              <TableHeaderCell className="w-16">#</TableHeaderCell>
+              <TableHeaderCell className="w-36">Quando</TableHeaderCell>
+              <TableHeaderCell className="min-w-[140px]">Ator</TableHeaderCell>
+              <TableHeaderCell className="min-w-[170px]">Ação</TableHeaderCell>
+              <TableHeaderCell className="min-w-[120px]">Recurso</TableHeaderCell>
+              <TableHeaderCell className="w-12 text-right">
                 <span className="sr-only">Detalhes</span>
               </TableHeaderCell>
             </TableRow>
@@ -157,17 +166,17 @@ export default function AuditoriaPage() {
           <TableBody>
             {(list.data?.items ?? []).map((r) => (
               <TableRow key={r.id}>
-                <TableCell className="font-mono text-xs text-muted">{r.chain_pos}</TableCell>
+                <TableCell className="font-mono text-xs text-muted whitespace-nowrap">{r.chain_pos}</TableCell>
                 <TableCell className="whitespace-nowrap text-xs">{fmtDateTime(r.timestamp_utc)}</TableCell>
-                <TableCell className="text-sm">
+                <TableCell className="text-sm min-w-[140px]">
                   {r.actor_name ?? r.actor_subject ?? <Badge>sistema</Badge>}
-                  {r.ip_address && <span className="block font-mono text-[11px] text-muted">{r.ip_address}</span>}
+                  {r.ip_address && <span className="block font-mono text-[11px] text-muted break-all">{r.ip_address}</span>}
                 </TableCell>
-                <TableCell>
-                  <code className="font-mono text-xs">{r.action}</code>
+                <TableCell className="min-w-[170px]">
+                  <code className="font-mono text-xs break-all sm:break-normal">{r.action}</code>
                 </TableCell>
-                <TableCell className="text-xs text-muted">{r.resource_type ?? "—"}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-xs text-muted whitespace-nowrap">{r.resource_type ?? "—"}</TableCell>
+                <TableCell className="text-right w-12">
                   <Button variant="ghost" size="sm" aria-label={`Detalhes do registro ${r.chain_pos}`} onClick={() => setDetail(r)}>
                     <Eye size={16} aria-hidden="true" />
                   </Button>

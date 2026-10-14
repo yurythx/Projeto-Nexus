@@ -11,12 +11,20 @@ export function Table({
   className = "",
   caption,
   captionVisible = false,
+  containerClassName = "",
   children,
   ...rest
-}: HTMLAttributes<HTMLTableElement> & { caption?: string; captionVisible?: boolean }) {
+}: HTMLAttributes<HTMLTableElement> & {
+  caption?: string;
+  captionVisible?: boolean;
+  containerClassName?: string;
+}) {
+  const hasMinW = /\bmin-w-/.test(className);
   return (
-    <div className="overflow-x-auto rounded-lg border border-surface-border">
-      <table className={`w-full text-left text-sm ${className}`} {...rest}>
+    <div
+      className={`w-full max-w-full overflow-x-auto rounded-lg border border-surface-border [touch-action:auto] [webkit-overflow-scrolling:touch] ${containerClassName}`}
+    >
+      <table className={`w-full ${hasMinW ? "" : "min-w-[620px]"} text-left text-sm ${className}`} {...rest}>
         {caption && (
           <caption className={captionVisible ? "px-4 py-2 text-left text-xs text-muted" : "sr-only"}>
             {caption}
@@ -47,12 +55,12 @@ export function TableHeaderCell({
   return (
     <th
       scope="col"
-      className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted ${className}`}
+      className={`whitespace-nowrap px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted ${className}`}
       {...rest}
     />
   );
 }
 
 export function TableCell({ className = "", ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={`px-4 py-3 ${className}`} {...rest} />;
+  return <td className={`px-4 py-3 align-middle ${className}`} {...rest} />;
 }

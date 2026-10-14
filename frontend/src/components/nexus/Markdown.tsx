@@ -178,12 +178,12 @@ export function Markdown({ source, className = "" }: { source: string; className
       }
 
       blocks.push(
-        <div key={k++} className="my-6 max-w-full overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-xs">
-          <table className="min-w-full divide-y divide-surface-border text-left text-sm">
+        <div key={k++} className="my-6 w-full max-w-full overflow-x-auto rounded-xl border border-surface-border bg-surface shadow-xs [touch-action:auto] [webkit-overflow-scrolling:touch]">
+          <table className="w-full min-w-[560px] divide-y divide-surface-border text-left text-sm">
             <thead className="bg-surface-2 text-xs font-bold uppercase tracking-wider text-muted">
               <tr>
                 {headerCells.map((h, hIdx) => (
-                  <th key={hIdx} className={`px-4 py-3 font-semibold ${alignments[hIdx] ?? "text-left"}`}>
+                  <th key={hIdx} className={`whitespace-nowrap px-4 py-3 font-semibold ${alignments[hIdx] ?? "text-left"}`}>
                     {inline(h, `th${k}-${hIdx}`)}
                   </th>
                 ))}
@@ -193,7 +193,7 @@ export function Markdown({ source, className = "" }: { source: string; className
               {rows.map((row, rIdx) => (
                 <tr key={rIdx} className="transition-colors hover:bg-surface-hover/50 even:bg-surface-1/40">
                   {row.map((cell, cIdx) => (
-                    <td key={cIdx} className={`px-4 py-3 text-sm text-foreground ${alignments[cIdx] ?? "text-left"}`}>
+                    <td key={cIdx} className={`px-4 py-3 text-sm text-foreground align-top ${alignments[cIdx] ?? "text-left"}`}>
                       {inline(cell, `td${k}-${rIdx}-${cIdx}`)}
                     </td>
                   ))}

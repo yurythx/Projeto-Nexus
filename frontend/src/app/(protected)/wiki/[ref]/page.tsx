@@ -26,7 +26,7 @@ function Revisions({ page, onRestored }: { page: WikiPage; onRestored: () => voi
 
   return (
     <div className="grid gap-4 md:grid-cols-[14rem_1fr]">
-      <ul className="flex flex-col gap-1 text-sm">
+      <ul className="flex max-h-56 md:max-h-[60vh] flex-col gap-1 overflow-y-auto text-sm">
         {(revs.data ?? []).map((r) => (
           <li key={r.id}>
             <button
@@ -59,7 +59,7 @@ function Revisions({ page, onRestored }: { page: WikiPage; onRestored: () => voi
               </Button>
             )}
             <div className="rounded-lg border border-surface-border p-4">
-              <h3 className="text-lg font-semibold">{rev.data.title}</h3>
+              <h3 className="text-lg font-semibold break-words">{rev.data.title}</h3>
               <Markdown source={rev.data.body ?? ""} />
             </div>
           </div>
@@ -97,15 +97,17 @@ export default function WikiPageView() {
               ))}
             </nav>
           )}
-          <header className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-border pb-4">
-            <div>
-              <h1 className="text-3xl font-bold">{p.title}</h1>
-              <PublicoBadge publico={p.publico} />
-              <p className="mt-1 text-xs text-muted">
-                Versão {p.version} · atualizada por {p.updated_by_name} em {fmtDateTime(p.updated_at)}
-              </p>
+          <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-surface-border pb-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold break-words sm:text-3xl">{p.title}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <PublicoBadge publico={p.publico} />
+                <span className="text-xs text-muted">
+                  Versão {p.version} · atualizada por {p.updated_by_name} em {fmtDateTime(p.updated_at)}
+                </span>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" size="sm" onClick={() => setMode("edit")}>
                 <Pencil size={14} aria-hidden="true" className="mr-1" /> Editar
               </Button>
