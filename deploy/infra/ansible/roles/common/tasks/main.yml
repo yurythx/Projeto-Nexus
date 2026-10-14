@@ -1,4 +1,10 @@
----
+- name: Priorizar IPv4 na resolução de nomes do sistema (/etc/gai.conf)
+  ansible.builtin.lineinfile:
+    path: /etc/gai.conf
+    line: "precedence ::ffff:0:0/96 100"
+    state: present
+    create: yes
+
 - name: Garantir timezone correto
   community.general.timezone:
     name: America/Cuiaba
